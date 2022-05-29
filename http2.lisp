@@ -2,59 +2,6 @@
 
 (in-package #:http2)
 #|
-Internet Engineering Task Force (IETF)                         M. Belshe
-Request for Comments: 7540                                         BitGo
-Category: Standards Track                                        R. Peon
-ISSN: 2070-1721                                              Google, Inc
-                                                         M. Thomson, Ed.
-                                                                 Mozilla
-                                                                May 2015
-
-
-             Hypertext Transfer Protocol Version 2 (HTTP/2)
-
-Abstract
-
-   This specification describes an optimized expression of the semantics
-   of the Hypertext Transfer Protocol (HTTP), referred to as HTTP
-   version 2 (HTTP/2).  HTTP/2 enables a more efficient use of network
-   resources and a reduced perception of latency by introducing header
-   field compression and allowing multiple concurrent exchanges on the
-   same connection.  It also introduces unsolicited push of
-   representations from servers to clients.
-
-   This specification is an alternative to, but does not obsolete, the
-   HTTP/1.1 message syntax.  HTTP's existing semantics remain unchanged.
-
-Status of This Memo
-
-   This is an Internet Standards Track document.
-
-   This document is a product of the Internet Engineering Task Force
-   (IETF).  It represents the consensus of the IETF community.  It has
-   received public review and has been approved for publication by the
-   Internet Engineering Steering Group (IESG).  Further information on
-   Internet Standards is available in Section 2 of RFC 5741.
-
-   Information about the current status of this document, any errata,
-   and how to provide feedback on it may be obtained at
-   http://www.rfc-editor.org/info/rfc7540.
-
-Copyright Notice
-
-   Copyright (c) 2015 IETF Trust and the persons identified as the
-   document authors.  All rights reserved.
-
-   This document is subject to BCP 78 and the IETF Trust's Legal
-   Provisions Relating to IETF Documents
-   (http://trustee.ietf.org/license-info) in effect on the date of
-   publication of this document.  Please review these documents
-   carefully, as they describe your rights and restrictions with respect
-   to this document.  Code Components extracted from this document must
-   include Simplified BSD License text as described in Section 4.e of
-   the Trust Legal Provisions and are provided without warranty as
-   described in the Simplified BSD License.
-|#
 
 #|
    client:  The endpoint that initiates an HTTP/2 connection.  Clients
@@ -93,41 +40,16 @@ Copyright Notice
    The term "payload body" is defined in Section 3.3 of [RFC7230].
 |#
 
-;;;; Deleted lengthy session about starting om http
-
-#|
-
-3.3.  Starting HTTP/2 for "https" URIs
-
-   A client that makes a request to an "https" URI uses TLS [TLS12] with
-   the application-layer protocol negotiation (ALPN) extension
-   [TLS-ALPN].
-
-   HTTP/2 over TLS uses the "h2" protocol identifier.  The "h2c"
-   protocol identifier MUST NOT be sent by a client or selected by a
-   server; the "h2c" protocol identifier describes a protocol that does
-   not use TLS.
-
-   Once TLS negotiation is complete, both the client and the server MUST
-   send a connection preface (Section 3.5).
-|#
-
-;;;; Deleted lengthy session about starting on known capability
-
-#|
-
 |#
 
 ;; 3.5.  HTTP/2 Connection Preface
 (defvar +client-preface-start+
-  (loop with prefix = "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a"
+  #.(loop with prefix = "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a"
         for i from 0 to (1- (length prefix)) by 2
         collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
         finally (return (map 'simple-vector 'identity l)))
   "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
- \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\")."
-)
-
+ \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
 (defun write-client-preface (stream)
   "In HTTP/2, each endpoint is required to send a connection preface as a
@@ -138,6 +60,7 @@ Copyright Notice
    The client connection preface starts with a sequence of 24 octets.   This sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty."
   (write-sequence +client-preface-start+ stream))
 
+;;;; This is a boilerplate to define individual frame types.
 (defstruct (frame-type (:constructor make-frame-type
                            (name code documentation
                             &optional
@@ -154,8 +77,33 @@ Copyright Notice
    (make-frame-type :rst-stream-frame 3 "")
    (make-frame-type :settings-frame 4 "")))
 
-(defconstant +data-frame+ 0)
-(defconstant +headers-frame+ 1)
+(defmacro define-frame (nr name documentation (&rest parameters)  (&key (flags 0) length) writer
+                        (&body reader))
+  `(progn
+     (defconstant ,(intern (format nil "+~a+" name)) ,nr)
+     (push (make-frame-type ,name ,nr ,documentation)
+      *frame-types*)
+     ,@(let ((reader-name (intern (format nil "READ-~a" name)))
+            (writer-name (intern (format nil "WRITE-~a" name)))
+             (stream-name (gensym "STREAM")))
+         `((defun ,writer-name (connection http-stream ,@parameters)
+              (let ((,stream-name (get-network-stream connection)))
+                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
+                       (write-vector (vector) (write-sequence vector ,stream-name)))
+                  (declare (ignorable #'write-vector #'write-bytes))
+                  (write-frame-header ,stream-name ,nr ,flags
+                                      (get-stream-id http-stream) :length ,length)
+                  ,@writer)))
+
+           (defun ,reader-name (connection stream length flags)
+              (let ((,stream-name (get-network-stream connection)))
+                (flet ((read-bytes (n) (read-bytes ,stream-name n))
+                       (read-byte* () (read-byte* ,stream-name))
+                       (read-sequence* (seq) (read-sequence seq ,stream-name)))
+                  (declare (ignorable #'read-bytes #'read-byte*))
+                  ,@reader)))))))
+
+
 (defconstant +priority-frame+ 2)
 (defconstant +rst-stream-frame+ 3)
 (defconstant +settings-frame+ 4
@@ -175,69 +123,18 @@ Copyright Notice
 
 
 
-(defun init-tls-connection (target &key (sni target) (port 443))
-"The client sends the client connection preface (...) as the first
-application data octets of a TLS connection.
-
-   The server connection preface consists of a potentially empty
-   SETTINGS frame (Section 6.5) that MUST be the first frame the server
-   sends in the HTTP/2 connection.
-
-   The SETTINGS frames received from a peer as part of the connection
-   preface MUST be acknowledged (see Section 6.5.3) after sending the
-   connection preface.
-   To avoid unnecessary latency, clients are permitted to send
-   additional frames to the server immediately after sending the client
-   connection preface, without waiting to receive the server connection
-   preface.  It is important to note, however, that the server
-   connection preface SETTINGS frame might include parameters that
-   necessarily alter how a client is expected to communicate with the
-   server.  Upon receiving the SETTINGS frame, the client is expected to
-   honor any parameters established.  In some configurations, it is
-   possible for the server to transmit SETTINGS before the client sends
-   additional frames, providing an opportunity to avoid this issue.
-
-   Clients and servers MUST treat an invalid connection preface as a
-   connection error (Section 5.4.1) of type PROTOCOL_ERROR.  A GOAWAY
-   frame (Section 6.8) MAY be omitted in this case, since an invalid
-   preface indicates that the peer is not using HTTP/2."
-  (usocket:with-client-socket (socket stream target port)
-    (let ((ssl-stream (cl+ssl:make-ssl-client-stream
-                       stream
-                       :unwrap-stream-p t
-                       :verify nil
-                       :hostname sni
-                       :alpn-protocols '("h2")))
-          (connection (make-instance 'http2-connection)))
-      (write-client-preface ssl-stream)
-      (write-settings-frame ssl-stream (get-settings connection))
-      (force-output ssl-stream)
-      (read-frame connection ssl-stream) ; should be settings frame
-      (unless (get-peer-settings connection)
-        (error "We expected settings frame"))
-      (write-ack-setting-frame ssl-stream)
-      (read-frame connection ssl-stream)
-      (write-headers-frame ssl-stream (create-new-local-stream connection)
-                           (request-headers "GET" "/"  "www.example.org")
-                           :end-headers t :end-stream t)
-      (force-output ssl-stream)
-      (multiple-value-bind (payload http-stream type flags)
-          (read-frame connection ssl-stream)
-        (values connection payload http-stream type flags))
-      (multiple-value-bind (payload http-stream type flags)
-          (read-frame connection ssl-stream)
-        (values connection payload http-stream type flags))
-      (multiple-value-bind (payload http-stream type flags)
-          (read-frame connection ssl-stream)
-        (close ssl-stream)
-        (close stream)
-        (values connection payload http-stream type flags)))))
-
-(defun create-new-local-stream (connection)
+#+nil#(defun create-new-local-stream (connection)
   "ID of a new stream."
   (push  (make-instance 'http2-stream :stream-id (get-id-to-use connection)) (get-streams connection))
   (prog1 (get-id-to-use connection)
     (incf (get-id-to-use connection))))
+
+(defun create-new-local-stream (connection)
+  "A new stream."
+  (let ((stream (make-instance 'http2-stream :stream-id (get-id-to-use connection))))
+    (incf (get-id-to-use connection))
+    (push stream (get-streams connection))
+    stream))
 
 (defun write-frame-header (stream type flags http-stream &key (R 0) (length 0))
   "All frames begin with a fixed 9-octet header followed by a variable-
@@ -293,15 +190,8 @@ application data octets of a TLS connection.
   (write-byte (ldb (byte 8 8) http-stream) stream)
   (write-byte (ldb (byte 8 0) http-stream) stream))
 
-(defun read-bytes (stream n)
-  "Read N bytes from stream to an integer"
-  (declare ((integer 1 8) n))
-  (let ((res 0))
-    (dotimes (i n)
-      (setf (ldb (byte 8 (* 8 (- n 1 i))) res) (read-byte stream)))
-    res))
 
-(defun read-frame (connection stream)
+(defun read-frame (connection &optional (stream (get-network-stream connection)))
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
 
@@ -345,16 +235,24 @@ application data octets of a TLS connection.
          (payload (make-array length :element-type '(unsigned-byte 8)))
          (type (read-byte stream))
          (flags (read-byte stream))
-         (http-stream (read-bytes stream 4)))
+         (http-stream+R (read-bytes stream 4))
+         (http-stream (ldb (byte 31 0) http-stream+R))
+         (R (ldb (byte 1 31) http-stream+R)))
     (declare ((array (unsigned-byte 8)) payload)
              ((unsigned-byte 24) length)
              ((unsigned-byte 8) type flags)
-             ((unsigned-byte 32) http-stream))
+             ((unsigned-byte 31) http-stream))
     (if (> length *max-frame-size*)
         (http2-error 'frame-size-error))
+    (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object (find type *frame-types* :key #'frame-type-code)))
+      (when (get-expect-continuation connection)
+        (when (not (eq (frame-type-name frame-type-object) :continuation-frame))
+          (http2-error "Continuation frame expected"))
+        (unless (= http-stream (get-expect-continuation connection))
+          (http2-error "Continuation frame should be for a different stream")))
       (cond (frame-type-object
-             (funcall  (frame-type-receive-fn frame-type-object) stream connection
+             (funcall  (frame-type-receive-fn frame-type-object) connection
                        (if (zerop http-stream) connection
                            (find http-stream (get-streams connection)
                                  :key #'get-stream-id))
@@ -452,55 +350,8 @@ a large frame, could affect performance.
 COMPRESSION_ERROR if it does not decompress a header block.
 |#
 
-#|
-  5.  Streams and Multiplexing
-
-  A "stream" is an independent, bidirectional sequence of frames
-  exchanged between the client and server within an HTTP/2 connection.
-  Streams have several important characteristics:
-
-  o  A single HTTP/2 connection can contain multiple concurrently open
-  streams, with either endpoint interleaving frames from multiple
-  streams.
-|#
-
-(defclass http2-connection ()
-  ((streams        :accessor get-streams        :initarg :streams)
-   (settings       :accessor get-settings       :initarg :settings)
-   (peer-settings  :accessor get-peer-settings  :initarg :peer-settings)
-   (acked-settings :accessor get-acked-settings :initarg :acked-settings)
-   (dynamic-table  :accessor get-dynamic-table  :initarg :dynamic-table)
-   (id-to-use      :accessor get-id-to-use      :initarg :id-to-use
-                   :type (unsigned-byte 31)
-                   :documentation
-                   "Streams are identified with an unsigned 31-bit integer.  Streams
-  initiated by a client MUST use odd-numbered stream identifiers; those
-  initiated by the server MUST use even-numbered stream identifiers.  A
-  stream identifier of zero (0x0) is used for connection control
-  messages; the stream identifier of zero cannot be used to establish a
-  new stream.")
-   (window-size    :accessor get-window-size    :initarg :window-size))
-  (:default-initargs :id-to-use 1 :settings `((:max-frame-size . ,*max-frame-size*))
-                     :streams nil
-                     :acked-settings nil
-                     :window-size 0
-                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)))
-
-
 
 #|
-  o  Streams can be established and used unilaterally or shared by
-  either the client or server.
-
-  o  Streams can be closed by either endpoint.
-
-  o  The order in which frames are sent on a stream is significant.
-  Recipients process frames in the order they are received.  In
-  particular, the order of HEADERS and DATA frames is semantically
-  significant.
-
-  o  Streams are identified by an integer.  Stream identifiers are
-  assigned to streams by the endpoint initiating the stream.
 
   5.1.  Stream States
 
@@ -564,18 +415,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
   idle:
   All streams start in the "idle" state.
 |#
-(defclass http2-stream ()
-  ((stream-id   :accessor get-stream-id   :initarg :stream-id
-                :type (unsigned-byte 31))
-   (state       :accessor get-state       :initarg :state
-                :type (member idle open closed
-                              half-closed/local half-closed/remote
-                              reserved/local reserved/remote))
-   (headers     :accessor get-headers     :initarg :headers)
-   (data        :accessor get-data        :initarg :data)
-   (window-size :accessor get-window-size :initarg :window-size))
-  (:default-initargs :state 'idle :window-size 0
-   :headers nil))
+
 
 #|
   The following transitions are valid from this state:
@@ -1266,28 +1106,32 @@ COMPRESSION_ERROR if it does not decompress a header block.
   frames to obscure the size of messages.  Padding is a security
   feature; see Section 10.7.
 
-  +---------------+
+  |#
+
+(define-frame 0 :data-frame
+" +---------------+
   |Pad Length? (8)|
   +---------------+-----------------------------------------------+
   |                            Data (*)                         ...
   +---------------------------------------------------------------+
   |                           Padding (*)                       ...
-  +---------------------------------------------------------------+
-  |#
+  +---------------------------------------------------------------+"
+    () () ((error "Can't write data frame yet"))
+    ((when (eq connection stream)
+       (error "Data for connection itself"))
+      (let* ((padded? (plusp (ldb (byte 1 3) flags)))
+             (end-stream? (plusp (ldb (byte 1 0) flags)))
+             (padding-size (if padded? (read-bytes 1) 0))
+             (data-length (- length (if padded? (+ 1 padding-size) 0)))
+             (data (make-array data-length :element-type '(unsigned-byte 8))))
+        (loop while (plusp data-length)
+              do (decf data-length (read-sequence* data)))
+        (if padded? (dotimes (i padding-size) (read-bytes 1)))
+        (setf (get-data stream) data)
+        (print `(:data-frame ,data :end-stream ,end-stream?)))))
 
-(defun read-data-frame (stream connection stream-or-connection length flags)
-  (when (eq connection stream-or-connection)
-    (error "Data for connection itself"))
-  (let* ((padded? (plusp (ldb (byte 1 3) flags)))
-         (end-stream? (plusp (ldb (byte 1 0) flags)))
-         (padding-size (if padded? (read-byte stream) 0))
-         (data-length (- length (if padded? (+ 1 padding-size) 0)))
-         (data (make-array data-length :element-type '(unsigned-byte 8))))
-    (loop while (plusp data-length)
-          do (decf data-length (read-sequence data stream)))
-    (if padded? (dotimes (i padding-size) (read-byte stream)))
-    (setf (get-data stream-or-connection) data)
-    (print `(:data-frame ,data :end-stream ,end-stream?))))
+(defun read-data-frame (connection stream-or-connection length flags)
+)
 
 #|
                        Figure 6: DATA Frame Payload
@@ -1339,16 +1183,9 @@ COMPRESSION_ERROR if it does not decompress a header block.
       Note: A frame can be increased in size by one octet by including a
       Pad Length field with a value of zero.
 
-6.2.  HEADERS
+|#
 
-   The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
-   and additionally carries a header block fragment.  HEADERS frames can
-   be sent on a stream in the "idle", "reserved (local)", "open", or
-   "half-closed (remote)" state.
-
-
-
-
+#|
     +---------------+
     |Pad Length? (8)|
     +-+-------------+-----------------------------------------------+
@@ -1362,40 +1199,47 @@ COMPRESSION_ERROR if it does not decompress a header block.
     +---------------------------------------------------------------+
 
                       Figure 7: HEADERS Frame Payload
-
-   The HEADERS frame payload has the following fields:
-
 |#
-(defun write-headers-frame (stream stream-id headers &key end-headers end-stream)
-  (write-frame-header stream +headers-frame+ (+ (if end-stream 1 0)
-                                                (if end-headers 4 0))
-                      stream-id :length (reduce '+ (mapcar 'length headers)))
-  (if nil (write-bytes stream 0 4)) ; dependency
-  (if nil (write-byte 0 stream)) ; weigth
-  (dolist (header headers)
-    (write-sequence header stream)))
 
-(defun read-headers-frame (stream connection stream-or-connection length flags)
-  (let ((*bytes-read* 0)
-        (padding
-          (if (plusp (ldb (byte 1 3) flags)) (read-byte* stream) 0))
-        (end-stream? (plusp (ldb (byte 1 1) flags)))
-        (end-headers? (plusp (ldb (byte 1 2) flags)))
-        (priority? (plusp (ldb (byte 1 5) flags))))
-    (when priority?
-      (error "Priority not implemented."))
-    (when (eq connection stream-or-connection)
-      (http2-error 'protocol-error))
-    (push (loop while (> (- length padding) *bytes-read*)
-                collect (print (read-http-header stream connection))
-                 finally
-                    (unless (= length (+ padding *bytes-read*))
-                      (error "Bad length"))
-                    (dotimes (i padding) (read-byte stream)))
-          (get-headers stream-or-connection))
-    (print (list :headers (get-headers stream-or-connection)
-                 :end-stream end-stream?
-                 :end-headers end-headers?))))
+(define-frame 1 :headers-frame
+    "The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
+   and additionally carries a header block fragment.  HEADERS frames can
+   be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
+   \"half-closed (remote)\" state."
+    (headers &key end-headers end-stream)
+    (:flags (+ (if end-stream 1 0) (if end-headers 4 0))
+     :length (reduce '+ (mapcar 'length headers)))
+
+    ;; writer
+    ((if nil (write-bytes 0 4)) ; dependency
+     (if nil (write-bytes 0 1)) ; weigth
+     (map nil #'write-vector headers))
+
+    ;; reader
+    ((let ((*bytes-read* 0)
+           (padding
+             (if (plusp (ldb (byte 1 3) flags))
+                 (read-byte*)
+                 0))
+           (end-stream? (plusp (ldb (byte 1 1) flags)))
+           (end-headers? (plusp (ldb (byte 1 2) flags)))
+           (priority? (plusp (ldb (byte 1 5) flags))))
+       (declare (dynamic-extent *bytes-read*))
+       (when priority?
+         (error "Priority not implemented."))
+       (unless end-headers?
+         (setf (get-expect-continuation connection) (get-stream-id stream)))
+       (when (eq connection stream)
+         (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
+        (loop while (> (- length padding) *bytes-read*)
+              do
+                 (apply 'connection-add-header connection
+                        (read-http-header connection))
+              finally
+                 (unless (= length (+ padding *bytes-read*))
+                   (error "Bad length"))
+                 (dotimes (i padding) (read-byte*))))))
+
 #|
 
    Pad Length:  An 8-bit field containing the length of the frame
@@ -1699,38 +1543,37 @@ COMPRESSION_ERROR if it does not decompress a header block.
   (or (second (assoc name *settings-alist*))
       (error "No setting named ~a" name)))
 
-(defun write-settings-frame (stream &optional settings)
-  "Write settings frame."
-  (write-frame-header stream +settings-frame+ 0 +connection-stream+
-                      :length (* (length settings) 6))
-  (dolist (setting settings)
-    (declare ((cons symbol (unsigned-byte 32)) setting))
-    (write-bytes stream 2 (find-setting-code (car setting)))
-    (write-bytes stream 4 (cdr setting))))
+(define-frame 4 :settings-frame
+    ""
+    (settings)
+    (:length (* (length settings) 6))
+    ;; writer
+    ((dolist (setting settings)
+        (declare ((cons symbol (unsigned-byte 32)) setting))
+       (write-bytes 2 (find-setting-code (car setting)))
+       (write-bytes 4 (cdr setting))))
+    ;;reader
+    ((unless (eq connection stream)
+       (error "Settings are for connection only."))
+      (ecase flags
+        (0 ; settings
+         (unless (zerop (mod length 6))
+           (error "Settings payload should be multiple of 6 octets"))
+         (loop
+           for i from length downto 1 by 6
+           for identifier = (read-bytes  2)
+           and value = (read-bytes 4)
+           collect (cons  (find-setting-by-id  identifier) value) into settings
+           finally (setf (get-peer-settings connection) settings)))
+
+        (1 ; ACK
+         (when (plusp length)
+           (error "Ack settings frame must be empty. We should close connection.")
+           :ack-settings)))))
 
 (defun find-setting-by-id (id)
   (or (car (find id *settings-alist* :key 'second))
       :unknown))
-
-(defun read-settings-frame (stream connection stream-or-connection length flags)
-  "Read settings frame."
-  (unless (eq connection stream-or-connection)
-    (error "Settings are for connection only."))
-  (ecase flags
-    (0 ; settings
-     (unless (zerop (mod length 6))
-       (error "Settings payload should be multiple of 6 octets"))
-     (loop
-       for i from length downto 1 by 6
-       for identifier = (read-bytes stream 2)
-       and value = (read-bytes stream 4)
-       collect (cons  (find-setting-by-id  identifier) value) into settings
-       finally (setf (get-peer-settings connection) settings)))
-
-    (1 ; ACK
-     (when (plusp length)
-       (error "Ack settings frame must be empty. We should close connection.")
-       :ack-settings))))
 
 (defun write-ack-setting-frame (stream)
   "Write (for now empty) settings frame.
@@ -1742,8 +1585,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
       field value other than 0 MUST be treated as a connection error
       (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
       see Section 6.5.3 (\"Settings Synchronization\")."
-  (write-frame-header stream +settings-frame+ 1 +connection-stream+
-                      :length 0))
+  (write-frame-header stream +settings-frame+ 1 +connection-stream+ :length 0))
 
 #|
 6.5.3.  Settings Synchronization
@@ -2075,18 +1917,6 @@ RFC 7540                         HTTP/2                         May 2015
 
 6.9.  WINDOW_UPDATE
 
-   The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;
-   see Section 5.2 for an overview.
-
-   Flow control operates at two levels: on each individual stream and on
-   the entire connection.
-
-   Both types of flow control are hop by hop, that is, only between the
-   two endpoints.  Intermediaries do not forward WINDOW_UPDATE frames
-   between dependent connections.  However, throttling of data transfer
-   by any receiver can indirectly cause the propagation of flow-control
-   information toward the original sender.
-
    Flow control only applies to frames that are identified as being
    subject to flow control.  Of the frame types defined in this
    document, this includes only DATA frames.  Frames that are exempt
@@ -2101,49 +1931,28 @@ RFC 7540                         HTTP/2                         May 2015
     +-+-------------------------------------------------------------+
 |#
 
-(push (make-frame-type :window-update-frame 8
-                       "The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection.")
-      *frame-types*)
+(define-frame 8 :window-update-frame
+    "The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
+    () () ((error "Sending Window frames not implemented"))
 
-(defun read-window-update-frame (stream connection stream-or-connection length flags)
-  (declare (ignore flags) (ignore connection))
-  (unless (= 4 length) (error "A WINDOW_UPDATE frame with a length other than 4 octets MUST be  treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
-  (let ((window-size-increment (read-bytes stream 4)))
-    (format t "Window size for ~a: ~x" stream-or-connection window-size-increment)
-    (setf (get-window-size stream-or-connection) window-size-increment)))
+    (;;reader
+     (unless (zerop flags)
+       (warn "Flags for windows size set: ~x/~b" flags flags))
+      (unless (= 4 length) (error "A WINDOW_UPDATE frame with a length other than 4 octets MUST be  treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+      (let ((window-size-increment (read-bytes 4)))
+        (when (plusp (ldb (byte 1 31) window-size-increment))
+          (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
+        (setf window-size-increment (ldb (byte 31 0) window-size-increment))
+        (when (zerop window-size-increment)
+          (http2-error 'protocol-error))
+        (format t "Window size for ~a: ~x" stream window-size-increment)
+        (setf (get-window-size stream) window-size-increment))))
 
+
+(defun account-frame-window-contribution (connection stream length)
+  (decf (get-window-size connection) length)
+  (decf (get-window-size stream) length))
 #|
-                  Figure 14: WINDOW_UPDATE Payload Format
-
-   The payload of a WINDOW_UPDATE frame is one reserved bit plus an
-   unsigned 31-bit integer indicating the number of octets that the
-   sender can transmit in addition to the existing flow-control window.
-   The legal range for the increment to the flow-control window is 1 to
-   2^31-1 (2,147,483,647) octets.
-
-   The WINDOW_UPDATE frame does not define any flags.
-
-   The WINDOW_UPDATE frame can be specific to a stream or to the entire
-   connection.  In the former case, the frame's stream identifier
-   indicates the affected stream; in the latter, the value "0" indicates
-   that the entire connection is the subject of the frame.
-
-   A receiver MUST treat the receipt of a WINDOW_UPDATE frame with an
-   flow-control window increment of 0 as a stream error (Section 5.4.2)
-   of type PROTOCOL_ERROR; errors on the connection flow-control window
-   MUST be treated as a connection error (Section 5.4.1).
-   WINDOW_UPDATE can be sent by a peer that has sent a frame bearing the
-   END_STREAM flag.  This means that a receiver could receive a
-   WINDOW_UPDATE frame on a "half-closed (remote)" or "closed" stream.
-   A receiver MUST NOT treat this as an error (see Section 5.1).
-
-   A receiver that receives a flow-controlled frame MUST always account
-   for its contribution against the connection flow-control window,
-   unless the receiver treats this as a connection error
-   (Section 5.4.1).  This is necessary even if the frame is in error.
-   The sender counts the frame toward the flow-control window, but if
-   the receiver does not, the flow-control window at the sender and
-   receiver can become different.
 
 
 

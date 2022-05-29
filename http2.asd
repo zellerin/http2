@@ -7,9 +7,12 @@
   :license  "Specify license here"
   :version "0.1"
   :serial t
-  :depends-on (cz.zellerin.doc cl+ssl)
+  :depends-on (#:cl+ssl #:puri)
   :components ((:file "package")
-               (:file "http2"))
+               (:file "http2")
+               (:file "classes")
+               (:file "headers")
+               (:file "client"))
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (asdf:defsystem #:http2/test
