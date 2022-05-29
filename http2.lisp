@@ -428,28 +428,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
   Streams have the following states:
 
-  idle:
-  All streams start in the "idle" state.
 |#
-
-
-#|
-  The following transitions are valid from this state:
-
-  *  Sending or receiving a HEADERS frame causes the stream to
-  become "open".  The stream identifier is selected as described
-  in Section 5.1.1.  The same HEADERS frame can also cause a
-  stream to immediately become "half-closed".
-|#
-
-(defmethod stream-recv-frame (connection stream (type (eql +headers-frame+))
-                              (state (eql 'idle)))
-  (setf (get-state stream) 'open))
-
-(defmethod stream-send-frame (connection stream (type (eql +headers-frame+))
-                              (state (eql 'idle)))
-  (setf (get-state stream) 'open))
-
 #|
   *  Sending a PUSH_PROMISE frame on another stream reserves the
   idle stream that is identified for later use.  The stream state
@@ -494,11 +473,6 @@ COMPRESSION_ERROR if it does not decompress a header block.
   reserved (remote):
   A stream in the "reserved (remote)" state has been reserved by a
   remote peer.
-
-  In this state, only the following transitions are possible:
-
-  *  Receiving a HEADERS frame causes the stream to transition to
-  "half-closed (local)".
 
   *  Either endpoint can send a RST_STREAM frame to cause the stream
   to become "closed".  This releases the stream reservation.
@@ -1112,7 +1086,6 @@ COMPRESSION_ERROR if it does not decompress a header block.
   |                           Padding (*)                       ...
   +---------------------------------------------------------------+
 
-
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads.
@@ -1122,74 +1095,32 @@ COMPRESSION_ERROR if it does not decompress a header block.
   feature; see Section 10.7."
     () () ((error "Can't write data frame yet"))
     ((when (eq connection http-stream)
-       (error "Data for connection itself"))
+       ;; DATA frames MUST be associated with a stream.  If a DATA frame is
+       ;; received whose stream identifier field is 0x0, the recipient MUST
+       ;; respond with a connection error (Section 5.4.1) of type
+       ;; PROTOCOL_ERROR.
+       (http2-error 'protocol-error))
       (let* ((padded? (plusp (ldb (byte 1 3) flags)))
              (end-stream? (plusp (ldb (byte 1 0) flags)))
              (padding-size (if padded? (read-bytes 1) 0))
              (data-length (- length (if padded? (+ 1 padding-size) 0)))
              (data (make-array data-length :element-type '(unsigned-byte 8))))
+        ;; If the length of the padding is the length of the
+        ;; frame payload or greater, the recipient MUST treat this as a
+        ;; connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+        (when (>= padding-size length)
+          (http2-error 'protocol-error))
         (loop while (plusp data-length)
               do (decf data-length (read-vector data)))
+
+        ;; Padding octets MUST be set to zero when sending.  A receiver is
+        ;; not obligated to verify padding but MAY treat non-zero padding as
+        ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
         (if padded? (dotimes (i padding-size) (read-bytes 1)))
         (apply-data-frame connection http-stream data)
         (when end-stream?
           (process-end-stream connection http-stream))
         nil)))
-
-#|
-                       Figure 6: DATA Frame Payload
-
-   The DATA frame contains the following fields:
-
-   Pad Length:  An 8-bit field containing the length of the frame
-      padding in units of octets.  This field is conditional (as
-      signified by a "?" in the diagram) and is only present if the
-      PADDED flag is set.
-
-   Data:  Application data.  The amount of data is the remainder of the
-      frame payload after subtracting the length of the other fields
-      that are present.
-
-   Padding:  Padding octets that contain no application semantic value.
-      Padding octets MUST be set to zero when sending.  A receiver is
-      not obligated to verify padding but MAY treat non-zero padding as
-      a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-
-   The DATA frame defines the following flags:
-
-   END_STREAM (0x1):  When set, bit 0 indicates that this frame is the
-      last that the endpoint will send for the identified stream.
-      Setting this flag causes the stream to enter one of the "half-
-      closed" states or the "closed" state (Section 5.1).
-
-   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
-      and any padding that it describes are present.
-
-   DATA frames MUST be associated with a stream.  If a DATA frame is
-   received whose stream identifier field is 0x0, the recipient MUST
-   respond with a connection error (Section 5.4.1) of type
-   PROTOCOL_ERROR.
-
-   DATA frames are subject to flow control and can only be sent when a
-   stream is in the "open" or "half-closed (remote)" state.  The entire
-   DATA frame payload is included in flow control, including the Pad
-   Length and Padding fields if present.  If a DATA frame is received
-   whose stream is not in "open" or "half-closed (local)" state, the
-   recipient MUST respond with a stream error (Section 5.4.2) of type
-   STREAM_CLOSED.
-
-   The total number of padding octets is determined by the value of the
-   Pad Length field.  If the length of the padding is the length of the
-   frame payload or greater, the recipient MUST treat this as a
-   connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-
-      Note: A frame can be increased in size by one octet by including a
-      Pad Length field with a value of zero.
-
-|#
-
-#|
-|#
 
 (define-frame-type 1 :headers-frame
     "
@@ -1272,7 +1203,9 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
     ;; writer
     ((if dependency (write-bytes dependency 4))
      (if weight (write-bytes weight 1))
-     (map nil #'write-vector headers))
+     (map nil #'write-vector headers)
+     ;; FIXME: not exactly correct
+     (if end-stream (setf (get-state http-stream) 'half-closed/local)))
 
     ;; reader
     ((let ((*bytes-read* 0)
@@ -1288,24 +1221,27 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
          (error "Priority not implemented."))
        (unless end-headers?
          (setf (get-expect-continuation connection) (get-stream-id http-stream)))
+
        (when (eq connection http-stream)
+       ;; HEADERS frames MUST be associated with a stream.  If a HEADERS frame
+       ;; is received whose stream identifier field is 0x0, the recipient MUST
+       ;; respond with a connection error (Section 5.4.1) of type
+       ;; PROTOCOL_ERROR.
          (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
-        (loop while (> (- length padding) *bytes-read*)
+       (open-http-stream connection http-stream)
+       (loop while (> (- length padding) *bytes-read*)
               do
                  (apply 'add-header http-stream
                         (read-http-header connection))
               finally
                  (unless (= length (+ padding *bytes-read*))
                    (error "Bad length"))
-                 (dotimes (i padding) (read-byte*))))))
+                 (dotimes (i padding) (read-byte*)))
+       (when end-stream? (process-end-stream connection http-stream)))))
 
 #|
 
 
-   HEADERS frames MUST be associated with a stream.  If a HEADERS frame
-   is received whose stream identifier field is 0x0, the recipient MUST
-   respond with a connection error (Section 5.4.1) of type
-   PROTOCOL_ERROR.
 
    The HEADERS frame changes the connection state as described in
    Section 4.3.

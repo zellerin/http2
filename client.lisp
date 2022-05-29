@@ -29,7 +29,8 @@ TARGET, using SNI."
            (close ,ssl-stream))))))
 
 (defclass client-connection (http2-connection)
-  ()
+  ((finished :accessor get-finished :initarg :finished
+             :initform nil))
   (:default-initargs :stream-class 'client-stream))
 
 (defclass client-stream (http2-stream log-headers-mixin)
@@ -42,7 +43,7 @@ TARGET, using SNI."
 (defmethod add-header ((stream log-headers-mixin) name value)
   (format t "~&header: ~a = ~a~%" name value))
 
-(defmethod add-header ((stream http2-stream) name value)
+(defmethod add-header :around ((stream http2-stream) name value)
   (setf name
         (etypecase name
           ((or string symbol) name)
@@ -51,8 +52,7 @@ TARGET, using SNI."
         (etypecase value
           ((or null string integer) value) ; integer can be removed if we removed "200"
           ((vector (unsigned-byte 8)) (decode-huffman value))))
-  (when (equal name "content-type")
-    (setf (get-content-type stream) value)))
+  (call-next-method))
 
 (defun retrieve-url (url &key (method "GET"))
   "Retrieve URL through http/2 over TLS."
@@ -67,10 +67,12 @@ TARGET, using SNI."
                                             (puri:uri-host parsed-url))
                            :end-headers t :end-stream t)
       (force-output (get-network-stream connection))
-      (dotimes (i 4)
+      (loop
+        do
         (multiple-value-bind (payload http-stream type flags)
             (read-frame connection)
-          (apply-frame connection payload http-stream type flags))))))
+          (apply-frame connection payload http-stream type flags))
+        until (get-finished connection)))))
 
 (defmethod apply-frame ((connection client-connection) payload http-stream type flags)
   (print (list connection payload http-stream type flags)))
@@ -84,8 +86,8 @@ TARGET, using SNI."
 (defmethod apply-data-frame ((connection client-connection) stream payload)
   (map nil (lambda (c) (princ (code-char c))) payload))
 
-(defmethod process-end-stream ((connection client-connection) stream)
-  (break "End stream ~s ~s" connection stream))
+(defmethod process-end-stream :after ((connection client-connection) stream)
+  (setf (get-finished connection) t))
 
 (defun init-tls-connection (target &key (sni target)  (port 443))
 "The client sends the client connection preface (...) as the first

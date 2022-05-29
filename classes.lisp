@@ -76,3 +76,47 @@
 
   Streams are identified by an integer.  Stream identifiers are
   assigned to streams by the endpoint initiating the stream."))
+
+(defmethod print-object ((o http2-stream) out)
+  (print-unreadable-object (o out :type t :identity nil)
+    (format out "~a #~d" (get-state o)
+            (get-stream-id o))))
+
+(defun change-state (stream state-map other-case-error)
+  "Change state from STREAM based on STATE-MAP. If original state not found in STATE-MAP and OTHER-CASE-ERROR is set, raise that (HTTP2) error."
+  (let* ((old-state (get-state stream))
+         (new-state (second (find old-state state-map :test #'member :key #'car))))
+    (cond
+      ((eq new-state old-state))
+      ((eq new-state :keep))
+      (new-state (setf (get-state stream) new-state)
+                 (format t "~&~a -> ~a~%" old-state new-state))
+      (other-case-error (http2-error other-case-error)))
+    new-state))
+
+(defmethod apply-data-frame :before (connection (stream http2-stream) payload)
+  "DATA frames are subject to flow control and can only be sent when a
+   stream is in the \"open\" or \"half-closed (remote)\" state.  The entire
+   DATA frame payload is included in flow control, including the Pad
+   Length and Padding fields if present.  If a DATA frame is received
+   whose stream is not in \"open\" or \"half-closed (local)\" state, the
+   recipient MUST respond with a stream error (Section 5.4.2) of type
+   STREAM_CLOSED."
+  (change-state stream '(((open half-closed/local) :keep)) 'stream-closed))
+
+(defmethod open-http-stream (connection (stream http2-stream))
+  "This method handles state transitions involved in receiving HEADERS-FRAME.
+
+idle: Sending or receiving a HEADERS frame causes the stream to become \"open\"."
+  (change-state stream
+                '(((idle) open)
+                  ((open half-closed/local) :keep))
+                'protocol-error))
+
+(defmethod process-end-stream (connection (stream http2-stream))
+  "Do relevant state changes when closing http stream (as part of received HEADERS or
+PAYLOAD)."
+  (change-state stream
+                '(((open) half-closed/remote)
+                  ((half-closed/local) closed))
+                nil))
