@@ -1130,8 +1130,10 @@ COMPRESSION_ERROR if it does not decompress a header block.
         (loop while (plusp data-length)
               do (decf data-length (read-sequence* data)))
         (if padded? (dotimes (i padding-size) (read-bytes 1)))
-        (setf (get-data stream) data)
-        (logger "%s" `(:data-frame ,data :end-stream ,end-stream?)))))
+        (apply-data-frame connection stream data)
+        (when end-stream?
+          (process-end-stream connection stream))
+        nil)))
 
 #|
                        Figure 6: DATA Frame Payload

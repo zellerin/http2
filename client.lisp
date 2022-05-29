@@ -77,7 +77,15 @@ TARGET, using SNI."
 
 (defmethod apply-frame ((connection client-connection) payload
                         (type (eql :data-frame))  http-stream flags)
-  (map nil (lambda (c) (princ (code-char c))) (second payload)))
+  ;; do nothing, this is covered by other two functions APPLY-DATA-FRAME and
+  ;; PROCESS-END-STREAM
+  )
+
+(defmethod apply-data-frame ((connection client-connection) stream payload)
+  (map nil (lambda (c) (princ (code-char c))) payload))
+
+(defmethod process-end-stream ((connection client-connection) stream)
+  (break "End stream ~s ~s" connection stream))
 
 (defun init-tls-connection (target &key (sni target)  (port 443))
 "The client sends the client connection preface (...) as the first
