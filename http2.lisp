@@ -77,11 +77,26 @@
    (make-frame-type :rst-stream-frame 3 "")
    (make-frame-type :settings-frame 4 "")))
 
-(defmacro define-frame (nr name documentation (&rest parameters)  (&key (flags 0) length) writer
+(defmacro define-frame-type (type-code name documentation (&rest parameters)
+                             (&key (flags 0) length) writer
                         (&body reader))
+  "This specification defines a number of frame types, each identified
+  by a unique 8-bit TYPE CODE.  Each frame type serves a distinct
+  purpose in the establishment and management either of the connection
+  as a whole or of individual streams.
+
+  The transmission of specific frame types can alter the state of a
+  connection.  If endpoints fail to maintain a synchronized view of the
+  connection state, successful communication within the connection will
+  no longer be possible.  Therefore, it is important that endpoints
+  have a shared comprehension of how the state is affected by the use
+  any given frame.
+"
+  (declare ((unsigned-byte 8) type-code)
+           (keyword name))
   `(progn
-     (defconstant ,(intern (format nil "+~a+" name)) ,nr)
-     (push (make-frame-type ,name ,nr ,documentation)
+     (defconstant ,(intern (format nil "+~a+" name)) ,type-code)
+     (push (make-frame-type ,name ,type-code ,documentation)
       *frame-types*)
      ,@(let ((reader-name (intern (format nil "READ-~a" name)))
             (writer-name (intern (format nil "WRITE-~a" name)))
@@ -90,8 +105,8 @@
               (let ((,stream-name (get-network-stream connection)))
                 (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
                        (write-vector (vector) (write-sequence vector ,stream-name)))
-                  (declare (ignorable #'write-vector #'write-bytes))
-                  (write-frame-header ,stream-name ,nr ,flags
+                  (declare (ignorable #'write-vector #'write-bytes #'write-vector))
+                  (write-frame-header ,stream-name ,type-code ,flags
                                       (get-stream-id http-stream) :length ,length)
                   ,@writer)))
 
@@ -100,7 +115,7 @@
                 (flet ((read-bytes (n) (read-bytes ,stream-name n))
                        (read-byte* () (read-byte* ,stream-name))
                        (read-sequence* (seq) (read-sequence seq ,stream-name)))
-                  (declare (ignorable #'read-bytes #'read-byte*))
+                  (declare (ignorable #'read-bytes #'read-byte* #'read-sequence*))
                   ,@reader)))))))
 
 
@@ -1087,19 +1102,18 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
   6.  Frame Definitions
 
-  This specification defines a number of frame types, each identified
-  by a unique 8-bit type code.  Each frame type serves a distinct
-  purpose in the establishment and management either of the connection
-  as a whole or of individual streams.
 
-  The transmission of specific frame types can alter the state of a
-  connection.  If endpoints fail to maintain a synchronized view of the
-  connection state, successful communication within the connection will
-  no longer be possible.  Therefore, it is important that endpoints
-  have a shared comprehension of how the state is affected by the use
-  any given frame.
+  |#
 
-  6.1.  DATA
+(define-frame-type 0 :data-frame
+" +---------------+
+  |Pad Length? (8)|
+  +---------------+-----------------------------------------------+
+  |                            Data (*)                         ...
+  +---------------------------------------------------------------+
+  |                           Padding (*)                       ...
+  +---------------------------------------------------------------+
+
 
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
@@ -1107,18 +1121,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
   DATA frames MAY also contain padding.  Padding can be added to DATA
   frames to obscure the size of messages.  Padding is a security
-  feature; see Section 10.7.
-
-  |#
-
-(define-frame 0 :data-frame
-" +---------------+
-  |Pad Length? (8)|
-  +---------------+-----------------------------------------------+
-  |                            Data (*)                         ...
-  +---------------------------------------------------------------+
-  |                           Padding (*)                       ...
-  +---------------------------------------------------------------+"
+  feature; see Section 10.7."
     () () ((error "Can't write data frame yet"))
     ((when (eq connection stream)
        (error "Data for connection itself"))
@@ -1203,7 +1206,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
                       Figure 7: HEADERS Frame Payload
 |#
 
-(define-frame 1 :headers-frame
+(define-frame-type 1 :headers-frame
     "The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
    be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
@@ -1545,7 +1548,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
   (or (second (assoc name *settings-alist*))
       (error "No setting named ~a" name)))
 
-(define-frame 4 :settings-frame
+(define-frame-type 4 :settings-frame
     ""
     (settings)
     (:length (* (length settings) 6))
@@ -1933,7 +1936,7 @@ RFC 7540                         HTTP/2                         May 2015
     +-+-------------------------------------------------------------+
 |#
 
-(define-frame 8 :window-update-frame
+(define-frame-type 8 :window-update-frame
     "The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
     () () ((error "Sending Window frames not implemented"))
 
