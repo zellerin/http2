@@ -10,3 +10,9 @@
 
 (defun http2-error (&rest pars)
   (apply 'error pars))
+
+(defvar *log-stream* (make-broadcast-stream))
+
+(defun logger (fmt &rest pars)
+  (apply #'format *log-stream* fmt pars)
+  (car pars))

@@ -131,7 +131,8 @@
 
 (defun create-new-local-stream (connection)
   "A new stream."
-  (let ((stream (make-instance 'http2-stream :stream-id (get-id-to-use connection))))
+  (let ((stream (make-instance (get-stream-class connection)
+                               :stream-id (get-id-to-use connection))))
     (incf (get-id-to-use connection))
     (push stream (get-streams connection))
     stream))
@@ -251,14 +252,16 @@
           (http2-error "Continuation frame expected"))
         (unless (= http-stream (get-expect-continuation connection))
           (http2-error "Continuation frame should be for a different stream")))
-      (cond (frame-type-object
-             (funcall  (frame-type-receive-fn frame-type-object) connection
-                       (if (zerop http-stream) connection
-                           (find http-stream (get-streams connection)
-                                 :key #'get-stream-id))
+      (values
+       (cond (frame-type-object
+              (funcall  (frame-type-receive-fn frame-type-object) connection
+                        (if (zerop http-stream) connection
+                            (find http-stream (get-streams connection)
+                                  :key #'get-stream-id))
                         length flags))
-            (t (read-sequence payload stream)
-               (print (list :frame  payload http-stream type flags)))))))
+                    (t (read-sequence payload stream)
+                       (logger "~s" (list :frame  payload http-stream type flags))))
+       (frame-type-name frame-type-object)))))
 
 
   #|
@@ -1128,10 +1131,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
               do (decf data-length (read-sequence* data)))
         (if padded? (dotimes (i padding-size) (read-bytes 1)))
         (setf (get-data stream) data)
-        (print `(:data-frame ,data :end-stream ,end-stream?)))))
-
-(defun read-data-frame (connection stream-or-connection length flags)
-)
+        (logger "%s" `(:data-frame ,data :end-stream ,end-stream?)))))
 
 #|
                        Figure 6: DATA Frame Payload
@@ -1233,7 +1233,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
          (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
         (loop while (> (- length padding) *bytes-read*)
               do
-                 (apply 'connection-add-header connection
+                 (apply 'add-header stream
                         (read-http-header connection))
               finally
                  (unless (= length (+ padding *bytes-read*))
@@ -1818,7 +1818,7 @@ RFC 7540                         HTTP/2                         May 2015
 
 (defun read-goaway-frame (stream connection stream-or-connection length flags)
   (declare (ignore connection stream-or-connection))
-  (print `(:goaway :last-conn ,(read-bytes stream 4)
+  (logger "%s" `(:goaway :last-conn ,(read-bytes stream 4)
                    :error-code ,(aref *error-codes* (read-bytes stream 4))
                    :flag ,flags
                    :debug-data ,(let ((data (make-array (- length 8))))
@@ -1945,7 +1945,7 @@ RFC 7540                         HTTP/2                         May 2015
         (setf window-size-increment (ldb (byte 31 0) window-size-increment))
         (when (zerop window-size-increment)
           (http2-error 'protocol-error))
-        (format t "Window size for ~a: ~x" stream window-size-increment)
+        (logger "Window size for ~a: ~x" stream window-size-increment)
         (setf (get-window-size stream) window-size-increment))))
 
 

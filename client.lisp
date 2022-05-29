@@ -29,13 +29,20 @@ TARGET, using SNI."
            (close ,ssl-stream))))))
 
 (defclass client-connection (http2-connection)
-  ())
+  ()
+  (:default-initargs :stream-class 'client-stream))
 
-(defclass client-stream (http-stream)
+(defclass client-stream (http2-stream log-headers-mixin)
   ((content-type :accessor get-content-type :initarg :content-type)
    (data         :accessor get-data         :initarg :data)))
 
-(defmethod connection-add-header ((connection client-connection) name value)
+(defclass log-headers-mixin ()
+  ())
+
+(defmethod add-header ((stream log-headers-mixin) name value)
+  (format t "~&header: ~a = ~a~%" name value))
+
+(defmethod add-header ((stream http2-stream) name value)
   (setf name
         (etypecase name
           ((or string symbol) name)
@@ -44,9 +51,8 @@ TARGET, using SNI."
         (etypecase value
           ((or null string integer) value) ; integer can be removed if we removed "200"
           ((vector (unsigned-byte 8)) (decode-huffman value))))
-  (format t "~&header: ~a = ~a~%" name value)
   (when (equal name "content-type")
-#+nil    (setf (get-content-type connection) value)))
+    (setf (get-content-type stream) value)))
 
 (defun retrieve-url (url &key (method "GET"))
   "Retrieve URL through http/2 over TLS."
@@ -61,12 +67,17 @@ TARGET, using SNI."
                                             (puri:uri-host parsed-url))
                            :end-headers t :end-stream t)
       (force-output (get-network-stream connection))
-      (dotimes (i 10)
+      (dotimes (i 4)
         (multiple-value-bind (payload http-stream type flags)
             (read-frame connection)
-          (print (list connection payload http-stream type flags)))))))
+          (apply-frame connection payload http-stream type flags))))))
 
+(defmethod apply-frame ((connection client-connection) payload http-stream type flags)
+  (print (list connection payload http-stream type flags)))
 
+(defmethod apply-frame ((connection client-connection) payload
+                        (type (eql :data-frame))  http-stream flags)
+  (map nil (lambda (c) (princ (code-char c))) (second payload)))
 
 (defun init-tls-connection (target &key (sni target)  (port 443))
 "The client sends the client connection preface (...) as the first

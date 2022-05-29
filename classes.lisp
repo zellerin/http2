@@ -34,12 +34,14 @@
 
                         This slot is set to the id of the expected
                         stream in such case, and is nil otherwise.")
-   (window-size         :accessor get-window-size          :initarg :window-size))
+   (window-size         :accessor get-window-size          :initarg :window-size)
+   (stream-class        :accessor get-stream-class         :initarg :stream-class))
   (:default-initargs :id-to-use 1 :settings `((:max-frame-size . ,*max-frame-size*))
                      :streams nil
                      :acked-settings nil
                      :window-size 0
-                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)))
+                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
+                     :stream-class 'http2-stream))
 
 (defmethod get-stream-id ((conn http2-connection)) 0)
 
