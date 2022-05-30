@@ -28,7 +28,9 @@ apparently do not support other ways of http2 setup).
 | Window-update | ✓       |         |
 | Continuation  | ✓       |         |
 
-Error handling is not implemented.
+Error handling is not fully implemented: errors are detected on many places, but
+the GOAWAY frame is not set yet.
+
 Priorities are not implemented.
 
 
@@ -40,3 +42,8 @@ Licensed by MIT license.
 Significant part of the comments is taken over from the RFCs above and
 copyrighted by RFC contributors. I read the copyright licenses for RFC that this
 is allowed. Big chunks of RFC text mean usually something is not implemented and are slowly converted to code.
+
+** Related software
+There is an Akamai code on https://github.com/akamai/cl-http2-protocol that
+supported bigger parts of the drafted HTTP/2 protocol in 2014; apparently hard
+to run now, used NPN instead of ALPN. It might be reasonable to pilfer some pieces and ideas (especially interface level) from that one, but I have not done so (yet).
