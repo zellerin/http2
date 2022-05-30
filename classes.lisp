@@ -136,3 +136,13 @@ PAYLOAD)."
 
 (defmethod do-pong (connection data)
   (logger "Pong ~s" data))
+
+(define-condition go-away (serious-condition)
+  ((error-code     :accessor get-error-code     :initarg :error-code)
+   (debug-data     :accessor get-debug-data     :initarg :debug-data)
+   (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
+
+(defmethod do-goaway (connection error-code last-stream-id debug-data)
+  (error 'go-away :last-stream-id last-stream-id
+                  :error-code error-code
+                  :debug-data debug-data))

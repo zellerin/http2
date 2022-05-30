@@ -1727,17 +1727,9 @@ RFC 7540                         HTTP/2                         May 2015
 
 
 #|
-6.7.  PING
-
-
 
 6.8.  GOAWAY
 
-   The GOAWAY frame (type=0x7) is used to initiate shutdown of a
-   connection or to signal serious error conditions.  GOAWAY allows an
-   endpoint to gracefully stop accepting new streams while still
-   finishing processing of previously established streams.  This enables
-   administrative actions, like server maintenance.
 
    There is an inherent race condition between an endpoint starting new
    streams and the remote sending a GOAWAY frame.  To deal with this
@@ -1785,32 +1777,37 @@ RFC 7540                         HTTP/2                         May 2015
 
 
 |#
-(push (make-frame-type :goaway-frame 7
-                       "The GOAWAY frame (type=0x7) is used to initiate shutdown of a
+(define-frame-type 7 :goaway-frame
+    "The GOAWAY frame (type=0x7) is used to initiate shutdown of a
    connection or to signal serious error conditions.  GOAWAY allows an
    endpoint to gracefully stop accepting new streams while still
    finishing processing of previously established streams.  This
-   enables administrative actions, like server maintenance.")
-      *frame-types*)
+   enables administrative actions, like server maintenance."
+    (last-stream-id error-code debug-data reserved)
+    (:length (+ 8 (length debug-data)))
 
-(defun read-goaway-frame (stream connection stream-or-connection length flags)
-  (declare (ignore connection stream-or-connection))
-  (logger "%s" `(:goaway :last-conn ,(read-bytes stream 4)
-                   :error-code ,(aref *error-codes* (read-bytes stream 4))
-                   :flag ,flags
-                   :debug-data ,(let ((data (make-array (- length 8))))
-                                 (read-sequence data stream)
-                                 data))))
+    ((write-bytes 4 (logior last-stream-id (if reserved #x80000000 0)))
+     (write-bytes 4 error-code)
+     (write-vector debug-data))
+
+    ;; reader
+    ((unless (eq connection http-stream)
+       ;;The GOAWAY frame applies to the connection, not a specific stream.  An
+       ;;endpoint MUST treat a GOAWAY frame with a stream identifier other than
+       ;;0x0 as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+       (http2-error 'protocol-error))
+     (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
+     (do-goaway connection (get-error-name (read-bytes 4))
+       (read-bytes 4)
+       (let ((data (make-array (- length 8))))
+         (read-vector data)
+         data))))
 #|
 
                      Figure 13: GOAWAY Payload Format
 
    The GOAWAY frame does not define any flags.
 
-   The GOAWAY frame applies to the connection, not a specific stream.
-   An endpoint MUST treat a GOAWAY frame with a stream identifier other
-   than 0x0 as a connection error (Section 5.4.1) of type
-   PROTOCOL_ERROR.
 
    The last stream identifier in the GOAWAY frame contains the highest-
    numbered stream identifier for which the sender of the GOAWAY frame
@@ -2084,18 +2081,47 @@ END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a header bloc
 
 7.  Error Codes
 
+
+
+   The following error codes are defined:
+|#
+
+
+(defvar *error-codes* (make-array #xe)
+  "This table maps error codes to mnemonic names - symbols.
+
    Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
    frames to convey the reasons for the stream or connection error.
 
    Error codes share a common code space.  Some error codes apply only
    to either streams or the entire connection and have no defined
-   semantics in the other context.
+   semantics in the other context.")
 
-   The following error codes are defined:
-|#
+(defun get-error-name (code)
+  (if (<= 0 code #xd)
+      (aref *error-codes* code)
+      (intern (format nil "UNDEFINED-ERROR-CODE-~A" code))))
 
-(defparameter *error-codes*
-  (vector :no-error :protocol-error :internal-error ))
+(macrolet ((defcode (name code documentation)
+             `(progn
+                (setf (aref *error-codes* ,code) ',name)
+                (defconstant ,name ,code ,documentation))))
+  (defcode +no-error+            0  "graceful shutdown")
+  (defcode +protocol-error+      1  "protocol error detected")
+  (defcode +internal-error+      2  "implementation fault")
+  (defcode +flow-control-error+  3  "flow-control limits exceeded")
+  (defcode +settings-timeout+    4  "settings not acknowledged")
+  (defcode +stream-closed+       5  "frame received for closed stream")
+  (defcode +frame-size-error+    6  "frame size incorrect")
+  (defcode +refused-stream+      7  "stream not processed")
+  (defcode +cancel+              8  "stream cancelled")
+  (defcode +compression-error+   9  "compression state not updated")
+  (defcode +connect-error+       #xa  "tcp connection error for connect method")
+  (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
+  (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
+  (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request"))
+
+
 
 #|
    NO_ERROR (0x0):  The associated condition is not a result of an
@@ -3384,33 +3410,5 @@ RFC 7540                         HTTP/2                         May 2015
 
    The entries in the following table are registered by this document.
 
-   +---------------------+------+----------------------+---------------+
-   | Name                | Code | Description          | Specification |
-   +---------------------+------+----------------------+---------------+
-   | NO_ERROR            | 0x0  | Graceful shutdown    | Section 7     |
-   | PROTOCOL_ERROR      | 0x1  | Protocol error       | Section 7     |
-   |                     |      | detected             |               |
-   | INTERNAL_ERROR      | 0x2  | Implementation fault | Section 7     |
-   | FLOW_CONTROL_ERROR  | 0x3  | Flow-control limits  | Section 7     |
-   |                     |      | exceeded             |               |
-   | SETTINGS_TIMEOUT    | 0x4  | Settings not         | Section 7     |
-   |                     |      | acknowledged         |               |
-   | STREAM_CLOSED       | 0x5  | Frame received for   | Section 7     |
-   |                     |      | closed stream        |               |
-   | FRAME_SIZE_ERROR    | 0x6  | Frame size incorrect | Section 7     |
-   | REFUSED_STREAM      | 0x7  | Stream not processed | Section 7     |
-   | CANCEL              | 0x8  | Stream cancelled     | Section 7     |
-   | COMPRESSION_ERROR   | 0x9  | Compression state    | Section 7     |
-   |                     |      | not updated          |               |
-   | CONNECT_ERROR       | 0xa  | TCP connection error | Section 7     |
-   |                     |      | for CONNECT method   |               |
-   | ENHANCE_YOUR_CALM   | 0xb  | Processing capacity  | Section 7     |
-   |                     |      | exceeded             |               |
-   | INADEQUATE_SECURITY | 0xc  | Negotiated TLS       | Section 7     |
-   |                     |      | parameters not       |               |
-   |                     |      | acceptable           |               |
-   | HTTP_1_1_REQUIRED   | 0xd  | Use HTTP/1.1 for the | Section 7     |
-   |                     |      | request              |               |
-   +---------------------+------+----------------------+---------------+
 
 |#

@@ -62,12 +62,14 @@ TARGET, using SNI."
                                   (list (encode-header "user-agent" "CL/custom"))
                                   :end-headers t)
         ;; and test ping
-        (write-ping-frame connection connection nil (vector 0 1 2 3 4 5 6 7)))
+        (write-ping-frame connection connection nil (vector 0 1 2 3 4 5 6 7))
+        ;; and test go-away
+        (write-goaway-frame connection connection 0 +no-error+ #() nil))
       (force-output (get-network-stream connection))
       (loop
         do
            (read-frame connection)
-        until (get-finished connection)))))
+        #+nil        until (get-finished connection)))))
 
 (defmethod apply-data-frame ((connection client-connection) stream payload)
   (map nil (lambda (c) (princ (code-char c))) payload))
