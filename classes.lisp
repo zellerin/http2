@@ -131,6 +131,9 @@ PAYLOAD)."
                       ((or null string integer) value) ; integer can be removed if we removed "200"
                       ((vector (unsigned-byte 8)) (decode-huffman value)))))
 
+(defmethod add-header (stream name value)
+  nil)
+
 (defmethod do-ping (connection data)
   (logger "Ping ~s" data))
 
@@ -146,3 +149,25 @@ PAYLOAD)."
   (error 'go-away :last-stream-id last-stream-id
                   :error-code error-code
                   :debug-data debug-data))
+
+(defclass log-headers-mixin ()
+  ()
+  (:documentation "Class that logs some activities and state changes."))
+
+(defmethod add-header :after ((stream log-headers-mixin) name value)
+  (format t "~&header: ~a = ~a~%" name value))
+
+(defclass header-collecting-mixin ()
+  ((headers :accessor get-headers :initarg :headers))
+  (:default-initargs :headers nil))
+
+(defmethod add-header ((stream header-collecting-mixin) name value)
+  (push (cons name value) (get-headers stream)))
+
+(defclass body-collecting-mixin ()
+  ((body :accessor get-body :initarg :body))
+  (:default-initargs :body ""))
+
+(defmethod apply-data-frame  (connection (stream body-collecting-mixin) data)
+  (setf (get-body stream) (concatenate 'string (get-body stream)
+                                       (map 'string 'code-char  data))))
