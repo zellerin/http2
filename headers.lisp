@@ -176,7 +176,11 @@
                            connection)))
          (list (if (consp table-match) (car table-match) table-match)
                (read-string-from-stream stream))))
-      (t (error "Fix code ~d" octet0)))))
+      ;; dynamic table size update
+      (t (let ((dynamic-table-size (get-integer-from-octet stream octet0 5)))
+           ;; fixme: dynamic tables not implemented
+           (logger "Dynamic table size update ~d" dynamic-table-size)
+           nil)))))
 
 
 

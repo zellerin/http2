@@ -1215,8 +1215,9 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
   (let ((*bytes-read* 0))
     (declare (dynamic-extent *bytes-read*))
     (loop while (> length *bytes-read*)
-          do
-             (apply 'add-header http-stream (read-http-header connection)))
+          for (name value) = (read-http-header connection)
+          when name
+          do (add-header http-stream name value))
     (unless (= length *bytes-read*)
       (error "Bad length"))))
 
