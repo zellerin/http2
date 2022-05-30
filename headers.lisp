@@ -114,7 +114,7 @@
         do
            (setf (ldb (byte 7 shift) res) (ldb (byte 7 0) word))
         when (zerop (ldb (byte 1 7) word))
-          do (return (+ res small-res)))
+          do (return-from get-integer-from-octet (+ res small-res)))
       ;; and do not forgot to increment bytes read
       )
     small-res))
