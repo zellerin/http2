@@ -75,6 +75,8 @@ TARGET, using SNI."
         until (get-finished connection)))))
 
 (defmethod apply-frame ((connection client-connection) payload http-stream type flags)
+  ;; This will go away after testing. Each frame would have its own documented
+  ;; protocol function.
   (print (list connection payload http-stream type flags)))
 
 (defmethod apply-frame ((connection client-connection) payload

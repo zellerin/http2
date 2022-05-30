@@ -1874,13 +1874,15 @@ RFC 7540                         HTTP/2                         May 2015
    (Section 5.4.1) of type FLOW_CONTROL_ERROR if it is unable to accept
    a frame.
 
-    +-+-------------------------------------------------------------+
-    |R|              Window Size Increment (31)                     |
-    +-+-------------------------------------------------------------+
 |#
 
 (define-frame-type 8 :window-update-frame
-    "The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
+    "
+    +-+-------------------------------------------------------------+
+    |R|              Window Size Increment (31)                     |
+    +-+-------------------------------------------------------------+
+
+The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
     () () ((error "Sending Window frames not implemented"))
 
     (;;reader
@@ -2124,14 +2126,6 @@ RFC 7540                         HTTP/2                         May 2015
    Content [RFC7231], Conditional Requests [RFC7232], Range Requests
    [RFC7233], Caching [RFC7234], and Authentication [RFC7235] are
    applicable to HTTP/2.  Selected portions of HTTP/1.1 Message Syntax
-
-
-
-Belshe, et al.               Standards Track                   [Page 51]
-
-RFC 7540                         HTTP/2                         May 2015
-
-
    and Routing [RFC7230], such as the HTTP and HTTPS URI schemes, are
    also applicable in HTTP/2, but the expression of those semantics for
    this protocol are defined in the sections below.
@@ -2226,15 +2220,6 @@ RFC 7540                         HTTP/2                         May 2015
    header field names MUST be converted to lowercase prior to their
    encoding in HTTP/2.  A request or response containing uppercase
    header field names MUST be treated as malformed (Section 8.1.2.6).
-
-
-
-Belshe, et al.               Standards Track                   [Page 53]
-
-RFC 7540                         HTTP/2                         May 2015
-
-
-8.1.2.1.  Pseudo-Header Fields
 
    While HTTP/1.x used the message start-line (see [RFC7230],
    Section 3.1) to convey the target URI, the method of the request, and

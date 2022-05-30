@@ -2,10 +2,10 @@
 (in-package :asdf-user)
 
 (asdf:defsystem #:http2
-  :description "Describe http2 here"
+  :description "HTTP2 protocol implementation"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :license  "Specify license here"
-  :version "0.1"
+  :license  "MIT"
+  :version "0.2"
   :serial t
   :depends-on (#:cl+ssl #:puri)
   :components ((:file "package")

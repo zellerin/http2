@@ -1,0 +1,42 @@
+#+TITLE: http2 in Common Lisp
+
+This is a (work in progress) implementation of http2 protocol as described in
+RFC7540 and RFC7541.
+
+The core part of the library is implementing reading and writing http2
+frames. What to do with the frames is managed by classes ~CONNECTION~ and
+~HTTP2-STREAM~ that are supposed to be extended by application to do something
+reasonable with headers and payload; see [[./client.lisp]] for an example.
+
+** Status
+Already implemented parts allow to request a http2 document (or more) over TLS.
+
+Server part should be relatively easy to implemented, but practically would not
+be tested until server support of ALPN lands in cl+ssl (as most clients
+apparently do not support other ways of http2 setup).
+
+| Frame type    | Reading | Sending |
+|---------------+---------+---------|
+| Data          | ✓       |         |
+| Headers       | ✓       | ✓       |
+| Priority      |         |         |
+| Rst-stream    |         |         |
+| Settings      | ✓       | ✓       |
+| Push-promise  |         |         |
+| Ping          |         |         |
+| Goaway        | ✓       |         |
+| Window-update | ✓       |         |
+| Continuation  | ✓       |         |
+
+Error handling is not implemented.
+Priorities are not implemented.
+
+
+
+** License
+
+Licensed by MIT license.
+
+Significant part of the comments is taken over from the RFCs above and
+copyrighted by RFC contributors. I read the copyright licenses for RFC that this
+is allowed. Big chunks of RFC text mean usually something is not implemented and are slowly converted to code.
