@@ -60,25 +60,14 @@ TARGET, using SNI."
         (write-continuation-frame connection
                                   http-stream
                                   (list (encode-header "user-agent" "CL/custom"))
-                                  :end-headers t))
+                                  :end-headers t)
+        ;; and test ping
+        (write-ping-frame connection connection nil (vector 0 1 2 3 4 5 6 7)))
       (force-output (get-network-stream connection))
       (loop
         do
-        (multiple-value-bind (payload http-stream type flags)
-            (read-frame connection)
-          (apply-frame connection payload http-stream type flags))
+           (read-frame connection)
         until (get-finished connection)))))
-
-(defmethod apply-frame ((connection client-connection) payload http-stream type flags)
-  ;; This will go away after testing. Each frame would have its own documented
-  ;; protocol function.
-  (print (list connection payload http-stream type flags)))
-
-(defmethod apply-frame ((connection client-connection) payload
-                        (type (eql :data-frame))  http-stream flags)
-  ;; do nothing, this is covered by other two functions APPLY-DATA-FRAME and
-  ;; PROCESS-END-STREAM
-  )
 
 (defmethod apply-data-frame ((connection client-connection) stream payload)
   (map nil (lambda (c) (princ (code-char c))) payload))

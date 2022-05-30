@@ -19,11 +19,11 @@ apparently do not support other ways of http/2 setup).
 |---------------+---------+---------|
 | Data          | ✓       |         |
 | Headers       | ✓       | ✓       |
-| Priority      |         |         |
-| Rst-stream    |         |         |
+| Priority      |         | ✓       |
+| Rst-stream    |         | ✓       |
 | Settings      | ✓       | ✓       |
-| Push-promise  |         |         |
-| Ping          |         |         |
+| Push-promise  |         | ✓       |
+| Ping          | ✓       | ✓       |
 | Goaway        | ✓       |         |
 | Window-update | ✓       |         |
 | Continuation  | ✓ *     | ✓       |

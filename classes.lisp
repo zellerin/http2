@@ -130,3 +130,9 @@ PAYLOAD)."
                     (etypecase value
                       ((or null string integer) value) ; integer can be removed if we removed "200"
                       ((vector (unsigned-byte 8)) (decode-huffman value)))))
+
+(defmethod do-ping (connection data)
+  (logger "Ping ~s" data))
+
+(defmethod do-pong (connection data)
+  (logger "Pong ~s" data))

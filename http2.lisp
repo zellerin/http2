@@ -256,10 +256,27 @@ The macro defining FRAME-TYPE-NAME :foo defines
              ((unsigned-byte 24) length)
              ((unsigned-byte 8) type flags)
              ((unsigned-byte 31) http-stream))
+
+    ;; An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds
+    ;; the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for
+    ;; the frame type, or is too small to contain mandatory frame data.  A frame
+    ;; size error in a frame that could alter the state of the entire connection
+    ;; MUST be treated as a connection error (Section 5.4.1); this includes any
+    ;; frame carrying a header block (Section 4.3) (that is, HEADERS, PUSH_PROMISE,
+    ;; and CONTINUATION), SETTINGS, and any frame with a stream identifier of 0.
+    ;; Endpoints are not obligated to use all available space in a frame.
+    ;; Responsiveness can be improved by using frames that are smaller than the
+    ;; permitted maximum size.  Sending large frames can result in delays in sending
+    ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
+    ;; which, if blocked by the transmission of a large frame, could affect
+    ;; performance.
     (if (> length *max-frame-size*)
+        ;; fixme: sometimes connection error.
         (http2-error 'frame-size-error))
     (if (plusp R) (warn "R is set, we should ignore it"))
-    (let ((frame-type-object (find type *frame-types* :key #'frame-type-code)))
+    (let ((frame-type-object
+            (or (find type *frame-types* :key #'frame-type-code)
+                (warn "Frame type #~d not defined." type))))
       (when (get-expect-continuation connection)
         ;; A receiver MUST treat the receipt of any other type of frame or a
         ;; frame on a different stream as a connection error (Section 5.4.1) of
@@ -270,7 +287,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
           (http2-error 'protocol-error "Continuation frame should be for a different stream")))
       (values
        (cond (frame-type-object
-              (funcall  (frame-type-receive-fn frame-type-object) connection
+              (funcall (frame-type-receive-fn frame-type-object) connection
                         (if (zerop http-stream) connection
                             (find http-stream (get-streams connection)
                                   :key #'get-stream-id))
@@ -280,56 +297,29 @@ The macro defining FRAME-TYPE-NAME :foo defines
        (frame-type-name frame-type-object)))))
 
 
-  #|
-  4.2.  Frame Size
+(defparameter *max-frame-size* 16384
+  "Our frame size.
 
-  The size of a frame payload is limited by the maximum size that a
-  receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
-  setting can have any value between 2^14 (16,384) and 2^24-1
-  (16,777,215) octets, inclusive.
+All implementations MUST be capable of receiving and minimally
+processing frames up to 2^14 octets in length, plus the 9-octet frame
+header (Section 4.1).  The size of the frame header is not included
+when describing frame sizes.
 
-  All implementations MUST be capable of receiving and minimally
-  processing frames up to 2^14 octets in length, plus the 9-octet frame
-  header (Section 4.1).  The size of the frame header is not included
-  when describing frame sizes.
-|#
-(defparameter *max-frame-size* 16384)
+The size of a frame payload is limited by the maximum size that a
+receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
+setting can have any value between 2^14 (16,384) and 2^24-1
+(16,777,215) octets, inclusive.")
+
 (declaim ((integer 16384 16777215) *max-frame-size*))
+
 #|
   Note: Certain frame types, such as PING (Section 6.7), impose
   additional limits on the amount of payload data allowed.
 
-  An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
-  exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
-  limit defined for the frame type, or is too small to contain
-  mandatory frame data.  A frame size error in a frame that could alter
-  the state of the entire connection MUST be treated as a connection
-  error (Section 5.4.1); this includes any frame carrying a header
-  block (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and
-  CONTINUATION), SETTINGS, and any frame with a stream identifier of 0.
-  Endpoints are not obligated to use all available space in a frame.
-  Responsiveness can be improved by using frames that are smaller than
-  the permitted maximum size.  Sending large frames can result in
-  delays in sending time-sensitive frames (such as RST_STREAM,
-  WINDOW_UPDATE, or PRIORITY), which, if blocked by the transmission of
-a large frame, could affect performance.
+
 |#
 
 #|
-  4.3.  Header Compression and Decompression
-
-  Just as in HTTP/1, a header field in HTTP/2 is a name with one or
-  more associated values.  Header fields are used within HTTP request
-  and response messages as well as in server push operations (see
-  Section 8.2).
-
-  Header lists are collections of zero or more header fields.  When
-  transmitted over a connection, a header list is serialized into a
-  header block using HTTP header compression [COMPRESSION].  The
-  serialized header block is then divided into one or more octet
-  sequences, called header block fragments, and transmitted within the
-  payload of HEADERS (Section 6.2), PUSH_PROMISE (Section 6.6), or
-  CONTINUATION (Section 6.10) frames.
 
   The Cookie header field [COOKIE] is treated specially by the HTTP
   mapping (see Section 8.1.2.5).
@@ -376,13 +366,13 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
   The lifecycle of a stream is shown in Figure 2.
 
-  +--------+
-  send PP |        | recv PP
-  ,--------|  idle  |--------.
-  /         |        |         \
-  v          +--------+          v
-  +----------+          |           +----------+
-  |          |          | send H /  |          |
+                        +--------+
+                send PP |        | recv PP
+               ,--------|  idle  |--------.
+              /         |        |         \
+             v          +--------+          v
+         +----------+          |           +----------+
+         |          |          | send H /  |          |
   ,------| reserved |          | recv H    | reserved |------.
   |      | (local)  |          |           | (remote) |      |
   |      +----------+          v           +----------+      |
@@ -403,7 +393,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
   | send R /  `----------->|        |<-----------'  send R / |
   | recv R                 | closed |               recv R   |
   `----------------------->|        |<----------------------'
-  +--------+
+                           +--------+
 
   send:   endpoint sends this frame
   recv:   endpoint receives this frame
@@ -1164,41 +1154,22 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
       weight between 1 and 256.  This field is only present if the
       PRIORITY flag is set.
 
-   Header Block Fragment:  A header block fragment (Section 4.3).
-
-   Padding:  Padding octets.
-
    The HEADERS frame defines the following flags:
 
    END_STREAM (0x1):  When set, bit 0 indicates that the header block
       (Section 4.3) is the last that the endpoint will send for the
       identified stream.
 
-      A HEADERS frame carries the END_STREAM flag that signals the end
-      of a stream.  However, a HEADERS frame with the END_STREAM flag
-      set can be followed by CONTINUATION frames on the same stream.
-      Logically, the CONTINUATION frames are part of the HEADERS frame
-.   END_HEADERS (0x4):  When set, bit 2 indicates that this frame
+   END_HEADERS (0x4):  When set, bit 2 indicates that this frame
       contains an entire header block (Section 4.3) and is not followed
       by any CONTINUATION frames.
-
-      A HEADERS frame without the END_HEADERS flag set MUST be followed
-      by a CONTINUATION frame for the same stream.  A receiver MUST
-      treat the receipt of any other type of frame or a frame on a
-      different stream as a connection error (Section 5.4.1) of type
-      PROTOCOL_ERROR.
 
    PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
       and any padding that it describes are present.
 
    PRIORITY (0x20):  When set, bit 5 indicates that the Exclusive Flag
       (E), Stream Dependency, and Weight fields are present; see
-      Section 5.3.
-
-   The payload of a HEADERS frame contains a header block fragment
-   (Section 4.3).  A header block that does not fit within a HEADERS
-   frame is continued in a CONTINUATION frame (Section 6.10).
-"
+      Section 5.3."
     (headers &key end-headers end-stream dependency weight)
     (:flags (+ (if end-stream 1 0) (if end-headers 4 0))
      :length (reduce '+ (mapcar 'length headers)))
@@ -1230,7 +1201,13 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
        ;; PROTOCOL_ERROR.
          (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
        (open-http-stream connection http-stream)
+       (when (> padding length)
+         ;; Padding that exceeds the size remaining for the header block
+         ;; fragment MUST be treated as a PROTOCOL_ERROR.
+         (http2-error 'protocol-error))
        (read-and-add-headers connection http-stream  (- length padding))
+       ;; The HEADERS frame can include padding.  Padding fields and flags are
+       ;; identical to those defined for DATA frames (Section 6.1).
        (dotimes (i padding) (read-byte*))
        (when end-stream? (process-end-stream connection http-stream)))))
 
@@ -1244,17 +1221,6 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
       (error "Bad length"))))
 
 #|
-
-
-
-   The HEADERS frame changes the connection state as described in
-   Section 4.3.
-
-   The HEADERS frame can include padding.  Padding fields and flags are
-   identical to those defined for DATA frames (Section 6.1).  Padding
-   that exceeds the size remaining for the header block fragment MUST be
-   treated as a PROTOCOL_ERROR.
-
    Prioritization information in a HEADERS frame is logically equivalent
    to a separate PRIORITY frame, but inclusion in HEADERS avoids the
    potential for churn in stream prioritization when new streams are
@@ -1262,7 +1228,9 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    first on a stream reprioritize the stream (Section 5.3.3).
 
 6.3.  PRIORITY
-
+|#
+(define-frame-type 2 :priority-frame
+    "
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
    of a stream (Section 5.3).  It can be sent in any stream state,
    including idle or closed streams.
@@ -1287,13 +1255,28 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
       the stream (see Section 5.3).  Add one to the value to obtain a
       weight between 1 and 256.
 
-   The PRIORITY frame does not define any flags.
+   The PRIORITY frame does not define any flags."
+    (exclusive stream-dependency weight) (:length 5)
+    ((let ((e+strdep stream-dependency))
+       (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
+       (write-bytes 4 e+strdep)
+       (write-bytes 1 weight)))
+    ((assert (= length 5))
+     (assert (= flags 0))
+     (when (equal connection http-stream)
+       ;; The PRIORITY frame always identifies a stream.  If a PRIORITY frame
+       ;; is received with a stream identifier of 0x0, the recipient MUST
+       ;; respond with a connection error (Section 5.4.1) of type
+       ;; PROTOCOL_ERROR.
+       (http2-error 'protocol-error))
+     (let* ((e+strdep (read-bytes 4))
+            (weight (read-bytes 1))
+            (exclusive (plusp (ldb (byte 1 31) e+strdep)))
+            (stream-dependency (ldb (byte 31 0) e+strdep)))
+       (declare (ignore weight exclusive stream-dependency)))
+     (error "Priority frame reading not implemented")))
 
-   The PRIORITY frame always identifies a stream.  If a PRIORITY frame
-   is received with a stream identifier of 0x0, the recipient MUST
-   respond with a connection error (Section 5.4.1) of type
-   PROTOCOL_ERROR.
-
+#|
    The PRIORITY frame can be sent on a stream in any state, though it
    cannot be sent between consecutive frames that comprise a single
    header block (Section 4.3).  Note that this frame could arrive after
@@ -1310,12 +1293,9 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
 
    A PRIORITY frame with a length other than 5 octets MUST be treated as
    a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-
-
-
-6.4.  RST_STREAM
-
-   The RST_STREAM frame (type=0x3) allows for immediate termination of a
+|#
+(define-frame-type 3 :rst-stream-frame
+    "The RST_STREAM frame (type=0x3) allows for immediate termination of a
    stream.  RST_STREAM is sent to request cancellation of a stream or to
    indicate that an error condition has occurred.
 
@@ -1323,14 +1303,29 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
     |                        Error Code (32)                        |
     +---------------------------------------------------------------+
 
-                    Figure 9: RST_STREAM Frame Payload
-
    The RST_STREAM frame contains a single unsigned, 32-bit integer
    identifying the error code (Section 7).  The error code indicates why
    the stream is being terminated.
 
    The RST_STREAM frame does not define any flags.
+"
+    (error-code) (:length 4)
+    ((write-bytes 4 error-code))
+    ((assert (zerop flags))
+      (when (eq connection http-stream)
+          ;;RST_STREAM frames MUST be associated with a stream.  If a RST_STREAM
+          ;;frame is received with a stream identifier of 0x0, the recipient MUST
+          ;;treat this as a connection error (Section 5.4.1) of type
+          ;;PROTOCOL_ERROR.
+          (http2-error 'protocol-error))
+      (unless (= length 4)
+        ;; A RST_STREAM frame with a length other than 4 octets MUST be treated
+        ;; as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+        (http2-error 'frame-size-error))
+      (error "RST-stream not supported yet.")))
 
+
+#|
    The RST_STREAM frame fully terminates the referenced stream and
    causes it to enter the "closed" state.  After receiving a RST_STREAM
    on a stream, the receiver MUST NOT send additional frames for that
@@ -1339,18 +1334,10 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    process additional frames sent on the stream that might have been
    sent by the peer prior to the arrival of the RST_STREAM.
 
-   RST_STREAM frames MUST be associated with a stream.  If a RST_STREAM
-   frame is received with a stream identifier of 0x0, the recipient MUST
-   treat this as a connection error (Section 5.4.1) of type
-   PROTOCOL_ERROR.
-
    RST_STREAM frames MUST NOT be sent for a stream in the "idle" state.
    If a RST_STREAM frame identifying an idle stream is received, the
    recipient MUST treat this as a connection error (Section 5.4.1) of
    type PROTOCOL_ERROR.
-
-   A RST_STREAM frame with a length other than 4 octets MUST be treated
-   as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
 |#
 
 #|
@@ -1569,7 +1556,10 @@ RFC 7540                         HTTP/2                         May 2015
    (Section 5.4.1) of type SETTINGS_TIMEOUT.
 
 6.6.  PUSH_PROMISE
+|#
 
+(define-frame-type 5 :push-promise-frame
+    "
    The PUSH_PROMISE frame (type=0x5) is used to notify the peer endpoint
    in advance of streams the sender intends to initiate.  The
    PUSH_PROMISE frame includes the unsigned 31-bit identifier of the
@@ -1600,12 +1590,13 @@ RFC 7540                         HTTP/2                         May 2015
    Promised Stream ID:  An unsigned 31-bit integer that identifies the
       stream that is reserved by the PUSH_PROMISE.  The promised stream
       identifier MUST be a valid choice for the next stream sent by the
-      sender (see "new stream identifier" in Section 5.1.1).
+      sender (see \"new stream identifier\" in Section 5.1.1).
 
    Header Block Fragment:  A header block fragment (Section 4.3)
       containing request header fields.
 
-   Padding:  Padding octets.   The PUSH_PROMISE frame defines the following flags:
+   Padding:  Padding octets.
+   The PUSH_PROMISE frame defines the following flags:
 
    END_HEADERS (0x4):  When set, bit 2 indicates that this frame
       contains an entire header block (Section 4.3) and is not followed
@@ -1619,6 +1610,21 @@ RFC 7540                         HTTP/2                         May 2015
 
    PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
       and any padding that it describes are present.
+"
+    (padding reserved promised-stream-id headers end-headers)
+    (:flags (+ (if end-headers 4 0) (if padding 8 0))
+     :length (+ 4
+                (reduce '+ (mapcar 'length headers))
+                (if padding (1+ (length padding)) 0)))
+    ((when padding
+       (write-bytes 1 (length padding)))
+     (write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
+     (map nil #'write-vector headers)
+     (when padding (write-vector padding)))
+    ;; reader
+    ((error "Reading promise N/A")))
+
+#|
 
    PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
    is in either the "open" or "half-closed (remote)" state.  The stream
@@ -1668,9 +1674,9 @@ RFC 7540                         HTTP/2                         May 2015
 
    The PUSH_PROMISE frame can include padding.  Padding fields and flags
    are identical to those defined for DATA frames (Section 6.1).
-
-6.7.  PING
-
+|#
+(define-frame-type 6 :ping-frame
+    "
    The PING frame (type=0x6) is a mechanism for measuring a minimal
    round-trip time from the sender, as well as determining whether an
    idle connection is still functional.  PING frames can be sent from
@@ -1697,14 +1703,33 @@ RFC 7540                         HTTP/2                         May 2015
 
    ACK (0x1):  When set, bit 0 indicates that this PING frame is a PING
       response.  An endpoint MUST set this flag in PING responses.  An
-      endpoint MUST NOT respond to PING frames containing this flag.   PING frames are not associated with any individual stream.  If a PING
-   frame is received with a stream identifier field value other than
-   0x0, the recipient MUST respond with a connection error
-   (Section 5.4.1) of type PROTOCOL_ERROR.
+      endpoint MUST NOT respond to PING frames containing this flag.
+"
+    (ack opaque-data) (:length 8 :flags (if ack 1 0))
+    ;; writer
+    ((write-vector opaque-data))
+    ((unless (= length 8)
+       ;; ;; Receipt of a PING frame with a length field value other than 8 MUST
+       ;; ;; be treated as a connection error (Section 5.4.1) of type
+       ;; ;; FRAME_SIZE_ERROR.
+       (http2-error 'frame-size-error))
+      (unless (eq connection http-stream)
+        ;;PING frames are not associated with any individual stream.  If a PING
+        ;;frame is received with a stream identifier field value other than
+        ;;0x0, the recipient MUST respond with a connection error
+        ;;(Section 5.4.1) of type PROTOCOL_ERROR.
+        (http2-error 'protocol-error))
+      (let ((data (make-array 8 :element-type '(unsigned-byte 8))))
+        (read-vector data)
+        (if (plusp (ldb (byte 1 0) flags))
+            (do-pong connection data)
+            (do-ping connection data)))))
 
-   Receipt of a PING frame with a length field value other than 8 MUST
-   be treated as a connection error (Section 5.4.1) of type
-   FRAME_SIZE_ERROR.
+
+#|
+6.7.  PING
+
+
 
 6.8.  GOAWAY
 
@@ -3387,919 +3412,5 @@ RFC 7540                         HTTP/2                         May 2015
    | HTTP_1_1_REQUIRED   | 0xd  | Use HTTP/1.1 for the | Section 7     |
    |                     |      | request              |               |
    +---------------------+------+----------------------+---------------+
-
-11.5.  HTTP2-Settings Header Field Registration
-
-   This section registers the HTTP2-Settings header field in the
-   "Permanent Message Header Field Names" registry [BCP90].
-
-   Header field name:  HTTP2-Settings
-
-   Applicable protocol:  http
-
-   Status:  standard
-
-   Author/Change controller:  IETF
-   Specification document(s):  Section 3.2.1 of this document
-
-   Related information:  This header field is only used by an HTTP/2
-      client for Upgrade-based negotiation.
-
-11.6.  PRI Method Registration
-
-   This section registers the "PRI" method in the "HTTP Method Registry"
-   ([RFC7231], Section 8.1).
-
-   Method Name:  PRI
-
-   Safe:  Yes
-
-   Idempotent:  Yes
-
-   Specification document(s):  Section 3.5 of this document
-
-   Related information:  This method is never used by an actual client.
-      This method will appear to be used when an HTTP/1.1 server or
-      intermediary attempts to parse an HTTP/2 connection preface.
-
-11.7.  The 421 (Misdirected Request) HTTP Status Code
-
-   This document registers the 421 (Misdirected Request) HTTP status
-   code in the "HTTP Status Codes" registry ([RFC7231], Section 8.2).
-
-   Status Code:  421
-
-   Short Description:  Misdirected Request
-
-   Specification:  Section 9.1.2 of this document
-
-11.8.  The h2c Upgrade Token
-
-   This document registers the "h2c" upgrade token in the "HTTP Upgrade
-   Tokens" registry ([RFC7230], Section 8.6).
-
-   Value:  h2c
-
-   Description:  Hypertext Transfer Protocol version 2 (HTTP/2)
-
-   Expected Version Tokens:  None
-
-   Reference:  Section 3.2 of this document
-
-12.  References
-
-12.1.  Normative References
-
-   [COMPRESSION] Peon, R. and H. Ruellan, "HPACK: Header Compression for
-                 HTTP/2", RFC 7541, DOI 10.17487/RFC7541, May 2015,
-                 <http://www.rfc-editor.org/info/rfc7541>.
-
-   [COOKIE]      Barth, A., "HTTP State Management Mechanism", RFC 6265,
-                 DOI 10.17487/RFC6265, April 2011,
-                 <http://www.rfc-editor.org/info/rfc6265>.
-
-   [FIPS186]     NIST, "Digital Signature Standard (DSS)", FIPS PUB
-                 186-4, July 2013,
-                 <http://dx.doi.org/10.6028/NIST.FIPS.186-4>.
-
-   [RFC2119]     Bradner, S., "Key words for use in RFCs to Indicate
-                 Requirement Levels", BCP 14, RFC 2119, DOI 10.17487/
-                 RFC2119, March 1997,
-                 <http://www.rfc-editor.org/info/rfc2119>.
-
-   [RFC2818]     Rescorla, E., "HTTP Over TLS", RFC 2818, DOI 10.17487/
-                 RFC2818, May 2000,
-                 <http://www.rfc-editor.org/info/rfc2818>.
-
-   [RFC3986]     Berners-Lee, T., Fielding, R., and L. Masinter,
-                 "Uniform Resource Identifier (URI): Generic Syntax",
-                 STD 66, RFC 3986, DOI 10.17487/RFC3986, January 2005,
-                 <http://www.rfc-editor.org/info/rfc3986>.
-
-   [RFC4648]     Josefsson, S., "The Base16, Base32, and Base64 Data
-                 Encodings", RFC 4648, DOI 10.17487/RFC4648, October
-                 2006, <http://www.rfc-editor.org/info/rfc4648>.
-
-   [RFC5226]     Narten, T. and H. Alvestrand, "Guidelines for Writing
-                 an IANA Considerations Section in RFCs", BCP 26,
-                 RFC 5226, DOI 10.17487/RFC5226, May 2008,
-                 <http://www.rfc-editor.org/info/rfc5226>.
-
-   [RFC5234]     Crocker, D., Ed. and P. Overell, "Augmented BNF for
-                 Syntax Specifications: ABNF", STD 68, RFC 5234,
-                 DOI 10.17487/ RFC5234, January 2008,
-                 <http://www.rfc-editor.org/info/rfc5234>.
-
-   [RFC7230]     Fielding, R., Ed. and J. Reschke, Ed., "Hypertext
-                 Transfer Protocol (HTTP/1.1): Message Syntax and
-                 Routing", RFC 7230, DOI 10.17487/RFC7230, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7230>.
-
-
-
-Belshe, et al.               Standards Track                   [Page 79]
-
-RFC 7540                         HTTP/2                         May 2015
-
-
-   [RFC7231]     Fielding, R., Ed. and J. Reschke, Ed., "Hypertext
-                 Transfer Protocol (HTTP/1.1): Semantics and Content",
-                 RFC 7231, DOI 10.17487/RFC7231, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7231>.
-
-   [RFC7232]     Fielding, R., Ed. and J. Reschke, Ed., "Hypertext
-                 Transfer Protocol (HTTP/1.1): Conditional Requests",
-                 RFC 7232, DOI 10.17487/RFC7232, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7232>.
-
-   [RFC7233]     Fielding, R., Ed., Lafon, Y., Ed., and J. Reschke, Ed.,
-                 "Hypertext Transfer Protocol (HTTP/1.1): Range
-                 Requests", RFC 7233, DOI 10.17487/RFC7233, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7233>.
-
-   [RFC7234]     Fielding, R., Ed., Nottingham, M., Ed., and J. Reschke,
-                 Ed., "Hypertext Transfer Protocol (HTTP/1.1): Caching",
-                 RFC 7234, DOI 10.17487/RFC7234, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7234>.
-
-   [RFC7235]     Fielding, R., Ed. and J. Reschke, Ed., "Hypertext
-                 Transfer Protocol (HTTP/1.1): Authentication",
-                 RFC 7235, DOI 10.17487/RFC7235, June 2014,
-                 <http://www.rfc-editor.org/info/rfc7235>.
-
-   [TCP]         Postel, J., "Transmission Control Protocol", STD 7, RFC
-                 793, DOI 10.17487/RFC0793, September 1981,
-                 <http://www.rfc-editor.org/info/rfc793>.
-
-   [TLS-ALPN]    Friedl, S., Popov, A., Langley, A., and E. Stephan,
-                 "Transport Layer Security (TLS) Application-Layer
-                 Protocol Negotiation Extension", RFC 7301,
-                 DOI 10.17487/RFC7301, July 2014,
-                 <http://www.rfc-editor.org/info/rfc7301>.
-
-   [TLS-ECDHE]   Rescorla, E., "TLS Elliptic Curve Cipher Suites with
-                 SHA-256/384 and AES Galois Counter Mode (GCM)",
-                 RFC 5289, DOI 10.17487/RFC5289, August 2008,
-                 <http://www.rfc-editor.org/info/rfc5289>.
-
-   [TLS-EXT]     Eastlake 3rd, D., "Transport Layer Security (TLS)
-                 Extensions: Extension Definitions", RFC 6066,
-                 DOI 10.17487/RFC6066, January 2011,
-                 <http://www.rfc-editor.org/info/rfc6066>.
-
-
-   [TLS12]       Dierks, T. and E. Rescorla, "The Transport Layer
-                 Security (TLS) Protocol Version 1.2", RFC 5246,
-                 DOI 10.17487/ RFC5246, August 2008,
-                 <http://www.rfc-editor.org/info/rfc5246>.
-
-12.2.  Informative References
-
-   [ALT-SVC]     Nottingham, M., McManus, P., and J. Reschke, "HTTP
-                 Alternative Services", Work in Progress, draft-ietf-
-                 httpbis-alt-svc-06, February 2015.
-
-   [BCP90]       Klyne, G., Nottingham, M., and J. Mogul, "Registration
-                 Procedures for Message Header Fields", BCP 90,
-                 RFC 3864, September 2004,
-                 <http://www.rfc-editor.org/info/bcp90>.
-
-   [BREACH]      Gluck, Y., Harris, N., and A. Prado, "BREACH: Reviving
-                 the CRIME Attack", July 2013,
-                 <http://breachattack.com/resources/
-                 BREACH%20-%20SSL,%20gone%20in%2030%20seconds.pdf>.
-
-   [HTML5]       Hickson, I., Berjon, R., Faulkner, S., Leithead, T.,
-                 Doyle Navara, E., O'Connor, E., and S. Pfeiffer,
-                 "HTML5", W3C Recommendation REC-html5-20141028, October
-                 2014, <http://www.w3.org/TR/2014/REC-html5-20141028/>.
-
-   [RFC3749]     Hollenbeck, S., "Transport Layer Security Protocol
-                 Compression Methods", RFC 3749, DOI 10.17487/RFC3749,
-                 May 2004, <http://www.rfc-editor.org/info/rfc3749>.
-
-   [RFC4492]     Blake-Wilson, S., Bolyard, N., Gupta, V., Hawk, C., and
-                 B.  Moeller, "Elliptic Curve Cryptography (ECC) Cipher
-                 Suites for Transport Layer Security (TLS)", RFC 4492,
-                 DOI 10.17487/RFC4492, May 2006,
-                 <http://www.rfc-editor.org/info/rfc4492>.
-
-   [RFC6585]     Nottingham, M. and R. Fielding, "Additional HTTP Status
-                 Codes", RFC 6585, DOI 10.17487/RFC6585, April 2012,
-                 <http://www.rfc-editor.org/info/rfc6585>.
-
-   [RFC7323]     Borman, D., Braden, B., Jacobson, V., and R.
-                 Scheffenegger, Ed., "TCP Extensions for High
-                 Performance", RFC 7323, DOI 10.17487/RFC7323, September
-                 2014, <http://www.rfc-editor.org/info/rfc7323>.
-
-   [TALKING]     Huang, L., Chen, E., Barth, A., Rescorla, E., and C.
-                 Jackson, "Talking to Yourself for Fun and Profit",
-                 2011, <http://w2spconf.com/2011/papers/websocket.pdf>.
-
-
-
-Belshe, et al.               Standards Track                   [Page 81]
-
-RFC 7540                         HTTP/2                         May 2015
-
-
-   [TLSBCP]      Sheffer, Y., Holz, R., and P. Saint-Andre,
-                 "Recommendations for Secure Use of Transport Layer
-                 Security (TLS) and Datagram Transport Layer Security
-                 (DTLS)", BCP 195, RFC 7525, DOI 10.17487/RFC7525, May
-                 2015, <http://www.rfc-editor.org/info/rfc7525>.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Appendix A.  TLS 1.2 Cipher Suite Black List
-
-   An HTTP/2 implementation MAY treat the negotiation of any of the
-   following cipher suites with TLS 1.2 as a connection error
-   (Section 5.4.1) of type INADEQUATE_SECURITY:
-
-   o  TLS_NULL_WITH_NULL_NULL
-
-   o  TLS_RSA_WITH_NULL_MD5
-
-   o  TLS_RSA_WITH_NULL_SHA
-
-   o  TLS_RSA_EXPORT_WITH_RC4_40_MD5
-
-   o  TLS_RSA_WITH_RC4_128_MD5
-
-   o  TLS_RSA_WITH_RC4_128_SHA
-
-   o  TLS_RSA_EXPORT_WITH_RC2_CBC_40_MD5
-
-   o  TLS_RSA_WITH_IDEA_CBC_SHA
-
-   o  TLS_RSA_EXPORT_WITH_DES40_CBC_SHA
-
-   o  TLS_RSA_WITH_DES_CBC_SHA
-
-   o  TLS_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DH_DSS_EXPORT_WITH_DES40_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_DES_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DH_RSA_EXPORT_WITH_DES40_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_DES_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_DES_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA   o  TLS_DHE_RSA_WITH_DES_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DH_anon_EXPORT_WITH_RC4_40_MD5
-
-   o  TLS_DH_anon_WITH_RC4_128_MD5
-
-   o  TLS_DH_anon_EXPORT_WITH_DES40_CBC_SHA
-
-   o  TLS_DH_anon_WITH_DES_CBC_SHA
-
-   o  TLS_DH_anon_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_KRB5_WITH_DES_CBC_SHA
-
-   o  TLS_KRB5_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_KRB5_WITH_RC4_128_SHA
-
-   o  TLS_KRB5_WITH_IDEA_CBC_SHA
-
-   o  TLS_KRB5_WITH_DES_CBC_MD5
-
-   o  TLS_KRB5_WITH_3DES_EDE_CBC_MD5
-
-   o  TLS_KRB5_WITH_RC4_128_MD5
-
-   o  TLS_KRB5_WITH_IDEA_CBC_MD5
-
-   o  TLS_KRB5_EXPORT_WITH_DES_CBC_40_SHA
-
-   o  TLS_KRB5_EXPORT_WITH_RC2_CBC_40_SHA
-
-   o  TLS_KRB5_EXPORT_WITH_RC4_40_SHA
-
-   o  TLS_KRB5_EXPORT_WITH_DES_CBC_40_MD5
-
-   o  TLS_KRB5_EXPORT_WITH_RC2_CBC_40_MD5
-
-   o  TLS_KRB5_EXPORT_WITH_RC4_40_MD5
-
-   o  TLS_PSK_WITH_NULL_SHA
-
-   o  TLS_DHE_PSK_WITH_NULL_SHA
-
-   o  TLS_RSA_PSK_WITH_NULL_SHA   o  TLS_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_AES_128_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_AES_128_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_DH_anon_WITH_AES_128_CBC_SHA
-
-   o  TLS_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_AES_256_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_AES_256_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_DH_anon_WITH_AES_256_CBC_SHA
-
-   o  TLS_RSA_WITH_NULL_SHA256
-
-   o  TLS_RSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_RSA_WITH_AES_256_CBC_SHA256
-
-   o  TLS_DH_DSS_WITH_AES_128_CBC_SHA256
-
-   o  TLS_DH_RSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_DHE_DSS_WITH_AES_128_CBC_SHA256
-
-   o  TLS_RSA_WITH_CAMELLIA_128_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA
-
-   o  TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA   o  TLS_DHE_RSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_DH_DSS_WITH_AES_256_CBC_SHA256
-
-   o  TLS_DH_RSA_WITH_AES_256_CBC_SHA256
-
-   o  TLS_DHE_DSS_WITH_AES_256_CBC_SHA256
-
-   o  TLS_DHE_RSA_WITH_AES_256_CBC_SHA256
-
-   o  TLS_DH_anon_WITH_AES_128_CBC_SHA256
-
-   o  TLS_DH_anon_WITH_AES_256_CBC_SHA256
-
-   o  TLS_RSA_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA
-
-   o  TLS_PSK_WITH_RC4_128_SHA
-
-   o  TLS_PSK_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_PSK_WITH_AES_128_CBC_SHA
-
-   o  TLS_PSK_WITH_AES_256_CBC_SHA
-
-   o  TLS_DHE_PSK_WITH_RC4_128_SHA
-
-   o  TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_DHE_PSK_WITH_AES_128_CBC_SHA
-
-   o  TLS_DHE_PSK_WITH_AES_256_CBC_SHA
-
-   o  TLS_RSA_PSK_WITH_RC4_128_SHA
-
-   o  TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_RSA_PSK_WITH_AES_128_CBC_SHA   o  TLS_RSA_PSK_WITH_AES_256_CBC_SHA
-
-   o  TLS_RSA_WITH_SEED_CBC_SHA
-
-   o  TLS_DH_DSS_WITH_SEED_CBC_SHA
-
-   o  TLS_DH_RSA_WITH_SEED_CBC_SHA
-
-   o  TLS_DHE_DSS_WITH_SEED_CBC_SHA
-
-   o  TLS_DHE_RSA_WITH_SEED_CBC_SHA
-
-   o  TLS_DH_anon_WITH_SEED_CBC_SHA
-
-   o  TLS_RSA_WITH_AES_128_GCM_SHA256
-
-   o  TLS_RSA_WITH_AES_256_GCM_SHA384
-
-   o  TLS_DH_RSA_WITH_AES_128_GCM_SHA256
-
-   o  TLS_DH_RSA_WITH_AES_256_GCM_SHA384
-
-   o  TLS_DH_DSS_WITH_AES_128_GCM_SHA256
-
-   o  TLS_DH_DSS_WITH_AES_256_GCM_SHA384
-
-   o  TLS_DH_anon_WITH_AES_128_GCM_SHA256
-
-   o  TLS_DH_anon_WITH_AES_256_GCM_SHA384
-
-   o  TLS_PSK_WITH_AES_128_GCM_SHA256
-
-   o  TLS_PSK_WITH_AES_256_GCM_SHA384
-
-   o  TLS_RSA_PSK_WITH_AES_128_GCM_SHA256
-
-   o  TLS_RSA_PSK_WITH_AES_256_GCM_SHA384
-
-   o  TLS_PSK_WITH_AES_128_CBC_SHA256
-
-   o  TLS_PSK_WITH_AES_256_CBC_SHA384
-
-   o  TLS_PSK_WITH_NULL_SHA256
-
-   o  TLS_PSK_WITH_NULL_SHA384
-
-   o  TLS_DHE_PSK_WITH_AES_128_CBC_SHA256   o  TLS_DHE_PSK_WITH_AES_256_CBC_SHA384
-
-   o  TLS_DHE_PSK_WITH_NULL_SHA256
-
-   o  TLS_DHE_PSK_WITH_NULL_SHA384
-
-   o  TLS_RSA_PSK_WITH_AES_128_CBC_SHA256
-
-   o  TLS_RSA_PSK_WITH_AES_256_CBC_SHA384
-
-   o  TLS_RSA_PSK_WITH_NULL_SHA256
-
-   o  TLS_RSA_PSK_WITH_NULL_SHA384
-
-   o  TLS_RSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_RSA_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA256
-
-   o  TLS_EMPTY_RENEGOTIATION_INFO_SCSV
-
-   o  TLS_ECDH_ECDSA_WITH_NULL_SHA
-
-   o  TLS_ECDH_ECDSA_WITH_RC4_128_SHA
-
-   o  TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA   o  TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_NULL_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDH_RSA_WITH_NULL_SHA
-
-   o  TLS_ECDH_RSA_WITH_RC4_128_SHA
-
-   o  TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDH_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_ECDH_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDHE_RSA_WITH_NULL_SHA
-
-   o  TLS_ECDHE_RSA_WITH_RC4_128_SHA
-
-   o  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDH_anon_WITH_NULL_SHA
-
-   o  TLS_ECDH_anon_WITH_RC4_128_SHA
-
-   o  TLS_ECDH_anon_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDH_anon_WITH_AES_128_CBC_SHA
-
-   o  TLS_ECDH_anon_WITH_AES_256_CBC_SHA
-
-   o  TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA   o  TLS_SRP_SHA_WITH_AES_128_CBC_SHA
-
-   o  TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA
-
-   o  TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA
-
-   o  TLS_SRP_SHA_WITH_AES_256_CBC_SHA
-
-   o  TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA
-
-   o  TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384
-
-   o  TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
-
-   o  TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256
-
-   o  TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384
-
-   o  TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256
-
-   o  TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384
-
-   o  TLS_ECDHE_PSK_WITH_RC4_128_SHA
-
-   o  TLS_ECDHE_PSK_WITH_3DES_EDE_CBC_SHA
-
-   o  TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA
-
-   o  TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA
-
-   o  TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256
-
-   o  TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA384   o  TLS_ECDHE_PSK_WITH_NULL_SHA
-
-   o  TLS_ECDHE_PSK_WITH_NULL_SHA256
-
-   o  TLS_ECDHE_PSK_WITH_NULL_SHA384
-
-   o  TLS_RSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_RSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DH_DSS_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DH_DSS_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DH_RSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DH_RSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DHE_DSS_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DHE_DSS_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DHE_RSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DHE_RSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DH_anon_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DH_anon_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_ECDHE_ECDSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_ECDHE_ECDSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_ECDHE_RSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_ECDHE_RSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_ECDH_RSA_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_ECDH_RSA_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_RSA_WITH_ARIA_128_GCM_SHA256   o  TLS_RSA_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_DH_RSA_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_DH_RSA_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_DH_DSS_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_DH_DSS_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_DH_anon_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_DH_anon_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_ECDH_RSA_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_ECDH_RSA_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_PSK_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_PSK_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_DHE_PSK_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_DHE_PSK_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_RSA_PSK_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_RSA_PSK_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_PSK_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_PSK_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_RSA_PSK_WITH_ARIA_128_GCM_SHA256
-
-   o  TLS_RSA_PSK_WITH_ARIA_256_GCM_SHA384
-
-   o  TLS_ECDHE_PSK_WITH_ARIA_128_CBC_SHA256
-
-   o  TLS_ECDHE_PSK_WITH_ARIA_256_CBC_SHA384
-
-   o  TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_CBC_SHA256   o  TLS_ECDHE_ECDSA_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_ECDHE_RSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_ECDHE_RSA_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_ECDH_RSA_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_ECDH_RSA_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_RSA_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_RSA_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_DH_RSA_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_DH_DSS_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_DH_anon_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_DH_anon_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_ECDH_ECDSA_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_ECDH_ECDSA_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_ECDH_RSA_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_ECDH_RSA_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_PSK_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_PSK_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_RSA_PSK_WITH_CAMELLIA_128_GCM_SHA256
-
-   o  TLS_RSA_PSK_WITH_CAMELLIA_256_GCM_SHA384
-
-   o  TLS_PSK_WITH_CAMELLIA_128_CBC_SHA256   o  TLS_PSK_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_DHE_PSK_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_DHE_PSK_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_RSA_PSK_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_RSA_PSK_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_ECDHE_PSK_WITH_CAMELLIA_128_CBC_SHA256
-
-   o  TLS_ECDHE_PSK_WITH_CAMELLIA_256_CBC_SHA384
-
-   o  TLS_RSA_WITH_AES_128_CCM
-
-   o  TLS_RSA_WITH_AES_256_CCM
-
-   o  TLS_RSA_WITH_AES_128_CCM_8
-
-   o  TLS_RSA_WITH_AES_256_CCM_8
-
-   o  TLS_PSK_WITH_AES_128_CCM
-
-   o  TLS_PSK_WITH_AES_256_CCM
-
-   o  TLS_PSK_WITH_AES_128_CCM_8
-
-   o  TLS_PSK_WITH_AES_256_CCM_8
-
-      Note: This list was assembled from the set of registered TLS
-      cipher suites at the time of writing.  This list includes those
-      cipher suites that do not offer an ephemeral key exchange and
-      those that are based on the TLS null, stream, or block cipher type
-      (as defined in Section 6.2.3 of [TLS12]).  Additional cipher
-      suites with these properties could be defined; these would not be
-      explicitly prohibited.
-
-
-
-
-
-
-
-
-
-Acknowledgements
-
-   This document includes substantial input from the following
-   individuals:
-
-   o  Adam Langley, Wan-Teh Chang, Jim Morrison, Mark Nottingham, Alyssa
-      Wilk, Costin Manolache, William Chan, Vitaliy Lvin, Joe Chan, Adam
-      Barth, Ryan Hamilton, Gavin Peters, Kent Alstad, Kevin Lindsay,
-      Paul Amer, Fan Yang, and Jonathan Leighton (SPDY contributors).
-
-   o  Gabriel Montenegro and Willy Tarreau (Upgrade mechanism).
-
-   o  William Chan, Salvatore Loreto, Osama Mazahir, Gabriel Montenegro,
-      Jitu Padhye, Roberto Peon, and Rob Trace (Flow control).
-
-   o  Mike Bishop (Extensibility).
-
-   o  Mark Nottingham, Julian Reschke, James Snell, Jeff Pinner, Mike
-      Bishop, and Herve Ruellan (Substantial editorial contributions).
-
-   o  Kari Hurtta, Tatsuhiro Tsujikawa, Greg Wilkins, Poul-Henning Kamp,
-      and Jonathan Thackray.
-
-   o  Alexey Melnikov, who was an editor of this document in 2013.
-
-   A substantial proportion of Martin's contribution was supported by
-   Microsoft during his employment there.
-
-   The Japanese HTTP/2 community provided invaluable contributions,
-   including a number of implementations as well as numerous technical
-   and editorial contributions.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Authors' Addresses
-
-   Mike Belshe
-   BitGo
-
-   EMail: mike@belshe.com
-
-
-   Roberto Peon
-   Google, Inc
-
-   EMail: fenix@google.com
-
-
-   Martin Thomson (editor)
-   Mozilla
-   331 E Evelyn Street
-   Mountain View, CA  94041
-   United States
-
-   EMail: martin.thomson@gmail.com
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Belshe, et al.               Standards Track                   [Page 96]
-
 
 |#
