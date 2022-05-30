@@ -152,7 +152,7 @@
        (return-from read-http-header
          ;; 6.1 - indexed header
          (read-from-tables (ldb (byte 7 0) octet0) connection)))
-      ((member octet0 '(0x0 #x40))
+      ((zerop (ldb (byte 6 0) octet0)) ; 0, 0x40
        ;; 6.2.1 - literal header, new name, with indexing
        (let ((header (read-string-from-stream stream)))
          (when (plusp octet0) (vector-push-extend header (get-dynamic-table connection)))
