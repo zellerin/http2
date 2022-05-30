@@ -9,6 +9,7 @@
   :serial t
   :depends-on (#:cl+ssl #:puri)
   :components ((:file "package")
+               (:file "utils")
                (:file "http2")
                (:file "classes")
                (:file "headers")
