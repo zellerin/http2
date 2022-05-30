@@ -120,3 +120,13 @@ PAYLOAD)."
                 '(((open) half-closed/remote)
                   ((half-closed/local) closed))
                 nil))
+
+(defmethod add-header :around ((stream http2-stream) name value)
+  "Decode compressed headers"
+  (call-next-method stream
+                    (etypecase name
+                      ((or string symbol) name)
+                      ((vector (unsigned-byte 8)) (decode-huffman name)))
+                    (etypecase value
+                      ((or null string integer) value) ; integer can be removed if we removed "200"
+                      ((vector (unsigned-byte 8)) (decode-huffman value)))))

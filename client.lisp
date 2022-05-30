@@ -40,19 +40,8 @@ TARGET, using SNI."
 (defclass log-headers-mixin ()
   ())
 
-(defmethod add-header ((stream log-headers-mixin) name value)
+(defmethod add-header :after ((stream log-headers-mixin) name value)
   (format t "~&header: ~a = ~a~%" name value))
-
-(defmethod add-header :around ((stream http2-stream) name value)
-  (setf name
-        (etypecase name
-          ((or string symbol) name)
-          ((vector (unsigned-byte 8)) (decode-huffman name))))
-  (setf value
-        (etypecase value
-          ((or null string integer) value) ; integer can be removed if we removed "200"
-          ((vector (unsigned-byte 8)) (decode-huffman value))))
-  (call-next-method))
 
 (defun retrieve-url (url &key (method "GET"))
   "Retrieve URL through http/2 over TLS."
