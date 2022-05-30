@@ -49,12 +49,18 @@ TARGET, using SNI."
     (with-http-connection (connection (puri:uri-host parsed-url)
                            :port (or (puri:uri-port parsed-url) 443)
                            :connection-class 'client-connection)
-      (write-headers-frame connection
-                           (create-new-local-stream connection)
-                           (request-headers method
-                                            (or (puri:uri-path parsed-url) "/")
-                                            (puri:uri-host parsed-url))
-                           :end-headers t :end-stream t)
+      (let ((http-stream (create-new-local-stream connection)))
+        (write-headers-frame connection
+                             http-stream
+                             (request-headers method
+                                              (or (puri:uri-path parsed-url) "/")
+                                              (puri:uri-host parsed-url))
+                             :end-headers nil :end-stream t)
+        ;; just to test continuation frame
+        (write-continuation-frame connection
+                                  http-stream
+                                  (list (encode-header "user-agent" "CL/custom"))
+                                  :end-headers t))
       (force-output (get-network-stream connection))
       (loop
         do

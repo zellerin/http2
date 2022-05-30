@@ -1211,15 +1211,13 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
      (if end-stream (setf (get-state http-stream) 'half-closed/local)))
 
     ;; reader
-    ((let ((*bytes-read* 0)
-           (padding
+    ((let ((padding
              (if (plusp (ldb (byte 1 3) flags))
                  (read-byte*)
                  0))
            (end-stream? (plusp (ldb (byte 1 1) flags)))
            (end-headers? (plusp (ldb (byte 1 2) flags)))
            (priority? (plusp (ldb (byte 1 5) flags))))
-       (declare (dynamic-extent *bytes-read*))
        (when priority?
          (error "Priority not implemented."))
        (unless end-headers?
@@ -1232,15 +1230,18 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
        ;; PROTOCOL_ERROR.
          (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
        (open-http-stream connection http-stream)
-       (loop while (> (- length padding) *bytes-read*)
-              do
-                 (apply 'add-header http-stream
-                        (read-http-header connection))
-              finally
-                 (unless (= length (+ padding *bytes-read*))
-                   (error "Bad length"))
-                 (dotimes (i padding) (read-byte*)))
+       (read-and-add-headers connection http-stream  (- length padding))
+       (dotimes (i padding) (read-byte*))
        (when end-stream? (process-end-stream connection http-stream)))))
+
+(defun read-and-add-headers (connection http-stream length)
+  (let ((*bytes-read* 0))
+    (declare (dynamic-extent *bytes-read*))
+    (loop while (> length *bytes-read*)
+          do
+             (apply 'add-header http-stream (read-http-header connection)))
+    (unless (= length *bytes-read*)
+      (error "Bad length"))))
 
 #|
 
@@ -2005,33 +2006,27 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
    code of FLOW_CONTROL_ERROR for the affected streams.
 
 6.10.  CONTINUATION
-
-   The CONTINUATION frame (type=0x9) is used to continue a sequence of
-   header block fragments (Section 4.3).  Any number of CONTINUATION
-   frames can be sent, as long as the preceding frame is on the same
-   stream and is a HEADERS, PUSH_PROMISE, or CONTINUATION frame without
-   the END_HEADERS flag set.
-
+|#
+(define-frame-type 9 :continuation-frame
+    "
     +---------------------------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
 
-                   Figure 15: CONTINUATION Frame Payload
+The CONTINUATION frame (type=0x9) is used to continue a sequence of header block
+fragments (Section 4.3).  Any number of CONTINUATION frames can be sent, as long
+as the preceding frame is on the same stream and is a HEADERS, PUSH_PROMISE, or
+CONTINUATION frame without the END_HEADERS flag set.
 
-   The CONTINUATION frame payload contains a header block fragment
-   (Section 4.3).
 
+The CONTINUATION frame payload contains a header block fragment
 
+The CONTINUATION frame defines the following flag:
 
-   The CONTINUATION frame defines the following flag:
-
-   END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a
-      header block (Section 4.3).
+END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a header block (Section 4.3).
 
       If the END_HEADERS bit is not set, this frame MUST be followed by
-      another CONTINUATION frame.  A receiver MUST treat the receipt of
-      any other type of frame or a frame on a different stream as a
-      connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+      another CONTINUATION frame.
 
    The CONTINUATION frame changes the connection state as defined in
    Section 4.3.
@@ -2045,6 +2040,22 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
    CONTINUATION frame without the END_HEADERS flag set.  A recipient
    that observes violation of this rule MUST respond with a connection
    error (Section 5.4.1) of type PROTOCOL_ERROR.
+"
+    (headers &key end-headers)
+    (:flags (if end-headers 4 0)
+     :length (reduce '+ (mapcar 'length headers)))
+    ((map nil #'write-vector headers))
+
+    ;; reader
+    ;; we have already checked that HTTP-STREAM is correct in read-frame
+    ((let ((end-headers? (plusp (ldb (byte 1 2) flags))))
+       (unless (get-expect-continuation connection)
+         (http2-error 'protocol_error))
+       (when end-headers? (setf (get-expect-continuation connection) nil))
+       (read-and-add-headers connection http-stream length))))
+
+#|
+
 
 7.  Error Codes
 
