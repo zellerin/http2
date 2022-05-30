@@ -1,4 +1,5 @@
 (in-package http2)
+
 (defun read-bytes (stream n)
   "Read N bytes from stream to an integer"
   (declare ((integer 1 8) n))
@@ -8,11 +9,13 @@
     res))
 
 
-(defun http2-error (&rest pars)
+(defun http2-error (error-code &rest pars)
   (apply 'error pars))
 
-(defvar *log-stream* (make-broadcast-stream))
+(defvar *log-stream* (make-broadcast-stream)
+  "Stream for logging output send by LOGGER.")
 
 (defun logger (fmt &rest pars)
+  "Send a format message to *LOG-STREAM*."
   (apply #'format *log-stream* fmt pars)
   (car pars))

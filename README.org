@@ -26,7 +26,8 @@ apparently do not support other ways of http/2 setup).
 | Ping          |         |         |
 | Goaway        | ✓       |         |
 | Window-update | ✓       |         |
-| Continuation  | ✓       |         |
+| Continuation  | ✓ *     | ✓       |
+The * means not tested
 
 Error handling is not fully implemented: errors are detected on many places, but
 the GOAWAY frame is not set yet.

@@ -261,10 +261,13 @@ The macro defining FRAME-TYPE-NAME :foo defines
     (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object (find type *frame-types* :key #'frame-type-code)))
       (when (get-expect-continuation connection)
+        ;; A receiver MUST treat the receipt of any other type of frame or a
+        ;; frame on a different stream as a connection error (Section 5.4.1) of
+        ;; type PROTOCOL_ERROR.
         (when (not (eq (frame-type-name frame-type-object) :continuation-frame))
-          (http2-error "Continuation frame expected"))
+          (http2-error 'protocol-error "Continuation frame expected"))
         (unless (= http-stream (get-expect-continuation connection))
-          (http2-error "Continuation frame should be for a different stream")))
+          (http2-error 'protocol-error "Continuation frame should be for a different stream")))
       (values
        (cond (frame-type-object
               (funcall  (frame-type-receive-fn frame-type-object) connection
@@ -272,8 +275,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
                             (find http-stream (get-streams connection)
                                   :key #'get-stream-id))
                         length flags))
-                    (t (read-sequence payload stream)
-                       (logger "~s" (list :frame  payload http-stream type flags))))
+             (t (read-sequence payload stream)
+                (logger "~s" (list :frame  payload http-stream type flags))))
        (frame-type-name frame-type-object)))))
 
 
@@ -1809,13 +1812,6 @@ RFC 7540                         HTTP/2                         May 2015
    frame might gracefully shut down a connection by sending a GOAWAY
    frame, maintaining the connection in an "open" state until all in-
    progress streams complete.
-
-
-
-Belshe, et al.               Standards Track                   [Page 44]
-
-RFC 7540                         HTTP/2                         May 2015
-
 
    An endpoint MAY send multiple GOAWAY frames if circumstances change.
    For instance, an endpoint that sends GOAWAY with NO_ERROR during
