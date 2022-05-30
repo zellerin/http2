@@ -16,7 +16,7 @@
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (asdf:defsystem #:http2/test
-  :depends-on ( http2 lisp-unit)
+  :depends-on (http2)
   :perform (test-op (o s)
-                    (uiop:symbol-call :lisp-unit '#:run-tests :all 'http2/test) )
+                    (uiop:symbol-call :http2 'do-test) )
   :components ((:file "test")))

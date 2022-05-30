@@ -1,3 +1,4 @@
 (in-package http2)
 
-(use-package 'lisp-unit)
+(defun do-test ()
+  (retrieve-url "https://example.com"))
