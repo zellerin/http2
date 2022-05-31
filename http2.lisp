@@ -42,34 +42,19 @@
 
 |#
 
-;; 3.5.  HTTP/2 Connection Preface
-(defvar +client-preface-start+
-  #.(loop with prefix = "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a"
-        for i from 0 to (1- (length prefix)) by 2
-        collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
-        finally (return (map 'simple-vector 'identity l)))
-  "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
- \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
+
+;;;; Frame definitions - boilerplate
 
-(defun write-client-preface (stream)
-  "In HTTP/2, each endpoint is required to send a connection preface as a
-   final confirmation of the protocol in use and to establish the
-   initial settings for the HTTP/2 connection.  The client and server
-   each send a different connection preface.
-
-   The client connection preface starts with a sequence of 24 octets.   This sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty."
-  (write-sequence +client-preface-start+ stream))
-
-;;;; This is a boilerplate to define individual frame types.
 (defstruct (frame-type (:constructor make-frame-type
-                           (name code documentation
-                            &optional
-                              (send-fn (intern (format nil "WRITE-~a" name)))
-                              (receive-fn (intern (format nil "READ-~a" name))))))
+                           (name documentation receive-fn)))
   "Description of a frame type"
-  code name send-fn receive-fn documentation)
+  name receive-fn documentation)
 
-(defparameter *frame-types* ()
+;;;; For each frame type, we define a writing function (write-foo-frame) and a
+;;;; reader function that is stored to the
+(defconstant +known-frame-types-count+ 10)
+
+(defparameter *frame-types* (make-array +known-frame-types-count+)
   "List of frame types.")
 
 (defun read-padding (stream padding-size)
@@ -121,8 +106,6 @@ The macro defining FRAME-TYPE-NAME :foo defines
            (keyword frame-type-name))
   `(progn
      (defconstant ,(intern (format nil "+~a+" frame-type-name)) ,type-code)
-     (push (make-frame-type ,frame-type-name ,type-code ,documentation)
-           *frame-types*)
      ,@(let ((reader-name (intern (format nil "READ-~a" frame-type-name)))
              (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
              (stream-name (gensym "STREAM")))
@@ -130,6 +113,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
          ;;; Writer
          `((defun ,writer-name (connection http-stream
                                 ,@parameters &key ,@flags)
+             ,documentation
              (let ((,stream-name (get-network-stream connection)))
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
                       (write-vector (vector) (write-sequence vector ,stream-name)))
@@ -150,6 +134,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                       '((when end-stream (setf (get-state http-stream) 'half-closed/local)))))))
 
            (defun ,reader-name (connection http-stream length flags)
+             ,documentation
              (let* ((,stream-name (get-network-stream connection))
                     ,@(flags-to-vars-code flags)
                     (padding-size (when padded (read-byte ,stream-name))))
@@ -163,7 +148,11 @@ The macro defining FRAME-TYPE-NAME :foo defines
                  (when end-stream (process-end-stream connection http-stream))
                  ,@(when (member 'end-headers flags)
                      '((setf (get-expect-continuation connection) (not end-headers)))))
-                 (read-padding ,stream-name padding-size)))))))
+               (read-padding ,stream-name padding-size)))
+
+           (setf (aref *frame-types* ,type-code)
+                 (make-frame-type ,frame-type-name ,documentation
+                                  #',reader-name))))))
 
 (defun create-new-local-stream (connection)
   "A new stream."
@@ -297,9 +286,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
         ;; fixme: sometimes connection error.
         (http2-error 'frame-size-error))
     (if (plusp R) (warn "R is set, we should ignore it"))
-    (let ((frame-type-object
-            (or (find type *frame-types* :key #'frame-type-code)
-                (warn "Frame type #~d not defined." type))))
+    (let ((frame-type-object (aref *frame-types* type)))
       (when (get-expect-continuation connection)
         ;; A receiver MUST treat the receipt of any other type of frame or a
         ;; frame on a different stream as a connection error (Section 5.4.1) of
