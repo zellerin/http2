@@ -25,7 +25,7 @@ apparently do not support other ways of http/2 setup).
 | Push-promise  |         | ✓       |
 | Ping          | ✓       | ✓       |
 | Goaway        | ✓       |         |
-| Window-update | ✓       |         |
+| Window-update | ✓       | ✓       |
 | Continuation  | ✓ *     | ✓       |
 The * means not tested
 

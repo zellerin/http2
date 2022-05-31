@@ -89,8 +89,7 @@
     (cond
       ((eq new-state old-state))
       ((eq new-state :keep))
-      (new-state (setf (get-state stream) new-state)
-                 (format t "~&~a -> ~a~%" old-state new-state))
+      (new-state (setf (get-state stream) new-state))
       (other-case-error (http2-error other-case-error)))
     new-state))
 
