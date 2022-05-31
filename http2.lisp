@@ -72,8 +72,29 @@
 (defparameter *frame-types* ()
   "List of frame types.")
 
+(defun read-padding (stream padding-size)
+  ;; Padding octets MUST be set to zero when sending.  A receiver is
+  ;; not obligated to verify padding but MAY treat non-zero padding as
+  ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+  (when padding-size (dotimes (i padding-size) (read-bytes stream 1))))
+
+(defvar *flag-codes*
+  '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5))
+
+(defun flags-to-code (flags)
+  "Create CODE to generate flag octet from flag variables."
+  (mapcar (lambda (a) `(if ,a ,(expt 2 (getf *flag-codes* a)) 0)) flags))
+
+(defun flags-to-vars-code (flags)
+  (loop for flag in *flag-codes* by 'cddr
+        collect `(,flag ,(when (member flag flags)
+                   `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags))))))
+
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
-                             (&key (flags 0) length) writer-body
+                             (&key (flags nil) length
+;                                maybe-padded maybe-end-stream maybe-end-headers maybe-ack
+)
+                             writer-body
                         (&body reader))
   "This specification defines a number of frame types, each identified by a unique
 8-bit TYPE CODE.  Each frame type serves a distinct purpose in the establishment
@@ -101,46 +122,48 @@ The macro defining FRAME-TYPE-NAME :foo defines
   `(progn
      (defconstant ,(intern (format nil "+~a+" frame-type-name)) ,type-code)
      (push (make-frame-type ,frame-type-name ,type-code ,documentation)
-      *frame-types*)
+           *frame-types*)
      ,@(let ((reader-name (intern (format nil "READ-~a" frame-type-name)))
-            (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
+             (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
              (stream-name (gensym "STREAM")))
-         `((defun ,writer-name (connection http-stream ,@parameters)
-              (let ((,stream-name (get-network-stream connection)))
-                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
-                       (write-vector (vector) (write-sequence vector ,stream-name)))
-                  (declare (ignorable #'write-vector #'write-bytes #'write-vector))
-                  (write-frame-header ,stream-name ,type-code ,flags
-                                      (get-stream-id http-stream) :length ,length)
-                  ,@writer-body)))
+
+         ;;; Writer
+         `((defun ,writer-name (connection http-stream
+                                ,@parameters &key ,@flags)
+             (let ((,stream-name (get-network-stream connection)))
+               (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
+                      (write-vector (vector) (write-sequence vector ,stream-name)))
+                 (declare (ignorable #'write-vector #'write-bytes #'write-vector))
+                 (write-frame-header ,stream-name ,type-code
+                                     (+ ,@(flags-to-code flags))
+                                     (get-stream-id http-stream)
+                                     :length (+ ,length
+                                                ,@(when (find 'padded flags)
+                                                    `((if padded (1+ (length padded)) 0)))))
+                 ,@(when (find 'padded flags)
+                     `((when padded
+                         (write-bytes 1 (length padded)))))
+                 ,@writer-body
+                 ,@(when (find 'padded flags)
+                     '((when padded (write-vector padded))))
+                 ,@ (when (find 'end-stream flags)
+                      '((when end-stream (setf (get-state http-stream) 'half-closed/local)))))))
 
            (defun ,reader-name (connection http-stream length flags)
-              (let ((,stream-name (get-network-stream connection)))
-                (flet ((read-bytes (n) (read-bytes ,stream-name n))
-                       (read-byte* () (read-byte* ,stream-name))
-                       (read-vector (seq) (read-sequence seq ,stream-name)))
-                  (declare (ignorable #'read-bytes #'read-byte* #'read-vector))
-                  ,@reader)))))))
-
-
-(defconstant +priority-frame+ 2)
-(defconstant +rst-stream-frame+ 3)
-
-(defconstant +connection-stream+ 0)
-
-(defun write-bytes (stream n value)
-  "write VALUE as N octets to  stream"
-  (declare ((integer 1 8) n))
-  (dotimes (i n)
-    (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
-
-
-
-#+nil#(defun create-new-local-stream (connection)
-  "ID of a new stream."
-  (push  (make-instance 'http2-stream :stream-id (get-id-to-use connection)) (get-streams connection))
-  (prog1 (get-id-to-use connection)
-    (incf (get-id-to-use connection))))
+             (let* ((,stream-name (get-network-stream connection))
+                    ,@(flags-to-vars-code flags)
+                    (padding-size (when padded (read-byte ,stream-name))))
+               (declare (ignorable end-headers ack priority))
+               (when padding-size (decf length (1+ padding-size)))
+               (flet ((read-bytes (n) (read-bytes ,stream-name n))
+                      (read-byte* () (read-byte* ,stream-name))
+                      (read-vector (seq) (read-sequence seq ,stream-name)))
+                 (declare (ignorable #'read-bytes #'read-byte* #'read-vector))
+                 ,@reader
+                 (when end-stream (process-end-stream connection http-stream))
+                 ,@(when (member 'end-headers flags)
+                     '((setf (get-expect-continuation connection) (not end-headers)))))
+                 (read-padding ,stream-name padding-size)))))))
 
 (defun create-new-local-stream (connection)
   "A new stream."
@@ -1071,54 +1094,35 @@ COMPRESSION_ERROR if it does not decompress a header block.
   |#
 
 (define-frame-type 0 :data-frame
-" +---------------+
-  |Pad Length? (8)|
-  +---------------+-----------------------------------------------+
+" +---------------+-----------------------------------------------+
   |                            Data (*)                         ...
-  +---------------------------------------------------------------+
-  |                           Padding (*)                       ...
   +---------------------------------------------------------------+
 
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
-  for instance, to carry HTTP request or response payloads.
+  for instance, to carry HTTP request or response payloads."
+    (data) (:length (length data)
+            :flags (padded end-stream))
+    ((write-vector data))
 
-  DATA frames MAY also contain padding.  Padding can be added to DATA
-  frames to obscure the size of messages.  Padding is a security
-  feature; see Section 10.7."
-    () () ((error "Can't write data frame yet"))
     ((when (eq connection http-stream)
        ;; DATA frames MUST be associated with a stream.  If a DATA frame is
        ;; received whose stream identifier field is 0x0, the recipient MUST
        ;; respond with a connection error (Section 5.4.1) of type
        ;; PROTOCOL_ERROR.
-       (http2-error 'protocol-error))
-      (let* ((padded? (plusp (ldb (byte 1 3) flags)))
-             (end-stream? (plusp (ldb (byte 1 0) flags)))
-             (padding-size (if padded? (read-bytes 1) 0))
-             (data-length (- length (if padded? (+ 1 padding-size) 0)))
-             (data (make-array data-length :element-type '(unsigned-byte 8))))
-        ;; If the length of the padding is the length of the
-        ;; frame payload or greater, the recipient MUST treat this as a
-        ;; connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-        (when (>= padding-size length)
-          (http2-error 'protocol-error))
-        (loop while (plusp data-length)
-              do (decf data-length (read-vector data)))
-
-        ;; Padding octets MUST be set to zero when sending.  A receiver is
-        ;; not obligated to verify padding but MAY treat non-zero padding as
-        ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-        (if padded? (dotimes (i padding-size) (read-bytes 1)))
-        (apply-data-frame connection http-stream data)
-        (when end-stream?
-          (process-end-stream connection http-stream))
-        nil)))
+       (http2-error 'protocol-error "DATA frames must be associated with a stream"))
+      (when (minusp length)
+        ;; 0 is ok, as there was one more byte in payload.
+        (http2-error 'protocol-error "If the length of the padding is the length of the
+frame payload or greater, the recipient MUST treat this as a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
+      (let* ((data (make-array length :element-type '(unsigned-byte 8))))
+        (loop while (plusp length)
+              do (decf length (read-vector data)))
+        (apply-data-frame connection http-stream data))))
 
 (define-frame-type 1 :headers-frame
     "
-    +---------------+
-    |Pad Length? (8)|
     +-+-------------+-----------------------------------------------+
     |E|                 Stream Dependency? (31)                     |
     +-+-------------+-----------------------------------------------+
@@ -1126,20 +1130,11 @@ COMPRESSION_ERROR if it does not decompress a header block.
     +-+-------------+-----------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
-    |                           Padding (*)                       ...
-    +---------------------------------------------------------------+
 
-                      Figure 7: HEADERS Frame Payload
-
-
-The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
+   The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
    be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state.
-
-   Pad Length:  An 8-bit field containing the length of the frame
-      padding in units of octets.  This field is only present if the
-      PADDED flag is set.
 
    E: A single-bit flag indicating that the stream dependency is
       exclusive (see Section 5.3).  This field is only present if the
@@ -1170,28 +1165,21 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    PRIORITY (0x20):  When set, bit 5 indicates that the Exclusive Flag
       (E), Stream Dependency, and Weight fields are present; see
       Section 5.3."
-    (headers &key end-headers end-stream dependency weight)
-    (:flags (+ (if end-stream 1 0) (if end-headers 4 0))
-     :length (reduce '+ (mapcar 'length headers)))
+    (headers) ;  &key dependency weight
+    (:length (reduce '+ (mapcar 'length headers))
+     :flags (padded end-stream end-headers priority))
 
     ;; writer
-    ((if dependency (write-bytes dependency 4))
-     (if weight (write-bytes weight 1))
-     (map nil #'write-vector headers)
-     ;; FIXME: not exactly correct
-     (if end-stream (setf (get-state http-stream) 'half-closed/local)))
+    ((when priority
+       (write-bytes (first priority) 4)
+       (write-bytes (second priority) 1))
+     (map nil #'write-vector headers))
 
     ;; reader
-    ((let ((padding
-             (if (plusp (ldb (byte 1 3) flags))
-                 (read-byte*)
-                 0))
-           (end-stream? (plusp (ldb (byte 1 1) flags)))
-           (end-headers? (plusp (ldb (byte 1 2) flags)))
-           (priority? (plusp (ldb (byte 1 5) flags))))
+    ((let ((priority? (plusp (ldb (byte 1 5) flags))))
        (when priority?
          (error "Priority not implemented."))
-       (unless end-headers?
+       (unless end-headers
          (setf (get-expect-continuation connection) (get-stream-id http-stream)))
 
        (when (eq connection http-stream)
@@ -1201,15 +1189,11 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
        ;; PROTOCOL_ERROR.
          (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
        (open-http-stream connection http-stream)
-       (when (> padding length)
+       (when (minusp length)
          ;; Padding that exceeds the size remaining for the header block
          ;; fragment MUST be treated as a PROTOCOL_ERROR.
          (http2-error 'protocol-error))
-       (read-and-add-headers connection http-stream  (- length padding))
-       ;; The HEADERS frame can include padding.  Padding fields and flags are
-       ;; identical to those defined for DATA frames (Section 6.1).
-       (dotimes (i padding) (read-byte*))
-       (when end-stream? (process-end-stream connection http-stream)))))
+       (read-and-add-headers connection http-stream length))))
 
 (defun read-and-add-headers (connection http-stream length)
   (let ((*bytes-read* 0))
@@ -1486,7 +1470,8 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    receipt of those parameters.  Individually, a SETTINGS parameter can
    also be referred to as a \"setting\"."
     (settings)
-    (:length (* (length settings) 6))
+    (:length (* (length settings) 6)
+     :flags (ack))
     ;; writer
     ((dolist (setting settings)
         (declare ((cons symbol (unsigned-byte 32)) setting))
@@ -1495,8 +1480,12 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
     ;;reader
     ((unless (eq connection http-stream)
        (error "Settings are for connection only."))
-      (ecase flags
-        (0 ; settings
+      (cond
+        (ack
+         (when (plusp length)
+           (error "Ack settings frame must be empty. We should close connection.")
+           :ack-settings))
+        (t
          (unless (zerop (mod length 6))
            (error "Settings payload should be multiple of 6 octets"))
          (loop
@@ -1506,10 +1495,7 @@ The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
            collect (cons  (find-setting-by-id  identifier) value) into settings
            finally (setf (get-peer-settings connection) settings)))
 
-        (1 ; ACK
-         (when (plusp length)
-           (error "Ack settings frame must be empty. We should close connection.")
-           :ack-settings)))))
+)))
 
 (defun find-setting-by-id (id)
   (or (car (find id *settings-alist* :key 'second))
@@ -1568,23 +1554,13 @@ RFC 7540                         HTTP/2                         May 2015
    provide additional context for the stream.  Section 8.2 contains a
    thorough description of the use of PUSH_PROMISE frames.
 
-    +---------------+
-    |Pad Length? (8)|
     +-+-------------+-----------------------------------------------+
     |R|                  Promised Stream ID (31)                    |
     +-+-----------------------------+-------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
-    |                           Padding (*)                       ...
-    +---------------------------------------------------------------+
-
-                  Figure 11: PUSH_PROMISE Payload Format
 
    The PUSH_PROMISE frame payload has the following fields:
-
-   Pad Length:  An 8-bit field containing the length of the frame
-      padding in units of octets.  This field is only present if the
-      PADDED flag is set.
 
    R: A single reserved bit.
 
@@ -1596,7 +1572,6 @@ RFC 7540                         HTTP/2                         May 2015
    Header Block Fragment:  A header block fragment (Section 4.3)
       containing request header fields.
 
-   Padding:  Padding octets.
    The PUSH_PROMISE frame defines the following flags:
 
    END_HEADERS (0x4):  When set, bit 2 indicates that this frame
@@ -1608,22 +1583,15 @@ RFC 7540                         HTTP/2                         May 2015
       MUST treat the receipt of any other type of frame or a frame on a
       different stream as a connection error (Section 5.4.1) of type
       PROTOCOL_ERROR.
-
-   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
-      and any padding that it describes are present.
 "
-    (padding reserved promised-stream-id headers end-headers)
-    (:flags (+ (if end-headers 4 0) (if padding 8 0))
-     :length (+ 4
-                (reduce '+ (mapcar 'length headers))
-                (if padding (1+ (length padding)) 0)))
-    ((when padding
-       (write-bytes 1 (length padding)))
-     (write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
-     (map nil #'write-vector headers)
-     (when padding (write-vector padding)))
+    (reserved promised-stream-id headers)
+    (:length (+ 4 (reduce '+ (mapcar 'length headers)))
+     :flags (padded end-headers))
+    ((write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
+     (map nil #'write-vector headers))
     ;; reader
-    ((error "Reading promise N/A")))
+    ((when (eq connection http-stream) (http2-error 'protocol-error))
+     (error "Reading promise N/A")))
 
 #|
 
@@ -1706,7 +1674,8 @@ RFC 7540                         HTTP/2                         May 2015
       response.  An endpoint MUST set this flag in PING responses.  An
       endpoint MUST NOT respond to PING frames containing this flag.
 "
-    (ack opaque-data) (:length 8 :flags (if ack 1 0))
+    (opaque-data)
+    (:length 8 :flags (ack))
     ;; writer
     ((write-vector opaque-data))
     ((unless (= length 8)
@@ -1722,7 +1691,7 @@ RFC 7540                         HTTP/2                         May 2015
         (http2-error 'protocol-error))
       (let ((data (make-array 8 :element-type '(unsigned-byte 8))))
         (read-vector data)
-        (if (plusp (ldb (byte 1 0) flags))
+        (if ack
             (do-pong connection data)
             (do-ping connection data)))))
 
@@ -2065,17 +2034,16 @@ END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a header bloc
    that observes violation of this rule MUST respond with a connection
    error (Section 5.4.1) of type PROTOCOL_ERROR.
 "
-    (headers &key end-headers)
-    (:flags (if end-headers 4 0)
-     :length (reduce '+ (mapcar 'length headers)))
+    (headers)
+    (:length (reduce '+ (mapcar 'length headers))
+     :flags (end-headers))
     ((map nil #'write-vector headers))
 
     ;; reader
     ;; we have already checked that HTTP-STREAM is correct in read-frame
-    ((let ((end-headers? (plusp (ldb (byte 1 2) flags))))
+    ((let ()
        (unless (get-expect-continuation connection)
          (http2-error 'protocol_error))
-       (when end-headers? (setf (get-expect-continuation connection) nil))
        (read-and-add-headers connection http-stream length))))
 
 #|

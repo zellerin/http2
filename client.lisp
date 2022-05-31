@@ -21,14 +21,15 @@
                              (request-headers method
                                               (or (puri:uri-path parsed-url) "/")
                                               (puri:uri-host parsed-url))
-                             :end-headers nil :end-stream t)
+                             :end-headers nil :end-stream t
+                             :padded #(0 0 0 0))
         ;; just to test continuation frame
         (write-continuation-frame connection
                                   http-stream
                                   (list (encode-header "user-agent" "CL/custom"))
                                   :end-headers t)
         ;; and test ping
-        (write-ping-frame connection connection nil (vector 0 1 2 3 4 5 6 7))
+        (write-ping-frame connection connection (vector 0 1 2 3 4 5 6 7))
         ;; and test go-away
         (write-goaway-frame connection connection 0 +no-error+ #() nil)
         (force-output (get-network-stream connection))
