@@ -29,9 +29,9 @@
                                   (list (encode-header "user-agent" "CL/custom"))
                                   :end-headers t)
         ;; and test ping
-        (write-ping-frame connection connection (vector 0 1 2 3 4 5 6 7))
+        (write-ping-frame connection connection 12345)
         ;; and test go-away
-        (write-goaway-frame connection connection 0 +no-error+ #() nil)
+        (write-goaway-frame connection connection 0 +no-error+ #() 0)
         (force-output (get-network-stream connection))
         (with-simple-restart (use-read-so-far "Use data read so far")
             (handler-case

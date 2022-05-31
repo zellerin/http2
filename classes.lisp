@@ -170,6 +170,10 @@ PAYLOAD)."
 (defmethod apply-data-frame (connection (stream body-collecting-mixin) data)
   (setf (get-body stream) (concatenate 'string (get-body stream)
                                        (map 'string 'code-char  data)))
-  (write-window-update-frame connection connection (length data))
-  (write-window-update-frame connection stream (length data))
+  (write-window-update-frame connection connection (length data) 0)
+  (write-window-update-frame connection stream (length data) 0)
   (force-output (get-network-stream connection)))
+
+(defmethod handle-undefined-frame (type flags length)
+  "Callback that is called when a frame of unknown type is received - see
+extensions..")

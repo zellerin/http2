@@ -45,40 +45,52 @@
 
 ;;;; Frame definitions - boilerplate
 
+;;;; For each frame type, we define a writing function (write-foo-frame) and a
+;;;; reader function. The reader functions are stored in *frame-types* array so
+;;;; that they can be dispatched after reading.
+
 (defstruct (frame-type (:constructor make-frame-type
                            (name documentation receive-fn)))
   "Description of a frame type"
   name receive-fn documentation)
 
-;;;; For each frame type, we define a writing function (write-foo-frame) and a
-;;;; reader function that is stored to the
-(defconstant +known-frame-types-count+ 10)
+(defconstant +known-frame-types-count+ 10
+  "Number of frame types we know.")
 
 (defparameter *frame-types* (make-array +known-frame-types-count+)
-  "List of frame types.")
+  "Array of frame types.")
+
+
+;;;; Frame types - definition of specific types
 
 (defun read-padding (stream padding-size)
+  "Read the padding if padding-size is not NIL."
   ;; Padding octets MUST be set to zero when sending.  A receiver is
   ;; not obligated to verify padding but MAY treat non-zero padding as
   ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
   (when padding-size (dotimes (i padding-size) (read-bytes stream 1))))
 
 (defvar *flag-codes*
-  '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5))
+  '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5)
+  "Property list of flag names and their bit index.
+
+This makes use of the fact that same flag name has same index in all headers where it is used.")
 
 (defun flags-to-code (flags)
-  "Create CODE to generate flag octet from flag variables."
+  "Create code to generate flag octet from FLAGS variable."
   (mapcar (lambda (a) `(if ,a ,(expt 2 (getf *flag-codes* a)) 0)) flags))
 
 (defun flags-to-vars-code (flags)
+  "Create code to extract variables named as each member of *flag-codes*
+that is set to T if it is in FLAGS and appropriate bit is set in the read flags."
   (loop for flag in *flag-codes* by 'cddr
         collect `(,flag ,(when (member flag flags)
                    `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags))))))
 
+
+
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
-                             (&key (flags nil) length
-;                                maybe-padded maybe-end-stream maybe-end-headers maybe-ack
-)
+                             (&key (flags nil) length)
                              writer-body
                         (&body reader))
   "This specification defines a number of frame types, each identified by a unique
@@ -90,7 +102,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
 - a writer function WRITE-FOO that takes CONNECTION, HTTP-STREAM and possibly
   other PARAMETERS, sends frame header for given frame type with FLAGS and
   LENGTH expressions, and then executes WRITER-BODY with functions write-bytes
-  and write-vector bound to writing to the transport stream,
+  and write-vector bound to writing to the transport stream. Each PARAMETER is
+  a list of name, size in bits (or :variable) and documentation.
 - a reader function named READ-FOO that takes CONNECTION, HTTP-STREAM, payload
   LENGTH and FLAGS and reads the payload of the frame: it runs READER-BODY with
   read-bytes and read-vector bound to reading from the transport stream. This
@@ -112,8 +125,14 @@ The macro defining FRAME-TYPE-NAME :foo defines
 
          ;;; Writer
          `((defun ,writer-name (connection http-stream
-                                ,@parameters &key ,@flags)
+                                ,@ (mapcar 'first parameters) &key ,@flags)
              ,documentation
+             (declare ,@(loop for par in parameters
+                              collect `(,(if (integerp (second par))
+                                             `(unsigned-byte ,(second par))
+                                             (second par)
+)
+                                        ,(first par))))
              (let ((,stream-name (get-network-stream connection)))
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
                       (write-vector (vector) (write-sequence vector ,stream-name)))
@@ -286,7 +305,20 @@ The macro defining FRAME-TYPE-NAME :foo defines
         ;; fixme: sometimes connection error.
         (http2-error 'frame-size-error))
     (if (plusp R) (warn "R is set, we should ignore it"))
-    (let ((frame-type-object (aref *frame-types* type)))
+    (let ((frame-type-object
+            (if (< type +known-frame-types-count+)
+                (aref *frame-types* type)
+                (make-frame-type :unknown
+                                 "Implementations MUST discard frames
+that have unknown or unsupported types.  This means that any of these
+extension points can be safely used by extensions without prior
+arrangement or negotiation."
+                                 (lambda (connection http-stream length flags)
+                                   (declare (ignore http-stream))
+                                   (handle-undefined-frame type flags length)
+                                   (let ((stream (get-network-stream connection)))
+                                     (dotimes (i length) (read-byte stream)))))
+                )))
       (when (get-expect-continuation connection)
         ;; A receiver MUST treat the receipt of any other type of frame or a
         ;; frame on a different stream as a connection error (Section 5.4.1) of
@@ -298,10 +330,10 @@ The macro defining FRAME-TYPE-NAME :foo defines
       (values
        (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
-                        (if (zerop http-stream) connection
-                            (find http-stream (get-streams connection)
-                                  :key #'get-stream-id))
-                        length flags))
+                       (if (zerop http-stream) connection
+                           (find http-stream (get-streams connection)
+                                 :key #'get-stream-id))
+                       length flags))
              (t (read-sequence payload stream)
                 (logger "~s" (list :frame  payload http-stream type flags))))
        (frame-type-name frame-type-object)))))
@@ -321,13 +353,6 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 (16,777,215) octets, inclusive.")
 
 (declaim ((integer 16384 16777215) *max-frame-size*))
-
-#|
-  Note: Certain frame types, such as PING (Section 6.7), impose
-  additional limits on the amount of payload data allowed.
-
-
-|#
 
 #|
 
@@ -428,9 +453,6 @@ COMPRESSION_ERROR if it does not decompress a header block.
   either endpoint.  The negative consequences of a mismatch in states
   are limited to the "closed" state after sending RST_STREAM, where
   frames might be received for some time after closing.
-
-  Streams have the following states:
-
 |#
 #|
   *  Sending a PUSH_PROMISE frame on another stream reserves the
@@ -1035,50 +1057,14 @@ COMPRESSION_ERROR if it does not decompress a header block.
   does not affect the existing options for extending HTTP, such as
   defining new methods, status codes, or header fields.
 
-  Extensions are permitted to use new frame types (Section 4.1), new
-  settings (Section 6.5.2), or new error codes (Section 7).  Registries
-  are established for managing these extension points: frame types
-  (Section 11.2), settings (Section 11.3), and error codes
-  (Section 11.4).
+  Extensions are permitted to use ... new settings (Section 6.5.2), or new error
+  codes (Section 7).
 
   Implementations MUST ignore unknown or unsupported values in all
-  extensible protocol elements.  Implementations MUST discard frames
-  that have unknown or unsupported types.  This means that any of these
-  extension points can be safely used by extensions without prior
-  arrangement or negotiation.  However, extension frames that appear in
-  the middle of a header block (Section 4.3) are not permitted; these
-  MUST be treated as a connection error (Section 5.4.1) of type
-  PROTOCOL_ERROR.
-
-  Extensions that could change the semantics of existing protocol
-  components MUST be negotiated before being used.  For example, an
-  extension that changes the layout of the HEADERS frame cannot be used
-  until the peer has given a positive signal that this is acceptable.
-  In this case, it could also be necessary to coordinate when the
-  revised layout comes into effect.  Note that treating any frames
-  other than DATA frames as flow controlled is such a change in
-  semantics and can only be done through negotiation.
-
-  This document doesn't mandate a specific method for negotiating the
-  use of an extension but notes that a setting (Section 6.5.2) could be
-  used for that purpose.  If both peers set a value that indicates
-  willingness to use the extension, then the extension can be used.  If
-
-
-
-  Belshe, et al.               Standards Track                   [Page 30]
-  
-  RFC 7540                         HTTP/2                         May 2015
-
-
-  a setting is used for extension negotiation, the initial value MUST
-  be defined in such a fashion that the extension is initially
-  disabled.
-
-  6.  Frame Definitions
-
-
+  extensible protocol elements.
   |#
+
+;;;; Definition of individual frame types.
 
 (define-frame-type 0 :data-frame
 " +---------------+-----------------------------------------------+
@@ -1088,7 +1074,8 @@ COMPRESSION_ERROR if it does not decompress a header block.
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads."
-    (data) (:length (length data)
+    ((data vector))
+    (:length (length data)
             :flags (padded end-stream))
     ((write-vector data))
 
@@ -1137,24 +1124,16 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       PRIORITY flag is set.
 
    The HEADERS frame defines the following flags:
-
-   END_STREAM (0x1):  When set, bit 0 indicates that the header block
-      (Section 4.3) is the last that the endpoint will send for the
-      identified stream.
-
-   END_HEADERS (0x4):  When set, bit 2 indicates that this frame
-      contains an entire header block (Section 4.3) and is not followed
-      by any CONTINUATION frames.
-
-   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
-      and any padding that it describes are present.
-
-   PRIORITY (0x20):  When set, bit 5 indicates that the Exclusive Flag
-      (E), Stream Dependency, and Weight fields are present; see
-      Section 5.3."
-    (headers) ;  &key dependency weight
+"
+    ((headers list)) ;  &key dependency weight
     (:length (reduce '+ (mapcar 'length headers))
-     :flags (padded end-stream end-headers priority))
+     :flags (padded end-stream end-headers
+                    ;; PRIORITY: When set, bit 5 indicates that the Exclusive
+                    ;; Flag (E), Stream Dependency, and Weight fields are
+                    ;; present.
+                    ;;
+                    ;; Priority is a list (e+stream-dependency weight)
+                    priority))
 
     ;; writer
     ((when priority
@@ -1163,24 +1142,24 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      (map nil #'write-vector headers))
 
     ;; reader
-    ((let ((priority? (plusp (ldb (byte 1 5) flags))))
-       (when priority?
-         (error "Priority not implemented."))
-       (unless end-headers
-         (setf (get-expect-continuation connection) (get-stream-id http-stream)))
+    ((when priority (error "Reading priority not implemented."))
+      (unless end-headers
+        ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+        ;; another CONTINUATION frame.
+        (setf (get-expect-continuation connection) (get-stream-id http-stream)))
 
-       (when (eq connection http-stream)
-       ;; HEADERS frames MUST be associated with a stream.  If a HEADERS frame
-       ;; is received whose stream identifier field is 0x0, the recipient MUST
-       ;; respond with a connection error (Section 5.4.1) of type
-       ;; PROTOCOL_ERROR.
-         (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
-       (open-http-stream connection http-stream)
-       (when (minusp length)
-         ;; Padding that exceeds the size remaining for the header block
-         ;; fragment MUST be treated as a PROTOCOL_ERROR.
-         (http2-error 'protocol-error))
-       (read-and-add-headers connection http-stream length))))
+      (when (eq connection http-stream)
+        ;; HEADERS frames MUST be associated with a stream.  If a HEADERS frame
+        ;; is received whose stream identifier field is 0x0, the recipient MUST
+        ;; respond with a connection error (Section 5.4.1) of type
+        ;; PROTOCOL_ERROR.
+        (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
+      (open-http-stream connection http-stream)
+      (when (minusp length)
+        ;; Padding that exceeds the size remaining for the header block
+        ;; fragment MUST be treated as a PROTOCOL_ERROR.
+        (http2-error 'protocol-error))
+      (read-and-add-headers connection http-stream length)))
 
 (defun read-and-add-headers (connection http-stream length)
   (let ((*bytes-read* 0))
@@ -1228,7 +1207,10 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       weight between 1 and 256.
 
    The PRIORITY frame does not define any flags."
-    (exclusive stream-dependency weight) (:length 5)
+    ((exclusive 1)
+     (stream-dependency 31)
+     (weight 8))
+    (:length 5)
     ((let ((e+strdep stream-dependency))
        (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
        (write-bytes 4 e+strdep)
@@ -1281,7 +1263,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
    The RST_STREAM frame does not define any flags.
 "
-    (error-code) (:length 4)
+    ((error-code 32))
+    (:length 4)
     ((write-bytes 4 error-code))
     ((assert (zerop flags))
       (when (eq connection http-stream)
@@ -1456,7 +1439,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    on peer behavior.  The SETTINGS frame is also used to acknowledge the
    receipt of those parameters.  Individually, a SETTINGS parameter can
    also be referred to as a \"setting\"."
-    (settings)
+    ((settings list))
     (:length (* (length settings) 6)
      :flags (ack))
     ;; writer
@@ -1571,7 +1554,9 @@ RFC 7540                         HTTP/2                         May 2015
       different stream as a connection error (Section 5.4.1) of type
       PROTOCOL_ERROR.
 "
-    (reserved promised-stream-id headers)
+    ((reserved 1)
+     (promised-stream-id 31)
+     (headers list))
     (:length (+ 4 (reduce '+ (mapcar 'length headers)))
      :flags (padded end-headers))
     ((write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
@@ -1659,12 +1644,11 @@ RFC 7540                         HTTP/2                         May 2015
 
    ACK (0x1):  When set, bit 0 indicates that this PING frame is a PING
       response.  An endpoint MUST set this flag in PING responses.  An
-      endpoint MUST NOT respond to PING frames containing this flag.
-"
-    (opaque-data)
+      endpoint MUST NOT respond to PING frames containing this flag."
+    ((opaque-data 64))
     (:length 8 :flags (ack))
     ;; writer
-    ((write-vector opaque-data))
+    ((write-bytes 8 opaque-data))
     ((unless (= length 8)
        ;; ;; Receipt of a PING frame with a length field value other than 8 MUST
        ;; ;; be treated as a connection error (Section 5.4.1) of type
@@ -1740,7 +1724,10 @@ RFC 7540                         HTTP/2                         May 2015
    endpoint to gracefully stop accepting new streams while still
    finishing processing of previously established streams.  This
    enables administrative actions, like server maintenance."
-    (last-stream-id error-code debug-data reserved)
+    ((last-stream-id 31)
+     (error-code 32)
+     (debug-data vector)
+     (reserved 1))
     (:length (+ 8 (length debug-data)))
 
     ((write-bytes 4 (logior last-stream-id (if reserved #x80000000 0)))
@@ -1859,8 +1846,10 @@ RFC 7540                         HTTP/2                         May 2015
     +-+-------------------------------------------------------------+
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
-    (window-size-increment) (:length 4)
-    ((write-bytes 4 window-size-increment))
+    ((window-size-increment 31)
+     (reserved 1))
+    (:length 4)
+    ((write-bytes 4 (logior window-size-increment (if reserved #x80000000))))
 
     (;;reader
      (unless (zerop flags)
@@ -1875,14 +1864,10 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
         (logger "Window size for ~a: ~x" http-stream window-size-increment)
         (setf (get-window-size http-stream) window-size-increment))))
 
-
 (defun account-frame-window-contribution (connection stream length)
   (decf (get-window-size connection) length)
   (decf (get-window-size stream) length))
 #|
-
-
-
 6.9.1.  The Flow-Control Window
 
    Flow control in HTTP/2 is implemented using a window kept by each
@@ -1985,7 +1970,6 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
    sending.  The receiver MAY instead send a RST_STREAM with an error
    code of FLOW_CONTROL_ERROR for the affected streams.
 
-6.10.  CONTINUATION
 |#
 (define-frame-type 9 :continuation-frame
     "
@@ -2003,11 +1987,6 @@ The CONTINUATION frame payload contains a header block fragment
 
 The CONTINUATION frame defines the following flag:
 
-END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a header block (Section 4.3).
-
-      If the END_HEADERS bit is not set, this frame MUST be followed by
-      another CONTINUATION frame.
-
    The CONTINUATION frame changes the connection state as defined in
    Section 4.3.
 
@@ -2021,7 +2000,7 @@ END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a header bloc
    that observes violation of this rule MUST respond with a connection
    error (Section 5.4.1) of type PROTOCOL_ERROR.
 "
-    (headers)
+    ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
      :flags (end-headers))
     ((map nil #'write-vector headers))
