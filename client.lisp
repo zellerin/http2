@@ -32,12 +32,13 @@
         ;; and test go-away
         (write-goaway-frame connection connection 0 +no-error+ #() nil)
         (force-output (get-network-stream connection))
-        (handler-case
-            (loop
-              do
-                 (read-frame connection)
-              until (get-finished connection))
-          (end-of-file () :ok))
+        (with-simple-restart (use-read-so-far "Use data read so far")
+            (handler-case
+                (loop
+                  do
+                     (read-frame connection)
+                  until (get-finished connection))
+              (end-of-file () nil)))
         (values (get-body http-stream)
               (get-headers http-stream))))))
 

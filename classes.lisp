@@ -168,6 +168,9 @@ PAYLOAD)."
   ((body :accessor get-body :initarg :body))
   (:default-initargs :body ""))
 
-(defmethod apply-data-frame  (connection (stream body-collecting-mixin) data)
+(defmethod apply-data-frame (connection (stream body-collecting-mixin) data)
   (setf (get-body stream) (concatenate 'string (get-body stream)
-                                       (map 'string 'code-char  data))))
+                                       (map 'string 'code-char  data)))
+  (write-window-update-frame connection connection (length data))
+  (write-window-update-frame connection stream (length data))
+  (force-output (get-network-stream connection)))

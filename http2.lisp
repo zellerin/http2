@@ -1903,7 +1903,8 @@ RFC 7540                         HTTP/2                         May 2015
     +-+-------------------------------------------------------------+
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
-    () () ((error "Sending Window frames not implemented"))
+    (window-size-increment) (:length 4)
+    ((write-bytes 4 window-size-increment))
 
     (;;reader
      (unless (zerop flags)
