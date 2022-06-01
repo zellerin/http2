@@ -70,22 +70,23 @@
   ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
   (when padding-size (dotimes (i padding-size) (read-bytes stream 1))))
 
-(defvar *flag-codes*
-  '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5)
-  "Property list of flag names and their bit index.
+(eval-when (:compile-toplevel :load-toplevel)
+  (defvar *flag-codes*
+    '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5)
+    "Property list of flag names and their bit index.
 
 This makes use of the fact that same flag name has same index in all headers where it is used.")
 
-(defun flags-to-code (flags)
-  "Create code to generate flag octet from FLAGS variable."
-  (mapcar (lambda (a) `(if ,a ,(expt 2 (getf *flag-codes* a)) 0)) flags))
+  (defun flags-to-code (flags)
+    "Create code to generate flag octet from FLAGS variable."
+    (mapcar (lambda (a) `(if ,a ,(expt 2 (getf *flag-codes* a)) 0)) flags))
 
-(defun flags-to-vars-code (flags)
-  "Create code to extract variables named as each member of *flag-codes*
+  (defun flags-to-vars-code (flags)
+    "Create code to extract variables named as each member of *flag-codes*
 that is set to T if it is in FLAGS and appropriate bit is set in the read flags."
-  (loop for flag in *flag-codes* by 'cddr
-        collect `(,flag ,(when (member flag flags)
-                   `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags))))))
+    (loop for flag in *flag-codes* by 'cddr
+          collect `(,flag ,(when (member flag flags)
+                             `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags)))))))
 
 
 
