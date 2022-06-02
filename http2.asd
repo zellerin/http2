@@ -18,7 +18,8 @@
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (asdf:defsystem #:http2/test
-  :depends-on (http2)
+  :depends-on (http2 stefil)
   :perform (test-op (o s)
                     (uiop:symbol-call :http2 'do-test) )
-  :components ((:file "test")))
+  :components ((:file "pipe")
+               (:file "test")))
