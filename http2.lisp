@@ -1649,7 +1649,7 @@ RFC 7540                         HTTP/2                         May 2015
     ((last-stream-id 31)
      (error-code 32)
      (debug-data vector)
-     (reserved 1))
+     (reserved t))
     (:length (+ 8 (length debug-data))
      :must-not-have-stream t)
 
@@ -1755,9 +1755,9 @@ RFC 7540                         HTTP/2                         May 2015
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
     ((window-size-increment 31)
-     (reserved 1))
+     (reserved t))
     (:length 4)
-    ((write-bytes 4 (logior window-size-increment (if reserved #x80000000))))
+    ((write-bytes 4 (logior window-size-increment (if reserved #x80000000 0))))
 
     (;;reader
      (unless (zerop flags)
