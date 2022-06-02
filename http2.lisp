@@ -1367,8 +1367,9 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :must-not-have-stream t)
     ;; writer
     ((dolist (setting settings)
-        (declare ((cons symbol (unsigned-byte 32)) setting))
-       (write-bytes 2 (find-setting-code (car setting)))
+       (declare ((cons (or (integer 0 256) symbol) (unsigned-byte 32)) setting))
+       (write-bytes 2 (if (numberp (car setting)) (car setting)
+                          (find-setting-code (car setting))))
        (write-bytes 4 (cdr setting))))
     ;;reader
     ((cond
@@ -1383,12 +1384,12 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
            for i from length downto 1 by 6
            for identifier = (read-bytes  2)
            and value = (read-bytes 4)
-           and name = (find-setting-by-id  identifier)
+           for name = (find-setting-by-id identifier)
            ;;    An endpoint that receives a SETTINGS frame with any unknown or
            ;;    unsupported identifier MUST ignore that setting.
            when name
-           collect (cons name  value) into settings
-           finally (setf (get-peer-settings connection) settings))))))
+           do (set-peer-setting connection name value)
+           finally (peer-expects-settings-ack connection))))))
 
 (defun find-setting-by-id (id)
   (or (car (find id *settings-alist* :key 'second))

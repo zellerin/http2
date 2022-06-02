@@ -91,12 +91,15 @@ return an object representing new stream.")
 (defmethod update-dynamic-table-size (connection new-size)
   (adjust-array (get-dynamic-table connection) new-size))
 
+(defmethod set-peer-setting (connection name value)
+  (warn "Peer settings not used - ~a ~a." name value))
+
+(defmethod peer-expects-settings-ack (connection)
+  (warn "Automatical peer settings acking not implemented."))
 
 ;;;; Classes
 (defclass stream-or-connection ()
   ((window-size  :accessor get-window-size  :initarg :window-size)))
-
-
 
 (defclass http2-connection (stream-or-connection)
   ((network-stream      :accessor get-network-stream       :initarg :network-stream)
