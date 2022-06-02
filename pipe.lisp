@@ -51,20 +51,26 @@ testing."
                                                :stream-id stream-id
                                                :state STATE))))
 
-(defmacro with-sender-receiver (() &body body)
+(defmacro with-sender-receiver ((&key (init-state 'open)) &body body)
   "Run BODY with sender and receiver bound to a piped streams.
 
 Bind PROCESS-MESSAGES function to pass messages in both directions until all is
 quiet."
   `(multiple-value-bind (write-stream read-stream) (make-full-pipe)
      (let ((sender (make-dummy-connection write-stream))
-           (receiver (make-dummy-connection read-stream)))
+           (receiver (make-dummy-connection read-stream :state ,init-state))
+           (sender-signalled)
+           (receiver-signalled))
        (flet ((process-messages ()
                 (loop
-                  (cond ((listen (get-network-stream receiver))
-                         (read-frame receiver))
-                        ((listen (get-network-stream sender))
-                         (read-frame sender))
+                  (cond ((and (null receiver-signalled)
+                              (listen (get-network-stream receiver)))
+                         (handler-case (read-frame receiver)
+                           (serious-condition (e) (setf receiver-signalled e))))
+                        ((and (null sender-signalled)
+                              (listen (get-network-stream sender)))
+                         (handler-case (read-frame sender)
+                           (serious-condition (e) (setf sender-signalled e))))
                         (t (return))))))
          ,@body))))
 
@@ -75,19 +81,27 @@ quiet."
 
 (defun test-one-frame (send-fn send-pars &key expected-log-connection expected-log-stream
                                            expected-log-sender
-                                           (stream 1))
-  (with-sender-receiver ()
+                                           expected-sender-error
+                                           expected-receiver-error
+                                           (stream 1)
+                                           (init-state 'open))
+  (with-sender-receiver (:init-state init-state)
     "Send message by SEND-FN with SEND-PARS to receiver, and let all relevant
 communication happen. Check that in the end, logs on sender and receiver are as
 expected."
     (apply send-fn sender
-           (cond
-             ((numberp stream)
-              (make-instance 'http2-stream :stream-id 1))
-             ((eq stream :connection) sender)
-             (t (error "Stream parameter must be stream id number or :connection")))
-           send-pars)
+              (cond
+                ((numberp stream)
+                 (make-instance 'http2-stream :stream-id 1))
+                ((eq stream :connection) sender)
+                (t (error "Stream parameter must be stream id number or :connection")))
+              send-pars)
     (process-messages)
+    (stefil:is (eq expected-sender-error (and sender-signalled (type-of sender-signalled)))
+        "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
+    (stefil:is (eq expected-receiver-error
+                   (and receiver-signalled (type-of receiver-signalled)))
+        "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
     (check-history send-fn send-pars expected-log-stream
                    (get-history (car (get-streams receiver))) "stream")
     (check-history send-fn send-pars expected-log-connection

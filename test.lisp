@@ -5,6 +5,12 @@
   (test-one-frame #'write-data-frame '(#(1 2 3 4 5))
                   :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
 
+  (test-one-frame #'write-data-frame '(#(1 2 3 4 5))
+                  :init-state 'closed
+                  :expected-sender-error 'go-away
+                  :expected-receiver-error 'peer-should-go-away
+                  :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 5 :ERROR-CODE +NO-ERROR+)))
+
   (test-one-frame #'write-data-frame '(#(1 2 3 4 5)
                                        :padded #(0 1 2 3  6 7))
                   :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
@@ -62,15 +68,17 @@
   (test-one-frame #'write-goaway-frame `(#x42 #xec0de #(1 2 3 4 5) nil)
                   :expected-log-connection
                   '((:go-away :last-stream-id 966878 :error-code
-                     undefined-error-code-42 :debug-data #(1 2 3 4 5)))
-                  :stream :connection)
+                     undefined-error-code-42))
+                  :stream :connection
+                  :expected-receiver-error 'go-away)
 
   (test-one-frame #'write-goaway-frame `(,+no-error+ #xec0de #(1 2 3 4 5) nil)
                   :expected-log-connection
                   '((:go-away :last-stream-id 966878
                               :error-code +no-error+
-                              :debug-data #(1 2 3 4 5)))
-                  :stream :connection)
+                              ))
+                  :stream :connection
+                  :expected-receiver-error 'go-away)
 
   (test-one-frame #'write-window-update-frame '(#x40000 nil)
                   :expected-log-stream
