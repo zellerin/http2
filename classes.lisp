@@ -307,3 +307,56 @@ PAYLOAD)."
 (defmethod handle-undefined-frame (type flags length)
   "Callback that is called when a frame of unknown type is received - see
 extensions..")
+
+
+;;;; Connection and stream for logging: tracks every callback in (reversed)
+;;;; history.
+(defclass logging-object ()
+  ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
+  (:default-initargs :reversed-history nil))
+
+(defclass logging-connection (http2-connection logging-object)
+  ())
+
+(defclass logging-stream (http2-stream logging-object)
+  ())
+
+(defun add-log (object log-pars)
+  (push log-pars (get-reversed-history object)))
+
+(defun get-history (object)
+  (reverse (get-reversed-history object)))
+
+(defmethod apply-data-frame ((connection logging-connection) (stream logging-stream)
+                             payload)
+  (add-log stream `(:payload ,payload)))
+
+(defmethod add-header :before ((stream logging-stream) name value)
+  (add-log stream `(:header ,name ,value)))
+
+(defmethod apply-stream-priority ((stream logging-stream) exclusive weight stream-dependency)
+  (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))
+
+(defmethod peer-resets-stream ((stream logging-stream) error-code)
+  (add-log stream `(:closed :error ,(get-error-name error-code))))
+
+(defmethod set-peer-setting :before ((connection logging-connection) name value)
+  (add-log connection `(:setting ,name ,value)))
+
+(defmethod peer-expects-settings-ack :before ((connection logging-connection))
+  (add-log connection '(:settings-ack-needed)))
+
+(defmethod do-ping :before ((connection logging-connection) data)
+  (add-log connection `(:ping ,data)))
+
+(defmethod do-pong :before ((connection logging-connection) data)
+  (add-log connection `(:pong ,data)))
+
+(defmethod do-goaway :around ((connection logging-connection) error-code last-stream-id debug-data)
+  (add-log connection `(:go-away :last-stream-id ,last-stream-id
+                           :error-code ,error-code
+                                 :debug-data ,debug-data)))
+
+(defmethod apply-window-size-increment :before ((object logging-object) increment)
+  (add-log object `(:window-size-increment ,increment)))
+

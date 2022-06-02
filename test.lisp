@@ -46,8 +46,10 @@
   ; expected error
   #+nil (test-one-frame 'write-settings-frame '(((1 . 2)))
                         :expected-log-connection 12)
+
   (test-one-frame 'write-settings-frame '(((1 . 2)))
-                  :expected-log-connection '((:setting :header-table-size 2) (:settings-ACK-NEEDED))
+                  :expected-log-connection '((:setting :header-table-size 2)
+                                             (:settings-ACK-NEEDED))
                   :stream :connection)
 
   #+nil(test-one-frame 'write-push-promise-frame )
@@ -55,7 +57,29 @@
   (test-one-frame #'write-ping-frame '(#x42)
                   :expected-log-connection '((:ping #x42))
                   :expected-log-sender '((:pong #x42))
-                  :stream :connection))
+                  :stream :connection)
+
+  (test-one-frame #'write-goaway-frame `(#x42 #xec0de #(1 2 3 4 5) nil)
+                  :expected-log-connection
+                  '((:go-away :last-stream-id 966878 :error-code
+                     undefined-error-code-42 :debug-data #(1 2 3 4 5)))
+                  :stream :connection)
+
+  (test-one-frame #'write-goaway-frame `(,+no-error+ #xec0de #(1 2 3 4 5) nil)
+                  :expected-log-connection
+                  '((:go-away :last-stream-id 966878
+                              :error-code +no-error+
+                              :debug-data #(1 2 3 4 5)))
+                  :stream :connection)
+
+  (test-one-frame #'write-window-update-frame '(#x40000 nil)
+                  :expected-log-stream
+                  '((:window-size-increment #x40000)))
+
+  (test-one-frame #'write-window-update-frame '(#x40000 nil)
+                  :stream :connection
+                  :expected-log-connection
+                  '((:window-size-increment #x40000))))
 
 (defvar *test-webs*
           '(("https://example.com" "<title>Example Domain</title>" 200)
@@ -74,6 +98,7 @@
              (stefil:is (equal code (cdr (assoc :status headers)))
                  "Page ~a does not have status ~a" page code)))  )
 
-(defun do-test ()
+(defun do-test (&optional remote-tests)
   (test-frames)
-  (test-webs))
+  (when remote-tests
+    (test-webs)))
