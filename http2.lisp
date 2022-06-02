@@ -1581,8 +1581,7 @@ RFC 7540                         HTTP/2                         May 2015
        ;; ;; be treated as a connection error (Section 5.4.1) of type
        ;; ;; FRAME_SIZE_ERROR.
        (http2-error 'frame-size-error))
-      (let ((data (make-array 8 :element-type '(unsigned-byte 8))))
-        (read-vector data)
+      (let ((data (read-bytes 8)))
         (if ack
             (do-pong connection data)
             (do-ping connection data)))))

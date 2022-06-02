@@ -263,10 +263,11 @@ PAYLOAD)."
   nil)
 
 (defmethod do-ping (connection data)
-  (logger "Ping ~s" data))
+  (write-ping-frame connection connection data :ack t))
 
 (defmethod do-pong (connection data)
-  (logger "Pong ~s" data))
+  ;; measure time?
+  )
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
