@@ -38,9 +38,6 @@ when describing frame sizes.")
   (dotimes (i n)
     (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
 
-(defun http2-error (error-code &rest pars)
-  (error "HTTP2 error ~a ~s" error-code pars))
-
 (defvar *log-stream* (make-broadcast-stream)
   "Stream for logging output send by LOGGER.")
 

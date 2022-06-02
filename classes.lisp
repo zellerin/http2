@@ -85,7 +85,8 @@ return an object representing new stream.")
 (defgeneric apply-window-size-increment (object increment)
   (:method (object increment)
     (when (zerop increment)
-      (http2-error 'protocol-error))
+      ;; fixme: why?
+      (http2-error object +protocol-error+ ""))
     (setf (get-window-size object) increment)))
 
 (defmethod update-dynamic-table-size (connection new-size)
@@ -219,7 +220,7 @@ return an object representing new stream.")
       ((eq new-state old-state))
       ((eq new-state :keep))
       (new-state (setf (get-state stream) new-state))
-      (other-case-error (http2-error other-case-error)))
+      (other-case-error (http2-error stream other-case-error "Bad state transition")))
     new-state))
 
 (defmethod apply-data-frame :before (connection (stream http2-stream) payload)
@@ -268,6 +269,23 @@ PAYLOAD)."
 (defmethod do-pong (connection data)
   ;; measure time?
   )
+
+(define-condition peer-should-go-away (serious-condition)
+  ((error-code     :accessor get-error-code     :initarg :error-code)
+   (debug-data     :accessor get-debug-data     :initarg :debug-data)
+   (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
+
+(defmethod http2-error (connection error-code debug-code &rest args)
+  (let ((formatted (apply #'format nil debug-code args)))
+    (write-goaway-frame connection connection
+                        0 ; fixme: last processed stream
+                        error-code
+                        (map 'vector 'char-code formatted)
+                        nil)
+    (error 'peer-should-go-away
+           0 ; fixme: last processed stream
+           error-code formatted
+           nil)))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
@@ -352,10 +370,12 @@ extensions..")
 (defmethod do-pong :before ((connection logging-connection) data)
   (add-log connection `(:pong ,data)))
 
-(defmethod do-goaway :around ((connection logging-connection) error-code last-stream-id debug-data)
+(defmethod do-goaway :before ((connection logging-connection) error-code last-stream-id debug-data)
   (add-log connection `(:go-away :last-stream-id ,last-stream-id
-                           :error-code ,error-code
-                                 :debug-data ,debug-data)))
+                           :error-code ,error-code)))
+
+(defmethod do-goaway :around ((connection logging-connection) error-code last-stream-id debug-data)
+  (call-next-method))
 
 (defmethod apply-window-size-increment :before ((object logging-object) increment)
   (add-log object `(:window-size-increment ,increment)))

@@ -93,7 +93,7 @@ that is set to T if it is in FLAGS and appropriate bit is set in the read flags.
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
                                 must-have-stream-in must-not-have-stream
-                                (bad-state-error 'stream-closed))
+                                (bad-state-error +stream-closed+))
                              writer-body
                              (&body reader))
   "This specification defines a number of frame types, each identified by a unique
@@ -168,15 +168,14 @@ The macro defining FRAME-TYPE-NAME :foo defines
                  (declare (ignorable #'read-bytes #'read-byte* #'read-vector))
                  ,@(cond (must-have-stream-in
                           `((when (eq connection http-stream)
-                              ;; Frame MUST be associated with a stream.  If
-                              ;; a frame is received whose stream identifier
-                              ;; field is 0x0, the recipient MUST respond with a
-                              ;; connection error (Section 5.4.1) of type
-                              ;; PROTOCOL_ERROR.
-                              (http2-error 'protocol-error "Frame must be associated with a stream"))
+                              (http2-error connection 'protocol-error
+                                           "Frame MUST be associated with a stream. If a
+                              frame is received whose stream identifier field is
+                              0x0, the recipient MUST respond with a connection
+                              error (Section 5.4.1) of type PROTOCOL_ERROR."))
                             (unless (member (get-state http-stream)
                                             ',must-have-stream-in)
-                              (http2-error ',bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ',must-have-stream-in))))
+                              (http2-error connection ',bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ',must-have-stream-in))))
                          (must-not-have-stream
                           '((unless (eq connection http-stream)
                               ;; Frame MUST NOT be associated with a stream.  If
@@ -184,7 +183,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; field is 0x0, the recipient MUST respond with a
                               ;; connection error (Section 5.4.1) of type
                               ;; PROTOCOL_ERROR.
-                              (http2-error 'protocol-error "Frame must not be associated with a stream")))))
+                              (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
                  (when end-stream (process-end-stream connection http-stream))
                  ,@(when (member 'end-headers flags)
@@ -310,9 +309,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
              ((unsigned-byte 8) type flags)
              ((unsigned-byte 31) http-stream))
 
-    ;; An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds
-    ;; the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for
-    ;; the frame type, or is too small to contain mandatory frame data.  A frame
+    ;;  A frame
     ;; size error in a frame that could alter the state of the entire connection
     ;; MUST be treated as a connection error (Section 5.4.1); this includes any
     ;; frame carrying a header block (Section 4.3) (that is, HEADERS, PUSH_PROMISE,
@@ -325,7 +322,10 @@ The macro defining FRAME-TYPE-NAME :foo defines
     ;; performance.
     (if (> length *max-frame-size*)
         ;; fixme: sometimes connection error.
-        (http2-error 'frame-size-error))
+        (http2-error connection 'frame-size-error
+                     "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the
+size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
+type, or is too small to contain mandatory frame data. "))
     (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object
             (if (< type +known-frame-types-count+)
@@ -345,9 +345,9 @@ arrangement or negotiation."
         ;; frame on a different stream as a connection error (Section 5.4.1) of
         ;; type PROTOCOL_ERROR.
         (when (not (eq (frame-type-name frame-type-object) :continuation-frame))
-          (http2-error 'protocol-error "Continuation frame expected"))
+          (http2-error connection 'protocol-error "Continuation frame expected"))
         (unless (= http-stream (get-expect-continuation connection))
-          (http2-error 'protocol-error "Continuation frame should be for a different stream")))
+          (http2-error connection 'protocol-error "Continuation frame should be for a different stream")))
       (values
        (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
@@ -355,7 +355,7 @@ arrangement or negotiation."
                            (or (find http-stream (get-streams connection)
                                      :key #'get-stream-id)
                                (peer-opens-http-stream connection http-stream type)
-http-stream))
+                               http-stream))
                        length flags))
              (t (read-sequence payload stream)
                 (logger "~s" (list :frame  payload http-stream type flags))))
@@ -1053,8 +1053,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
-        (http2-error 'protocol-error "If the length of the padding is the length of the
-frame payload or greater, the recipient MUST treat this as a
+        (http2-error connection 'protocol-error "If the length of the padding is the length of the frame payload or greater, the recipient MUST treat this as a
 connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
         (loop while (plusp length)
@@ -1108,9 +1107,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
         (setf (get-expect-continuation connection) (get-stream-id http-stream)))
 
       (when (minusp length)
-        ;; Padding that exceeds the size remaining for the header block
-        ;; fragment MUST be treated as a PROTOCOL_ERROR.
-        (http2-error 'protocol-error))
+
+        (http2-error connection 'protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
       (read-and-add-headers connection http-stream length)))
 
 (defun read-and-add-headers (connection http-stream length)
@@ -1165,7 +1163,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     ((unless (= length 5)
        ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
        ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-       (http2-error 'frame-size-error
+       (http2-error connection 'frame-size-error
                     "A PRIORITY frame with a length other than 5 octets MUST be treated as a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
 "))
      (assert (= flags 0))
@@ -1215,16 +1213,9 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :bad-state-error protocol_error)
     ((write-bytes 4 error-code))
     ((assert (zerop flags))
-      (when (eq connection http-stream)
-          ;;RST_STREAM frames MUST be associated with a stream.  If a RST_STREAM
-          ;;frame is received with a stream identifier of 0x0, the recipient MUST
-          ;;treat this as a connection error (Section 5.4.1) of type
-          ;;PROTOCOL_ERROR.
-          (http2-error 'protocol-error))
       (unless (= length 4)
-        ;; A RST_STREAM frame with a length other than 4 octets MUST be treated
-        ;; as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-        (http2-error 'frame-size-error))
+        (http2-error connection 'frame-size-error
+                     "A RST_STREAM frame with a length other than 4 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
       (peer-resets-stream http-stream (read-bytes 4))))
 
 #|
@@ -1577,10 +1568,8 @@ RFC 7540                         HTTP/2                         May 2015
     ;; writer
     ((write-bytes 8 opaque-data))
     ((unless (= length 8)
-       ;; ;; Receipt of a PING frame with a length field value other than 8 MUST
-       ;; ;; be treated as a connection error (Section 5.4.1) of type
-       ;; ;; FRAME_SIZE_ERROR.
-       (http2-error 'frame-size-error))
+       (http2-error connection 'frame-size-error
+                    "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
       (let ((data (read-bytes 8)))
         (if ack
             (do-pong connection data)
@@ -1899,10 +1888,7 @@ The CONTINUATION frame defines the following flag:
    the recipient MUST respond with a connection error (Section 5.4.1) of
    type PROTOCOL_ERROR.
 
-   A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
-   CONTINUATION frame without the END_HEADERS flag set.  A recipient
-   that observes violation of this rule MUST respond with a connection
-   error (Section 5.4.1) of type PROTOCOL_ERROR.
+
 "
     ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
@@ -1913,7 +1899,11 @@ The CONTINUATION frame defines the following flag:
     ;; we have already checked that HTTP-STREAM is correct in read-frame
     ((let ()
        (unless (get-expect-continuation connection)
-         (http2-error 'protocol_error))
+         (http2-error connection +protocol-error+
+                      "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
+   CONTINUATION frame without the END_HEADERS flag set.  A recipient that
+   observes violation of this rule MUST respond with a connection error (Section
+   5.4.1) of type PROTOCOL_ERROR."))
        (read-and-add-headers connection http-stream length))))
 
 
