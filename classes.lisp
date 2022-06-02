@@ -94,6 +94,26 @@ return an object representing new stream.")
 (defmethod set-peer-setting (connection name value)
   (warn "Peer settings not used - ~a ~a." name value))
 
+(defmethod set-peer-setting (connection (name (eql :header-table-size)) value)
+  ;; do something
+  )
+
+(defmethod set-peer-setting (connection (name (eql :initial-window-size)) value)
+  ;; do something
+  )
+
+(defmethod set-peer-setting (connection (name (eql :max-frame-size)) value)
+  ;; do something
+  )
+
+(defmethod set-peer-setting (connection (name (eql :max-header-list-size)) value)
+  ;; do something
+  )
+
+(defmethod set-peer-setting (connection (name (eql :max-concurrent-streams)) value)
+  ;; do something
+  )
+
 (defmethod peer-expects-settings-ack (connection)
 ;  (write-ack-setting-frame (get-network-stream connection))
 ;  (write-settings-frame connection connection nil :ack t)
