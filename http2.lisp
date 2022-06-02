@@ -1922,11 +1922,6 @@ The CONTINUATION frame defines the following flag:
 
 
 
-(defun get-error-name (code)
-  (if (<= 0 code #xd)
-      (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~A" code))))
-
 (defvar *error-codes*
   (macrolet ((defcode (name code documentation)
              `(progn
@@ -1956,9 +1951,10 @@ The CONTINUATION frame defines the following flag:
    to either streams or the entire connection and have no defined
    semantics in the other context.")
 
-
-
-
+(defun get-error-name (code)
+  (if (<= 0 code #xd)
+      (aref *error-codes* code)
+      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
 
 #|
    NO_ERROR (0x0):  The associated condition is not a result of an
