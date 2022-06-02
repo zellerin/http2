@@ -88,6 +88,9 @@ return an object representing new stream.")
       (http2-error 'protocol-error))
     (setf (get-window-size object) increment)))
 
+(defmethod update-dynamic-table-size (connection new-size)
+  (adjust-array (get-dynamic-table connection) new-size))
+
 
 ;;;; Classes
 (defclass stream-or-connection ()

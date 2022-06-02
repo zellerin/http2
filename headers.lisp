@@ -176,7 +176,7 @@
       ;; dynamic table size update
       (t (let ((dynamic-table-size (get-integer-from-octet stream octet0 5)))
            ;; fixme: dynamic tables not implemented
-           (logger "Dynamic table size update ~d" dynamic-table-size)
+           (update-dynamic-table-size connection dynamic-table-size)
            nil)))))
 
 
