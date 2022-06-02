@@ -1,6 +1,6 @@
 #+TITLE: http/2 in Common Lisp
 
-This is a (work in progress) implementation of http2 protocol as described in
+This is a (work in progress) implementation of http/2 protocol as described in
 RFC7540 and RFC7541.
 
 The core part of the library is implementing reading and writing http2
@@ -24,16 +24,11 @@ apparently do not support other ways of http/2 setup).
 | Settings      | ✓       | ✓       |
 | Push-promise  |         | ✓       |
 | Ping          | ✓       | ✓       |
-| Goaway        | ✓       |         |
+| Goaway        | ✓       | ✓       |
 | Window-update | ✓       | ✓       |
 | Continuation  | ✓       | ✓       |
 
-Error handling is not fully implemented: errors are detected on many places, but
-the GOAWAY frame is not set yet.
-
-Priorities are not implemented.
-
-
+Priorities are not implemented. Push promises are not implemented, but they are disabled by default.
 
 ** License
 
@@ -46,4 +41,6 @@ is allowed. Big chunks of RFC text mean usually something is not implemented and
 ** Related software
 There is an Akamai code on https://github.com/akamai/cl-http2-protocol that
 supported bigger parts of the drafted HTTP/2 protocol in 2014; apparently hard
-to run now, used NPN instead of ALPN. It might be reasonable to pilfer some pieces and ideas (especially interface level) from that one, but I have not done so (yet).
+to run now, used NPN instead of ALPN. It might be reasonable to pilfer some
+pieces and ideas (especially interface level) from that one, but I have not done
+so (yet).
