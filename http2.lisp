@@ -1147,7 +1147,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    Weight:  An unsigned 8-bit integer representing a priority weight for
       the stream (see Section 5.3).  Add one to the value to obtain a
       weight between 1 and 256."
-    ((exclusive 1)
+    ((exclusive t)
      (stream-dependency 31)
      (weight 8))
     (:length 5

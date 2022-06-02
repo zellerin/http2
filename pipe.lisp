@@ -21,6 +21,13 @@
             (make-instance 'pipe-end-for-read :buffer buffer
                            :index 0))))
 
+(defun make-full-pipe ()
+  (multiple-value-bind (write-stream-a read-stream-a) (make-pipe)
+    (multiple-value-bind (write-stream-b read-stream-b) (make-pipe)
+      (values
+       (make-two-way-stream read-stream-b write-stream-a)
+       (make-two-way-stream read-stream-a write-stream-b)))))
+
 (defmethod trivial-gray-streams:stream-write-byte ((stream pipe-end-for-write) byte)
   (vector-push-extend byte (get-buffer stream)))
 
@@ -55,6 +62,25 @@
 (defmethod add-header :before ((stream logging-stream) name value)
   (add-log stream `(:header ,name ,value)))
 
+(defmethod apply-stream-priority ((stream logging-stream) exclusive weight stream-dependency)
+  (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))
+
+(defmethod peer-resets-stream ((stream logging-stream) error-code)
+  (add-log stream `(:closed :error ,(get-error-name error-code))))
+
+(defmethod set-peer-setting :before ((connection logging-connection) name value)
+  (add-log connection `(:setting ,name ,value)))
+
+(defmethod peer-expects-settings-ack :before ((connection logging-connection))
+  (add-log connection '(:settings-ack-needed)))
+
+(defmethod do-ping :before ((connection logging-connection) data)
+  (add-log connection `(:ping ,data)))
+
+(defmethod do-pong :before ((connection logging-connection) data)
+  (add-log connection `(:pong ,data)))
+
+
 (defun make-dummy-connection (stream &key (class 'logging-connection)
                                        (STREAM-ID 1) (STATE 'open))
   "Make a dummy connection class with one stream of id ID in state STATE."
@@ -65,27 +91,37 @@
                                                :state STATE))))
 
 (defmacro with-sender-receiver (() &body body)
-  `(multiple-value-bind (write-stream read-stream) (make-pipe)
+  `(multiple-value-bind (write-stream read-stream) (make-full-pipe)
      (let ((sender (make-dummy-connection write-stream))
            (receiver (make-dummy-connection read-stream)))
        ,@body)))
 
-(defun test-one-frame (send-fn &rest send-pars)
-  (with-sender-receiver ()
-    (apply send-fn sender (make-instance 'http2-stream :stream-id 1) send-pars)
-    (read-frame receiver)
-    (cons
-     (get-history receiver)
-     (get-history (car (get-streams receiver))))))
+(defun check-history (fn pars expected got type)
+    (when expected
+      (stefil:is (equalp expected got)
+          "(~a ~{~s~^ ~}): ~a should have log~%+++ ~s, not~%--- ~s~%" fn pars type
+          expected got)))
 
-(stefil:deftest test-frames ()
-  (stefil:is (equalp (test-one-frame #'write-data-frame #(1 2 3 4 5))
-                     '(NIL (:PAYLOAD #(1 2 3 4 5))))
-      "Payload not processed")
-  (stefil:is (equalp (test-one-frame #'write-headers-frame
-                                     (list (encode-header "foo" "bar")
-                                           (encode-header :path "/")
-                                           (encode-header "baz" "bah")))
-                     '(NIL (:header :path "/")))
-      "Header frames do not match.")
-  nil)
+(defun test-one-frame (send-fn send-pars &key expected-log-connection expected-log-stream
+                                           expected-log-sender
+                                           (stream 1))
+  (with-sender-receiver ()
+    (apply send-fn sender
+           (cond
+             ((numberp stream)
+              (make-instance 'http2-stream :stream-id 1))
+             ((eq stream :connection) sender)
+             (t (error "Stream parameter must be stream id number or :connection")))
+           send-pars)
+    (loop
+      (cond ((listen (get-network-stream receiver))
+             (read-frame receiver))
+            ((listen (get-network-stream sender))
+             (read-frame sender))
+            (t (return))))
+    (check-history send-fn send-pars expected-log-stream
+                   (get-history (car (get-streams receiver))) "stream")
+    (check-history send-fn send-pars expected-log-connection
+                   (get-history receiver) "connection")
+    (check-history send-fn send-pars expected-log-sender
+                   (get-history sender) "sender")))

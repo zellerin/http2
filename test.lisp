@@ -1,7 +1,79 @@
 (in-package http2)
 
+
+(stefil:deftest test-frames ()
+  (test-one-frame #'write-data-frame '(#(1 2 3 4 5))
+                  :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
+
+  (test-one-frame #'write-data-frame '(#(1 2 3 4 5)
+                                       :padded #(0 1 2 3  6 7))
+                  :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
+
+  (test-one-frame #'write-headers-frame
+                  (list (list (encode-header "foo" "bar")
+                              (encode-header :path "/")
+                              (encode-header "baz" "bah")))
+                  :expected-log-stream
+                  '((:header "foo" "bar")
+                    (:header :path "/")
+                    (:header "baz" "bah")))
+
+  (test-one-frame #'write-headers-frame
+                  '((("foo" "bar")
+                     (:path "/")
+                     ("baz" "bah")))
+                  :expected-log-stream
+                  '((:header "foo" "bar")
+                    (:header :path "/")
+                    (:header "baz" "bah")))
+
+  (test-one-frame #'write-priority-frame '(t 12 34)
+                  :expected-log-stream
+                  '((:new-prio :exclusive t :weight 34 :dependency 12)))
+
+  (test-one-frame #'write-priority-frame '(nil 12 34)
+                  :expected-log-stream
+                  '((:new-prio :exclusive nil :weight 34 :dependency 12)))
+
+  (test-one-frame #'write-rst-stream-frame '(#xdeadbeef)
+                  :expected-log-stream
+                  '((:closed :error undefined-error-code-deadbeef)))
+
+  (test-one-frame #'write-rst-stream-frame '(1)
+                  :expected-log-stream
+                  '((:closed :error +protocol-error+)))
+
+  ; expected error
+  #+nil (test-one-frame 'write-settings-frame '(((1 . 2)))
+                        :expected-log-connection 12)
+  (test-one-frame 'write-settings-frame '(((1 . 2)))
+                  :expected-log-connection '((:setting :header-table-size 2) (:settings-ACK-NEEDED))
+                  :stream :connection)
+
+  #+nil(test-one-frame 'write-push-promise-frame )
+
+  (test-one-frame #'write-ping-frame '(#x42)
+                  :expected-log-connection '((:ping #x42))
+                  :expected-log-sender '((:pong #x42))
+                  :stream :connection))
+
+(defvar *test-webs*
+          '(("https://example.com" "<title>Example Domain</title>" 200)
+            ("https://lupa.cz" "Moved Permanently" "301")
+            ("https://www.lupa.cz" "Lupa" 200)
+            ("https://www.seznam.cz" "" 200))
+  "List of tripples for testing pages: URL, text on page and status code.")
+
+(defun test-webs (&optional (webs *test-webs*))
+  (loop for (page search-term code) in webs
+        do
+           (multiple-value-bind (body headers)
+               (retrieve-url page)
+             (stefil:is (search search-term body)
+                 "Page ~a does not contain ~a" page search-term)
+             (stefil:is (equal code (cdr (assoc :status headers)))
+                 "Page ~a does not have status ~a" page code)))  )
+
 (defun do-test ()
-  (multiple-value-bind (body headers)
-      (retrieve-url "https://example.com")
-    (assert (search "<title>Example Domain</title>" body))
-    (assert (assoc :status headers))))
+  (test-frames)
+  (test-webs))
