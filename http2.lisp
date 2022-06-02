@@ -1077,7 +1077,13 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    \"half-closed (remote)\" state.
 "
     ((headers list)) ;  &key dependency weight
-    (:length (reduce '+ (mapcar 'length headers))
+    (:length
+     (progn
+       (setf headers
+             (loop for header in headers
+                   collect (if (vectorp header) header
+                               (encode-header (car header) (second header)))))
+       (reduce '+ (mapcar 'length headers)))
      :flags (padded end-stream end-headers
                     ;; PRIORITY: When set, bit 5 indicates that the Exclusive
                     ;; Flag (E), Stream Dependency, and Weight fields are
