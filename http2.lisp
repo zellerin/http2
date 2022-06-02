@@ -91,9 +91,11 @@ that is set to T if it is in FLAGS and appropriate bit is set in the read flags.
 
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
-                             (&key (flags nil) length)
+                             (&key (flags nil) length
+                                must-have-stream-in must-not-have-stream
+                                (bad-state-error 'stream-closed))
                              writer-body
-                        (&body reader))
+                             (&body reader))
   "This specification defines a number of frame types, each identified by a unique
 8-bit TYPE CODE.  Each frame type serves a distinct purpose in the establishment
 and management either of the connection as a whole or of individual streams.
@@ -124,7 +126,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
              (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
              (stream-name (gensym "STREAM")))
 
-         ;;; Writer
+;;; Writer
          `((defun ,writer-name (connection http-stream
                                 ,@ (mapcar 'first parameters) &key ,@flags)
              ,documentation
@@ -132,7 +134,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               collect `(,(if (integerp (second par))
                                              `(unsigned-byte ,(second par))
                                              (second par)
-)
+                                             )
                                         ,(first par))))
              (let ((,stream-name (get-network-stream connection)))
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
@@ -164,6 +166,25 @@ The macro defining FRAME-TYPE-NAME :foo defines
                       (read-byte* () (read-byte* ,stream-name))
                       (read-vector (seq) (read-sequence seq ,stream-name)))
                  (declare (ignorable #'read-bytes #'read-byte* #'read-vector))
+                 ,@(cond (must-have-stream-in
+                          `((when (eq connection http-stream)
+                              ;; Frame MUST be associated with a stream.  If
+                              ;; a frame is received whose stream identifier
+                              ;; field is 0x0, the recipient MUST respond with a
+                              ;; connection error (Section 5.4.1) of type
+                              ;; PROTOCOL_ERROR.
+                              (http2-error 'protocol-error "Frame must be associated with a stream"))
+                            (unless (member (get-state http-stream)
+                                            ',must-have-stream-in)
+                              (http2-error ',bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ',must-have-stream-in))))
+                         (must-not-have-stream
+                          '((unless (eq connection http-stream)
+                              ;; Frame MUST NOT be associated with a stream.  If
+                              ;; a frame is received whose stream identifier
+                              ;; field is 0x0, the recipient MUST respond with a
+                              ;; connection error (Section 5.4.1) of type
+                              ;; PROTOCOL_ERROR.
+                              (http2-error 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
                  (when end-stream (process-end-stream connection http-stream))
                  ,@(when (member 'end-headers flags)
@@ -318,8 +339,7 @@ arrangement or negotiation."
                                    (declare (ignore http-stream))
                                    (handle-undefined-frame type flags length)
                                    (let ((stream (get-network-stream connection)))
-                                     (dotimes (i length) (read-byte stream)))))
-                )))
+                                     (dotimes (i length) (read-byte stream))))))))
       (when (get-expect-continuation connection)
         ;; A receiver MUST treat the receipt of any other type of frame or a
         ;; frame on a different stream as a connection error (Section 5.4.1) of
@@ -332,28 +352,16 @@ arrangement or negotiation."
        (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
                        (if (zerop http-stream) connection
-                           (find http-stream (get-streams connection)
-                                 :key #'get-stream-id))
+                           (or (find http-stream (get-streams connection)
+                                     :key #'get-stream-id)
+                               (peer-opens-http-stream connection http-stream type)
+http-stream))
                        length flags))
              (t (read-sequence payload stream)
                 (logger "~s" (list :frame  payload http-stream type flags))))
        (frame-type-name frame-type-object)))))
 
 
-(defparameter *max-frame-size* 16384
-  "Our frame size.
-
-All implementations MUST be capable of receiving and minimally
-processing frames up to 2^14 octets in length, plus the 9-octet frame
-header (Section 4.1).  The size of the frame header is not included
-when describing frame sizes.
-
-The size of a frame payload is limited by the maximum size that a
-receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
-setting can have any value between 2^14 (16,384) and 2^24-1
-(16,777,215) octets, inclusive.")
-
-(declaim ((integer 16384 16777215) *max-frame-size*))
 
 #|
 
@@ -400,44 +408,6 @@ COMPRESSION_ERROR if it does not decompress a header block.
 
   5.1.  Stream States
 
-  The lifecycle of a stream is shown in Figure 2.
-
-                        +--------+
-                send PP |        | recv PP
-               ,--------|  idle  |--------.
-              /         |        |         \
-             v          +--------+          v
-         +----------+          |           +----------+
-         |          |          | send H /  |          |
-  ,------| reserved |          | recv H    | reserved |------.
-  |      | (local)  |          |           | (remote) |      |
-  |      +----------+          v           +----------+      |
-  |          |             +--------+             |          |
-  |          |     recv ES |        | send ES     |          |
-  |   send H |     ,-------|  open  |-------.     | recv H   |
-  |          |    /        |        |        \    |          |
-  |          v   v         +--------+         v   v          |
-  |      +----------+          |           +----------+      |
-  |      |   half   |          |           |   half   |      |
-  |      |  closed  |          | send R /  |  closed  |      |
-  |      | (remote) |          | recv R    | (local)  |      |
-  |      +----------+          |           +----------+      |
-  |           |                |                 |           |
-  |           | send ES /      |       recv ES / |           |
-  |           | send R /       v        send R / |           |
-  |           | recv R     +--------+   recv R   |           |
-  | send R /  `----------->|        |<-----------'  send R / |
-  | recv R                 | closed |               recv R   |
-  `----------------------->|        |<----------------------'
-                           +--------+
-
-  send:   endpoint sends this frame
-  recv:   endpoint receives this frame
-
-  H:  HEADERS frame (with implied CONTINUATIONs)
-  PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
-  ES: END_STREAM flag
-  R:  RST_STREAM frame
 
   Figure 2: Stream States
 
@@ -1077,16 +1047,11 @@ COMPRESSION_ERROR if it does not decompress a header block.
   for instance, to carry HTTP request or response payloads."
     ((data vector))
     (:length (length data)
-            :flags (padded end-stream))
+     :flags (padded end-stream)
+     :must-have-stream-in (open half-closed/local))
     ((write-vector data))
 
-    ((when (eq connection http-stream)
-       ;; DATA frames MUST be associated with a stream.  If a DATA frame is
-       ;; received whose stream identifier field is 0x0, the recipient MUST
-       ;; respond with a connection error (Section 5.4.1) of type
-       ;; PROTOCOL_ERROR.
-       (http2-error 'protocol-error "DATA frames must be associated with a stream"))
-      (when (minusp length)
+    ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
         (http2-error 'protocol-error "If the length of the padding is the length of the
 frame payload or greater, the recipient MUST treat this as a
@@ -1110,21 +1075,6 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    and additionally carries a header block fragment.  HEADERS frames can
    be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state.
-
-   E: A single-bit flag indicating that the stream dependency is
-      exclusive (see Section 5.3).  This field is only present if the
-      PRIORITY flag is set.
-
-   Stream Dependency:  A 31-bit stream identifier for the stream that
-      this stream depends on (see Section 5.3).  This field is only
-      present if the PRIORITY flag is set.
-
-   Weight:  An unsigned 8-bit integer representing a priority weight for
-      the stream (see Section 5.3).  Add one to the value to obtain a
-      weight between 1 and 256.  This field is only present if the
-      PRIORITY flag is set.
-
-   The HEADERS frame defines the following flags:
 "
     ((headers list)) ;  &key dependency weight
     (:length (reduce '+ (mapcar 'length headers))
@@ -1134,28 +1084,23 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
                     ;; present.
                     ;;
                     ;; Priority is a list (e+stream-dependency weight)
-                    priority))
+                    priority)
+     :must-have-stream-in (idle reserved/remote open half-closed/local))
 
     ;; writer
-    ((when priority
+    ((when priority ; fixme: call write-priority-frame instead
        (write-bytes (first priority) 4)
        (write-bytes (second priority) 1))
      (map nil #'write-vector headers))
 
     ;; reader
-    ((when priority (error "Reading priority not implemented."))
+    ((when priority
+       (read-priority-frame connection http-stream 5 0))
       (unless end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
         ;; another CONTINUATION frame.
         (setf (get-expect-continuation connection) (get-stream-id http-stream)))
 
-      (when (eq connection http-stream)
-        ;; HEADERS frames MUST be associated with a stream.  If a HEADERS frame
-        ;; is received whose stream identifier field is 0x0, the recipient MUST
-        ;; respond with a connection error (Section 5.4.1) of type
-        ;; PROTOCOL_ERROR.
-        (http2-error 'protocol-error "Cannot read headers from stream ID 0"))
-      (open-http-stream connection http-stream)
       (when (minusp length)
         ;; Padding that exceeds the size remaining for the header block
         ;; fragment MUST be treated as a PROTOCOL_ERROR.
@@ -1179,21 +1124,17 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    created.  Prioritization fields in HEADERS frames subsequent to the
    first on a stream reprioritize the stream (Section 5.3.3).
 
-6.3.  PRIORITY
 |#
 (define-frame-type 2 :priority-frame
     "
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
-   of a stream (Section 5.3).  It can be sent in any stream state,
-   including idle or closed streams.
+   of a stream (Section 5.3).
 
     +-+-------------------------------------------------------------+
     |E|                  Stream Dependency (31)                     |
     +-+-------------+-----------------------------------------------+
     |   Weight (8)  |
     +-+-------------+
-
-                     Figure 8: PRIORITY Frame Payload
 
    The payload of a PRIORITY frame contains the following fields:
 
@@ -1205,31 +1146,28 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
    Weight:  An unsigned 8-bit integer representing a priority weight for
       the stream (see Section 5.3).  Add one to the value to obtain a
-      weight between 1 and 256.
-
-   The PRIORITY frame does not define any flags."
+      weight between 1 and 256."
     ((exclusive 1)
      (stream-dependency 31)
      (weight 8))
-    (:length 5)
+    (:length 5
+     :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed))
     ((let ((e+strdep stream-dependency))
        (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
        (write-bytes 4 e+strdep)
        (write-bytes 1 weight)))
-    ((assert (= length 5))
+    ((unless (= length 5)
+       ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
+       ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+       (http2-error 'frame-size-error
+                    "A PRIORITY frame with a length other than 5 octets MUST be treated as a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+"))
      (assert (= flags 0))
-     (when (equal connection http-stream)
-       ;; The PRIORITY frame always identifies a stream.  If a PRIORITY frame
-       ;; is received with a stream identifier of 0x0, the recipient MUST
-       ;; respond with a connection error (Section 5.4.1) of type
-       ;; PROTOCOL_ERROR.
-       (http2-error 'protocol-error))
      (let* ((e+strdep (read-bytes 4))
             (weight (read-bytes 1))
             (exclusive (plusp (ldb (byte 1 31) e+strdep)))
             (stream-dependency (ldb (byte 31 0) e+strdep)))
-       (declare (ignore weight exclusive stream-dependency)))
-     (error "Priority frame reading not implemented")))
+       (apply-stream-priority http-stream exclusive weight stream-dependency))))
 
 #|
    The PRIORITY frame can be sent on a stream in any state, though it
@@ -1246,8 +1184,6 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    streams by altering the priority of an unused or closed parent
    stream.
 
-   A PRIORITY frame with a length other than 5 octets MUST be treated as
-   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
 |#
 (define-frame-type 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
@@ -1262,10 +1198,15 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    identifying the error code (Section 7).  The error code indicates why
    the stream is being terminated.
 
-   The RST_STREAM frame does not define any flags.
-"
+   The RST_STREAM frame does not define any flags."
     ((error-code 32))
-    (:length 4)
+    (:length 4
+     ;;    RST_STREAM frames MUST NOT be sent for a stream in the \"idle\" state.
+     ;;    If a RST_STREAM frame identifying an idle stream is received, the
+     ;;    recipient MUST treat this as a connection error (Section 5.4.1) of
+     ;;    type PROTOCOL_ERROR.
+     :must-have-stream-in (reserved/remote reserved/local open half-closed/local half-closed/remote closed)
+     :bad-state-error protocol_error)
     ((write-bytes 4 error-code))
     ((assert (zerop flags))
       (when (eq connection http-stream)
@@ -1278,23 +1219,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
         ;; A RST_STREAM frame with a length other than 4 octets MUST be treated
         ;; as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
         (http2-error 'frame-size-error))
-      (error "RST-stream not supported yet.")))
-
-
-#|
-   The RST_STREAM frame fully terminates the referenced stream and
-   causes it to enter the "closed" state.  After receiving a RST_STREAM
-   on a stream, the receiver MUST NOT send additional frames for that
-   stream, with the exception of PRIORITY.  However, after sending the
-   RST_STREAM, the sending endpoint MUST be prepared to receive and
-   process additional frames sent on the stream that might have been
-   sent by the peer prior to the arrival of the RST_STREAM.
-
-   RST_STREAM frames MUST NOT be sent for a stream in the "idle" state.
-   If a RST_STREAM frame identifying an idle stream is received, the
-   recipient MUST treat this as a connection error (Section 5.4.1) of
-   type PROTOCOL_ERROR.
-|#
+      (peer-resets-stream http-stream (read-bytes 4))))
 
 #|
 6.5.  SETTINGS
@@ -1343,19 +1268,6 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
 
 
-6.5.1.  SETTINGS Format
-
-   The payload of a SETTINGS frame consists of zero or more parameters,
-   each consisting of an unsigned 16-bit setting identifier and an
-   unsigned 32-bit value.
-
-    +-------------------------------+
-    |       Identifier (16)         |
-    +-------------------------------+-------------------------------+
-    |                        Value (32)                             |
-    +---------------------------------------------------------------+
-
-                         Figure 10: Setting Format
 
 6.5.2.  Defined SETTINGS Parameters
 
@@ -1425,33 +1337,35 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
       For any given request, a lower limit than what is advertised MAY
       be enforced.  The initial value of this setting is unlimited.")))
-#|
-   An endpoint that receives a SETTINGS frame with any unknown or
-   unsupported identifier MUST ignore that setting.
-|#
 
 (defun find-setting-code (name)
   (or (second (assoc name *settings-alist*))
       (error "No setting named ~a" name)))
 
 (define-frame-type 4 :settings-frame
-      "The SETTINGS frame (type=0x4) conveys configuration parameters that
+    "
+    +-------------------------------+
+    |       Identifier (16)         |
+    +-------------------------------+-------------------------------+
+    |                        Value (32)                             |
+    +---------------------------------------------------------------+
+
+   The SETTINGS frame (type=0x4) conveys configuration parameters that
    affect how endpoints communicate, such as preferences and constraints
    on peer behavior.  The SETTINGS frame is also used to acknowledge the
    receipt of those parameters.  Individually, a SETTINGS parameter can
    also be referred to as a \"setting\"."
     ((settings list))
     (:length (* (length settings) 6)
-     :flags (ack))
+     :flags (ack)
+     :must-not-have-stream t)
     ;; writer
     ((dolist (setting settings)
         (declare ((cons symbol (unsigned-byte 32)) setting))
        (write-bytes 2 (find-setting-code (car setting)))
        (write-bytes 4 (cdr setting))))
     ;;reader
-    ((unless (eq connection http-stream)
-       (error "Settings are for connection only."))
-      (cond
+    ((cond
         (ack
          (when (plusp length)
            (error "Ack settings frame must be empty. We should close connection.")
@@ -1463,10 +1377,12 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
            for i from length downto 1 by 6
            for identifier = (read-bytes  2)
            and value = (read-bytes 4)
-           collect (cons  (find-setting-by-id  identifier) value) into settings
-           finally (setf (get-peer-settings connection) settings)))
-
-)))
+           and name = (find-setting-by-id  identifier)
+           ;;    An endpoint that receives a SETTINGS frame with any unknown or
+           ;;    unsupported identifier MUST ignore that setting.
+           when name
+           collect (cons name  value) into settings
+           finally (setf (get-peer-settings connection) settings))))))
 
 (defun find-setting-by-id (id)
   (or (car (find id *settings-alist* :key 'second))
@@ -1482,7 +1398,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       field value other than 0 MUST be treated as a connection error
       (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
       see Section 6.5.3 (\"Settings Synchronization\")."
-  (write-frame-header stream +settings-frame+ 1 +connection-stream+ :length 0))
+  (write-frame-header stream +settings-frame+ 1 0 :length 0))
 
 #|
 6.5.3.  Settings Synchronization
@@ -1559,21 +1475,23 @@ RFC 7540                         HTTP/2                         May 2015
      (promised-stream-id 31)
      (headers list))
     (:length (+ 4 (reduce '+ (mapcar 'length headers)))
-     :flags (padded end-headers))
+     :flags (padded end-headers)
+
+     ;;    PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+     ;;    is in either the "open" or "half-closed (remote)" state.  The stream
+     ;;    identifier of a PUSH_PROMISE frame indicates the stream it is
+     ;;    associated with.  If the stream identifier field specifies the value
+     ;;    0x0, a recipient MUST respond with a connection error (Section 5.4.1)
+     ;;    of type PROTOCOL_ERROR.
+     :must-have-stream-in (open half-closed/local)
+     :bad-state-error protocol-error)
+    ;;writer
     ((write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
      (map nil #'write-vector headers))
     ;; reader
-    ((when (eq connection http-stream) (http2-error 'protocol-error))
-     (error "Reading promise N/A")))
+    ((error "Reading promise N/A")))
 
 #|
-
-   PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
-   is in either the "open" or "half-closed (remote)" state.  The stream
-   identifier of a PUSH_PROMISE frame indicates the stream it is
-   associated with.  If the stream identifier field specifies the value
-   0x0, a recipient MUST respond with a connection error (Section 5.4.1)
-   of type PROTOCOL_ERROR.
 
    Promised streams are not required to be used in the order they are
    promised.  The PUSH_PROMISE only reserves stream identifiers for
@@ -1617,9 +1535,9 @@ RFC 7540                         HTTP/2                         May 2015
    The PUSH_PROMISE frame can include padding.  Padding fields and flags
    are identical to those defined for DATA frames (Section 6.1).
 |#
+
 (define-frame-type 6 :ping-frame
-    "
-   The PING frame (type=0x6) is a mechanism for measuring a minimal
+    "The PING frame (type=0x6) is a mechanism for measuring a minimal
    round-trip time from the sender, as well as determining whether an
    idle connection is still functional.  PING frames can be sent from
    any endpoint.
@@ -1647,7 +1565,8 @@ RFC 7540                         HTTP/2                         May 2015
       response.  An endpoint MUST set this flag in PING responses.  An
       endpoint MUST NOT respond to PING frames containing this flag."
     ((opaque-data 64))
-    (:length 8 :flags (ack))
+    (:length 8 :flags (ack)
+     :must-not-have-stream t)
     ;; writer
     ((write-bytes 8 opaque-data))
     ((unless (= length 8)
@@ -1655,12 +1574,6 @@ RFC 7540                         HTTP/2                         May 2015
        ;; ;; be treated as a connection error (Section 5.4.1) of type
        ;; ;; FRAME_SIZE_ERROR.
        (http2-error 'frame-size-error))
-      (unless (eq connection http-stream)
-        ;;PING frames are not associated with any individual stream.  If a PING
-        ;;frame is received with a stream identifier field value other than
-        ;;0x0, the recipient MUST respond with a connection error
-        ;;(Section 5.4.1) of type PROTOCOL_ERROR.
-        (http2-error 'protocol-error))
       (let ((data (make-array 8 :element-type '(unsigned-byte 8))))
         (read-vector data)
         (if ack
@@ -1709,18 +1622,20 @@ RFC 7540                         HTTP/2                         May 2015
    connection SHOULD still send a GOAWAY frame before terminating the
    connection.
 
+    +---------------------------------------------------------------+
+
+
+|#
+(define-frame-type 7 :goaway-frame
+    "
     +-+-------------------------------------------------------------+
     |R|                  Last-Stream-ID (31)                        |
     +-+-------------------------------------------------------------+
     |                      Error Code (32)                          |
     +---------------------------------------------------------------+
     |                  Additional Debug Data (*)                    |
-    +---------------------------------------------------------------+
 
-
-|#
-(define-frame-type 7 :goaway-frame
-    "The GOAWAY frame (type=0x7) is used to initiate shutdown of a
+   The GOAWAY frame (type=0x7) is used to initiate shutdown of a
    connection or to signal serious error conditions.  GOAWAY allows an
    endpoint to gracefully stop accepting new streams while still
    finishing processing of previously established streams.  This
@@ -1729,7 +1644,8 @@ RFC 7540                         HTTP/2                         May 2015
      (error-code 32)
      (debug-data vector)
      (reserved 1))
-    (:length (+ 8 (length debug-data)))
+    (:length (+ 8 (length debug-data))
+     :must-not-have-stream t)
 
     ((write-bytes 4 (logior last-stream-id (if reserved #x80000000 0)))
      (write-bytes 4 error-code)
@@ -1748,12 +1664,6 @@ RFC 7540                         HTTP/2                         May 2015
          (read-vector data)
          data))))
 #|
-
-                     Figure 13: GOAWAY Payload Format
-
-   The GOAWAY frame does not define any flags.
-
-
    The last stream identifier in the GOAWAY frame contains the highest-
    numbered stream identifier for which the sender of the GOAWAY frame
    might have taken some action on or might yet take action on.  All
@@ -1823,10 +1733,6 @@ RFC 7540                         HTTP/2                         May 2015
    debug data MUST have adequate safeguards to prevent unauthorized
    access.
 
-
-
-
-
 6.9.  WINDOW_UPDATE
 
    Flow control only applies to frames that are identified as being
@@ -1859,11 +1765,7 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
       (let ((window-size-increment (read-bytes 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
-        (setf window-size-increment (ldb (byte 31 0) window-size-increment))
-        (when (zerop window-size-increment)
-          (http2-error 'protocol-error))
-        (logger "Window size for ~a: ~x" http-stream window-size-increment)
-        (setf (get-window-size http-stream) window-size-increment))))
+        (apply-window-size-increment http-stream (ldb (byte 31 0) window-size-increment)))))
 
 (defun account-frame-window-contribution (connection stream length)
   (decf (get-window-size connection) length)
@@ -2013,18 +1915,38 @@ The CONTINUATION frame defines the following flag:
          (http2-error 'protocol_error))
        (read-and-add-headers connection http-stream length))))
 
+
 #|
-
-
-7.  Error Codes
-
-
-
    The following error codes are defined:
 |#
 
 
-(defvar *error-codes* (make-array #xe)
+
+(defun get-error-name (code)
+  (if (<= 0 code #xd)
+      (aref *error-codes* code)
+      (intern (format nil "UNDEFINED-ERROR-CODE-~A" code))))
+
+(defvar *error-codes*
+  (macrolet ((defcode (name code documentation)
+             `(progn
+                (defconstant ,name ,code ,documentation))))
+    (vector
+     (defcode +no-error+            0  "graceful shutdown")
+     (defcode +protocol-error+      1  "protocol error detected")
+     (defcode +internal-error+      2  "implementation fault")
+     (defcode +flow-control-error+  3  "flow-control limits exceeded")
+     (defcode +settings-timeout+    4  "settings not acknowledged")
+     (defcode +stream-closed+       5  "frame received for closed stream")
+     (defcode +frame-size-error+    6  "frame size incorrect")
+     (defcode +refused-stream+      7  "stream not processed")
+     (defcode +cancel+              8  "stream cancelled")
+     (defcode +compression-error+   9  "compression state not updated")
+     (defcode +connect-error+       #xa  "tcp connection error for connect method")
+     (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
+     (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
+     (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request")))
+
   "This table maps error codes to mnemonic names - symbols.
 
    Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
@@ -2034,29 +1956,7 @@ The CONTINUATION frame defines the following flag:
    to either streams or the entire connection and have no defined
    semantics in the other context.")
 
-(defun get-error-name (code)
-  (if (<= 0 code #xd)
-      (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~A" code))))
 
-(macrolet ((defcode (name code documentation)
-             `(progn
-                (setf (aref *error-codes* ,code) ',name)
-                (defconstant ,name ,code ,documentation))))
-  (defcode +no-error+            0  "graceful shutdown")
-  (defcode +protocol-error+      1  "protocol error detected")
-  (defcode +internal-error+      2  "implementation fault")
-  (defcode +flow-control-error+  3  "flow-control limits exceeded")
-  (defcode +settings-timeout+    4  "settings not acknowledged")
-  (defcode +stream-closed+       5  "frame received for closed stream")
-  (defcode +frame-size-error+    6  "frame size incorrect")
-  (defcode +refused-stream+      7  "stream not processed")
-  (defcode +cancel+              8  "stream cancelled")
-  (defcode +compression-error+   9  "compression state not updated")
-  (defcode +connect-error+       #xa  "tcp connection error for connect method")
-  (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
-  (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
-  (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request"))
 
 
 

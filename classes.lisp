@@ -1,13 +1,104 @@
 (in-package http2)
 
-(defclass stream-or-continuation ()
+
+;;;; Callbacks from frame reading functions
+
+#|
+
+The lifecycle of a stream is shown in Figure 2.
+
+                        +--------+
+                send PP |        | recv PP
+               ,--------|  idle  |--------.
+              /         |        |         \
+             v          +--------+          v
+         +----------+          |           +----------+
+         |          |          | send H /  |          |
+  ,------| reserved |          | recv H    | reserved |------.
+  |      | (local)  |          |           | (remote) |      |
+  |      +----------+          v           +----------+      |
+  |          |             +--------+             |          |
+  |          |     recv ES |        | send ES     |          |
+  |   send H |     ,-------|  open  |-------.     | recv H   |
+  |          |    /        |        |        \    |          |
+  |          v   v         +--------+         v   v          |
+  |      +----------+          |           +----------+      |
+  |      |   half   |          |           |   half   |      |
+  |      |  closed  |          | send R /  |  closed  |      |
+  |      | (remote) |          | recv R    | (local)  |      |
+  |      +----------+          |           +----------+      |
+  |           |                |                 |           |
+  |           | send ES /      |       recv ES / |           |
+  |           | send R /       v        send R / |           |
+  |           | recv R     +--------+   recv R   |           |
+  | send R /  `----------->|        |<-----------'  send R / |
+  | recv R                 | closed |               recv R   |
+  `----------------------->|        |<----------------------'
+                           +--------+
+
+  send:   endpoint sends this frame
+  recv:   endpoint receives this frame
+
+  H:  HEADERS frame (with implied CONTINUATIONs)
+  PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
+  ES: END_STREAM flag
+  R:  RST_STREAM frame
+
+|#
+
+(defgeneric peer-opens-http-stream (connection stream-id frame-type)
+  (:documentation
+   "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
+return an object representing new stream.")
+  (:method (connection stream-id (frame-type (eql +headers-frame+)))
+    ;; maybe check that the number is appropriately even/odd?
+    (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)))
+
+(defgeneric peer-ends-http-stream (stream))
+
+(defgeneric peer-sends-push-promise (continuation stream)
+  ;; this is not actually called (yet) and may need more parameters
+  (:method (continuation stream) (error "Push promises not supported.")))
+
+(defgeneric peer-resets-stream (stream error-code)
+  (:method (stream error-code)
+    (setf (get-state stream) 'closed))
+  (:documentation
+   "The RST_STREAM frame fully terminates the referenced stream and
+   causes it to enter the \"closed\" state.  After receiving a RST_STREAM
+   on a stream, the receiver MUST NOT send additional frames for that
+   stream, with the exception of PRIORITY.  However, after sending the
+   RST_STREAM, the sending endpoint MUST be prepared to receive and
+   process additional frames sent on the stream that might have been
+   sent by the peer prior to the arrival of the RST_STREAM."))
+
+#+nil (defgeneric peer-pushes-promise)
+
+;;;; Other callbacks
+(defgeneric apply-data-frame (connection stream payload)
+  (:documentation "Data frame is received."))
+
+(defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
+  (:method  (stream exclusive weight stream-dependency)
+    (error "Priority frame reading not implemented")))
+
+(defgeneric apply-window-size-increment (object increment)
+  (:method (object increment)
+    (when (zerop increment)
+      (http2-error 'protocol-error))
+    (setf (get-window-size object) increment)))
+
+
+;;;; Classes
+(defclass stream-or-connection ()
   ((window-size  :accessor get-window-size  :initarg :window-size)))
 
-(defclass http2-connection ()
+
+
+(defclass http2-connection (stream-or-connection)
   ((network-stream      :accessor get-network-stream       :initarg :network-stream)
    (streams             :accessor get-streams              :initarg :streams
                         :documentation "Sequence of HTTP2 streams")
-   (settings            :accessor get-settings             :initarg :settings)
    (peer-settings       :accessor get-peer-settings        :initarg :peer-settings)
    (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
    (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
@@ -28,31 +119,37 @@
                         :type          (or null (unsigned-byte 31))
                         :initform       nil
                         :documentation
-                        "A HEADERS frame without the END_HEADERS flag
-                        set MUST be followed by a CONTINUATION frame
-                        for the same stream.
-
-                        This slot is set to the id of the expected
+                        "A HEADERS frame without the END_HEADERS flag set MUST be
+                        followed by a CONTINUATION frame for the same
+                        stream. This slot is set to the id of the expected
                         stream in such case, and is nil otherwise.")
-   (window-size         :accessor get-window-size          :initarg :window-size)
-   (stream-class        :accessor get-stream-class         :initarg :stream-class))
-  (:default-initargs :id-to-use 1 :settings `((:max-frame-size . ,*max-frame-size*))
+   (stream-class        :accessor get-stream-class         :initarg :stream-class)
+   (enable-push         :accessor get-enable-push          :initarg :enable-push))
+  (:default-initargs :id-to-use 1
+                     :enable-push 0  ; disable by default. Use a mixin to enable.
                      :streams nil
                      :acked-settings nil
                      :window-size 0
                      :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
-                     :stream-class 'http2-stream))
+                     :stream-class 'http2-stream)
+  (:documentation
+   "A simple connection: promise push not allowed, empty dynamic header table,
+   reasonable behaviour"))
+
+(defmethod get-settings (connection)
+  `((:max-frame-size . ,*max-frame-size*)
+    (:enable-push . ,(get-enable-push connection))
+    (:header-table-size . ,0)))
 
 (defmethod get-stream-id ((conn http2-connection)) 0)
 
-(defclass http2-stream ()
+(defclass http2-stream (stream-or-connection)
   ((stream-id   :accessor get-stream-id   :initarg :stream-id
                 :type (unsigned-byte 31))
    (state       :accessor get-state       :initarg :state
                 :type (member idle open closed
                               half-closed/local half-closed/remote
                               reserved/local reserved/remote))
-   (window-size :accessor get-window-size :initarg :window-size)
    (data        :accessor get-data        :initarg :data))
   (:default-initargs :state 'idle :window-size 0)
   (:documentation

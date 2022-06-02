@@ -98,10 +98,6 @@
         (encode-header :path path)
         (encode-header :authority authority)))
 
-(defvar *bytes-read* nil "Number of bytes read from stream")
-(defun read-byte* (stream)
-  (incf *bytes-read*)
-  (read-byte stream))
 
 (defun get-integer-from-octet (stream octet bit-size)
   "See 5.1 "

@@ -17,17 +17,16 @@ apparently do not support other ways of http/2 setup).
 
 | Frame type    | Reading | Sending |
 |---------------+---------+---------|
-| Data          | ✓       |         |
+| Data          | ✓       | ✓       |
 | Headers       | ✓       | ✓       |
 | Priority      |         | ✓       |
-| Rst-stream    |         | ✓       |
+| Rst-stream    | ✓       | ✓       |
 | Settings      | ✓       | ✓       |
 | Push-promise  |         | ✓       |
 | Ping          | ✓       | ✓       |
 | Goaway        | ✓       |         |
 | Window-update | ✓       | ✓       |
-| Continuation  | ✓ *     | ✓       |
-The * means not tested
+| Continuation  | ✓       | ✓       |
 
 Error handling is not fully implemented: errors are detected on many places, but
 the GOAWAY frame is not set yet.
