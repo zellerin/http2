@@ -129,7 +129,8 @@
         (loop with res = (make-array (get-integer-from-octet stream octet0 7)
                                      :element-type 'character)
               for i from 0 to (1- len)
-              do  (setf (aref res i) (code-char (read-byte* stream)))))))
+              do  (setf (aref res i) (code-char (read-byte* stream)))
+              finally (return res)))))
 
 (defun read-from-tables (index connection)
   (cond ((zerop index)
