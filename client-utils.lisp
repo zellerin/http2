@@ -21,10 +21,6 @@ TARGET, using SNI."
                 (write-client-preface ,ssl-stream)
                 (write-settings-frame ,connection ,connection (get-settings ,connection))
                 (force-output ,ssl-stream)
-                (read-frame ,connection ,ssl-stream) ; should be settings frame
-                (unless (get-peer-settings ,connection)
-                  (error "We expected settings frame"))
-                (write-ack-setting-frame ,ssl-stream)
                 ,@body)
            (close ,ssl-stream))))))
 

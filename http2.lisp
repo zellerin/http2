@@ -1375,8 +1375,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     ((cond
         (ack
          (when (plusp length)
-           (error "Ack settings frame must be empty. We should close connection.")
-           :ack-settings))
+           (error "Ack settings frame must be empty. We should close connection."))
+         (peer-acks-settings connection))
         (t
          (unless (zerop (mod length 6))
            (error "Settings payload should be multiple of 6 octets"))

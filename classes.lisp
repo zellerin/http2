@@ -95,7 +95,14 @@ return an object representing new stream.")
   (warn "Peer settings not used - ~a ~a." name value))
 
 (defmethod peer-expects-settings-ack (connection)
-  (warn "Automatical peer settings acking not implemented."))
+;  (write-ack-setting-frame (get-network-stream connection))
+;  (write-settings-frame connection connection nil :ack t)
+;  (force-output (get-network-stream connection))
+  )
+
+(defmethod peer-acks-settings (connection)
+  ())
+
 
 ;;;; Classes
 (defclass stream-or-connection ()
@@ -105,7 +112,6 @@ return an object representing new stream.")
   ((network-stream      :accessor get-network-stream       :initarg :network-stream)
    (streams             :accessor get-streams              :initarg :streams
                         :documentation "Sequence of HTTP2 streams")
-   (peer-settings       :accessor get-peer-settings        :initarg :peer-settings)
    (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
    (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
    (id-to-use           :accessor get-id-to-use            :initarg :id-to-use
