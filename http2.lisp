@@ -1658,12 +1658,7 @@ RFC 7540                         HTTP/2                         May 2015
      (write-vector debug-data))
 
     ;; reader
-    ((unless (eq connection http-stream)
-       ;;The GOAWAY frame applies to the connection, not a specific stream.  An
-       ;;endpoint MUST treat a GOAWAY frame with a stream identifier other than
-       ;;0x0 as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-       (http2-error 'protocol-error))
-     (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
+    ((unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
      (do-goaway connection (get-error-name (read-bytes 4))
        (read-bytes 4)
        (let ((data (make-array (- length 8))))
