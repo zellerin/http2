@@ -92,7 +92,9 @@ return an object representing new stream.")
 
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
   (:method  (stream exclusive weight stream-dependency)
-    (error "Priority frame reading not implemented")))
+    (setf (get-weight stream) weight
+          (get-depends-on stream)
+          `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency))))
 
 (defgeneric apply-window-size-increment (object increment)
   (:method (object increment)
@@ -218,14 +220,23 @@ return an object representing new stream.")
 (defmethod get-stream-id ((conn http2-connection)) 0)
 
 (defclass http2-stream (stream-or-connection)
-  ((stream-id   :accessor get-stream-id   :initarg :stream-id
-                :type (unsigned-byte 31))
-   (state       :accessor get-state       :initarg :state
-                :type (member idle open closed
-                              half-closed/local half-closed/remote
-                              reserved/local reserved/remote))
-   (data        :accessor get-data        :initarg :data))
-  (:default-initargs :state 'idle :window-size 0)
+  ((stream-id  :accessor get-stream-id  :initarg :stream-id
+               :type (unsigned-byte 31))
+   (state      :accessor get-state      :initarg :state
+               :type (member idle open closed
+                             half-closed/local half-closed/remote
+                             reserved/local reserved/remote))
+   (data       :accessor get-data       :initarg :data)
+   (weight     :accessor get-weight     :initarg :weight)
+   (depends-on :accessor get-depends-on :initarg :depends-on))
+  (:default-initargs :state 'idle :window-size 0
+   ;;   All streams are initially assigned a non-exclusive dependency on
+   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
+   ;;   associated stream.  In both cases, streams are assigned a default
+   ;;   weight of 16.
+                     :weight 16
+                     :depends-on '(:non-exclusive 0)
+   )
   (:documentation
    "An independent, bidirectional sequence of frames exchanged between
   the client and server within an HTTP/2 connection.  Streams have

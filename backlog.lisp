@@ -609,13 +609,6 @@ COMPRESSION_ERROR if it does not decompress a header block.
   PRIORITY frame that changes the priority of a closed stream SHOULD
   alter the dependencies of the streams that depend on it.
 
-  5.3.5.  Default Priorities
-
-  All streams are initially assigned a non-exclusive dependency on
-  stream 0x0.  Pushed streams (Section 8.2) initially depend on their
-  associated stream.  In both cases, streams are assigned a default
-  weight of 16.
-
   5.4.  Error Handling
 
   HTTP/2 framing permits two classes of error:
