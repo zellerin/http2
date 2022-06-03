@@ -46,12 +46,24 @@ The lifecycle of a stream is shown in Figure 2.
 
 |#
 
+(defun count-open-streams (connection)
+  (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))
+
 (defgeneric peer-opens-http-stream (connection stream-id frame-type)
   (:documentation
    "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
 return an object representing new stream.")
-  (:method (connection stream-id (frame-type (eql +headers-frame+)))
-    ;; maybe check that the number is appropriately even/odd?
+  (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
+    (unless (> stream-id (get-last-id-seen connection))
+      (http2-error connection +protocol-error+
+                   "The identifier of a newly established stream MUST be
+                   numerically greater than all streams that the initiating
+                   endpoint has opened or reserved.  This governs streams that
+                   are opened using a HEADERS frame and streams that are
+                   reserved using PUSH_PROMISE.  An endpoint that receives an
+                   unexpected stream identifier MUST respond with a connection
+                   error (Section 5.4.1) of type PROTOCOL_ERROR."))
+    ;; todo: count and check open streams
     (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)))
 
 (defgeneric peer-ends-http-stream (stream))
@@ -129,12 +141,32 @@ return an object representing new stream.")
 (defclass stream-or-connection ()
   ((window-size  :accessor get-window-size  :initarg :window-size)))
 
+
+(defclass client-http2-connection (http2-connection)
+  ()
+  (:default-initargs :id-to-use 1))
+
+(defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
+  (if (evenp stream-id)
+      ;; no formal reaction observed
+      (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
+
+(defclass server-http2-connection (http2-connection)
+  ()
+  (:default-initargs :id-to-use 2))
+
+(defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
+  (if (oddp stream-id)
+      ;; no formal reaction observed
+      (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
+
 (defclass http2-connection (stream-or-connection)
   ((network-stream      :accessor get-network-stream       :initarg :network-stream)
    (streams             :accessor get-streams              :initarg :streams
                         :documentation "Sequence of HTTP2 streams")
    (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
    (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
+   (last-id-seen        :accessor get-last-id-seen         :initarg :last-id-seen)
    (id-to-use           :accessor get-id-to-use            :initarg :id-to-use
                         :type          (unsigned-byte 31)
                         :documentation
@@ -159,7 +191,8 @@ return an object representing new stream.")
    (stream-class        :accessor get-stream-class         :initarg :stream-class)
    (enable-push         :accessor get-enable-push          :initarg :enable-push))
   (:default-initargs :id-to-use 1
-                     :enable-push 0  ; disable by default. Use a mixin to enable.
+                     :enable-push 0 ; disable by default. Use a mixin to enable.
+                     :last-id-seen 0
                      :streams nil
                      :acked-settings nil
                      :window-size 0
@@ -168,6 +201,14 @@ return an object representing new stream.")
   (:documentation
    "A simple connection: promise push not allowed, empty dynamic header table,
    reasonable behaviour"))
+
+(defun dynamic-table-entry-size (name value)
+  "The size of an entry is the sum of its name's length in octets (as
+   defined in Section 5.2), its value's length in octets, and 32.
+
+   The size of an entry is calculated using the length of its name and
+   value without any Huffman encoding applied."
+  (+ 32 (length name) (length value)))
 
 (defmethod get-settings (connection)
   `((:max-frame-size . ,*max-frame-size*)
