@@ -151,9 +151,10 @@
          (read-from-tables (ldb (byte 7 0) octet0) connection)))
       ((zerop (ldb (byte 6 0) octet0)) ; 0, 0x40
        ;; 6.2.1 - literal header, new name, with indexing
-       (let ((header (read-string-from-stream stream)))
-         (when (plusp octet0) (vector-push-extend header (get-dynamic-table connection)))
-         (return-from read-http-header (list header  (read-string-from-stream stream)))))
+       (let ((header (read-string-from-stream stream))
+             (value (read-string-from-stream stream)))
+         (when (plusp octet0) (vector-push-extend (list header value) (get-dynamic-table connection)))
+         (return-from read-http-header (list header value))))
       ((plusp (ldb (byte 1 6) octet0))
        ;; 6.2.1
        (let ((table-match (read-from-tables
@@ -161,12 +162,6 @@
                            connection)))
          (list (if (consp table-match) (car table-match) table-match)
                (read-string-from-stream stream))))
-      #+nil    (when (plusp (ldb (byte 1 6) octet0))
-                 (let ((table-match (read-from-tables
-                                     (get-integer-from-octet stream octet0 6)
-                                     connection)))
-                   (list (if (consp table-match) (car table-match) table-match)
-                         (read-string-from-stream stream))))
       ((zerop (ldb (byte 4 4) octet0))
        (let ((table-match (read-from-tables
                            (get-integer-from-octet stream octet0 4)
@@ -174,6 +169,19 @@
          (list (if (consp table-match) (car table-match) table-match)
                (read-string-from-stream stream))))
       ;; dynamic table size update
+      ((= #x10 octet0)
+       ;; Literal Header Field Never Indexed -- New Name
+       (let ((header (read-string-from-stream stream))
+             (value (read-string-from-stream stream)))
+         (return-from read-http-header (list header value))))
+      ((= 1 (ldb (byte 4 4) octet0))
+       ;; Literal Header Field Never Indexed -- Indexed Name
+       (let ((table-match (read-from-tables
+                           (get-integer-from-octet stream octet0 4)
+                           connection)))
+         (list (if (consp table-match) (car table-match) table-match)
+               (read-string-from-stream stream)))
+       )
       (t (let ((dynamic-table-size (get-integer-from-octet stream octet0 5)))
            ;; fixme: dynamic tables not implemented
            (update-dynamic-table-size connection dynamic-table-size)
