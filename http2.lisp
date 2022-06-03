@@ -2,8 +2,6 @@
 
 (in-package #:http2)
 #|
-
-#|
    client:  The endpoint that initiates an HTTP/2 connection.  Clients
       send HTTP requests and receive HTTP responses.
 
@@ -40,7 +38,10 @@
    The term "payload body" is defined in Section 3.3 of [RFC7230].
 |#
 
+#|
+   The following error codes are defined:
 |#
+
 
 
 ;;;; Frame definitions - boilerplate
@@ -1907,45 +1908,6 @@ The CONTINUATION frame defines the following flag:
        (read-and-add-headers connection http-stream length))))
 
 
-#|
-   The following error codes are defined:
-|#
-
-
-
-(defvar *error-codes*
-  (macrolet ((defcode (name code documentation)
-             `(progn
-                (defconstant ,name ,code ,documentation))))
-    (vector
-     (defcode +no-error+            0  "graceful shutdown")
-     (defcode +protocol-error+      1  "protocol error detected")
-     (defcode +internal-error+      2  "implementation fault")
-     (defcode +flow-control-error+  3  "flow-control limits exceeded")
-     (defcode +settings-timeout+    4  "settings not acknowledged")
-     (defcode +stream-closed+       5  "frame received for closed stream")
-     (defcode +frame-size-error+    6  "frame size incorrect")
-     (defcode +refused-stream+      7  "stream not processed")
-     (defcode +cancel+              8  "stream cancelled")
-     (defcode +compression-error+   9  "compression state not updated")
-     (defcode +connect-error+       #xa  "tcp connection error for connect method")
-     (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
-     (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
-     (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request")))
-
-  "This table maps error codes to mnemonic names - symbols.
-
-   Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
-   frames to convey the reasons for the stream or connection error.
-
-   Error codes share a common code space.  Some error codes apply only
-   to either streams or the entire connection and have no defined
-   semantics in the other context.")
-
-(defun get-error-name (code)
-  (if (<= 0 code #xd)
-      (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
 
 #|
    NO_ERROR (0x0):  The associated condition is not a result of an
