@@ -1,11 +1,11 @@
 (in-package http2)
 
-(defclass client-connection (http2-connection)
+(defclass sample-client-connection (http2-connection)
   ((finished :accessor get-finished :initarg :finished
              :initform nil))
-  (:default-initargs :stream-class 'client-stream))
+  (:default-initargs :stream-class 'sample-client-stream))
 
-(defclass client-stream (http2-stream body-collecting-mixin header-collecting-mixin)
+(defclass sample-client-stream (http2-stream body-collecting-mixin header-collecting-mixin)
   ((content-type :accessor get-content-type :initarg :content-type)
    (data         :accessor get-data         :initarg :data)))
 
@@ -14,7 +14,7 @@
   (let ((parsed-url (puri:parse-uri url)))
     (with-http-connection (connection (puri:uri-host parsed-url)
                            :port (or (puri:uri-port parsed-url) 443)
-                           :connection-class 'client-connection)
+                           :connection-class 'sample-client-connection)
       (let ((http-stream (create-new-local-stream connection)))
         (write-headers-frame connection
                              http-stream
@@ -43,5 +43,5 @@
         (values (get-body http-stream)
               (get-headers http-stream))))))
 
-(defmethod process-end-stream :after ((connection client-connection) stream)
+(defmethod process-end-stream :after ((connection sample-client-connection) stream)
   (setf (get-finished connection) t))

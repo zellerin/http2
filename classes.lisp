@@ -1,5 +1,137 @@
 (in-package http2)
 
+;;;; Classes
+#|
+                                 stream-or-connection
+                                /                   \
+                     http2-stream                   http2-connection--------------\
+                     /   /                         /       \                       \
+        logging-stream  /     client-http2-connection   server-http2-connection  logging-connection
+                       /                      \
+     (stream mixins)  /                        \        (connection mixins)
+               \     /                          \             /
+              sample-client-stream     sample-client-connection
+|#
+
+(defclass stream-or-connection ()
+  ((window-size  :accessor get-window-size  :initarg :window-size)))
+
+(defclass http2-connection (stream-or-connection)
+  ((network-stream      :accessor get-network-stream       :initarg :network-stream)
+   (streams             :accessor get-streams              :initarg :streams
+                        :documentation "Sequence of HTTP2 streams")
+   (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
+   (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
+   (last-id-seen        :accessor get-last-id-seen         :initarg :last-id-seen)
+   (id-to-use           :accessor get-id-to-use            :initarg :id-to-use
+                        :type          (unsigned-byte 31)
+                        :documentation
+                        "Streams are identified with an unsigned 31-bit
+                        integer.  Streams initiated by a client MUST
+                        use odd-numbered stream identifiers; those
+                        initiated by the server MUST use
+                        even-numbered stream identifiers.  A stream
+                        identifier of zero (0x0) is used for
+                        connection control messages; the stream
+                        identifier of zero cannot be used to
+                        establish a new stream.")
+   (expect-continuation :accessor get-expect-continuation
+                        :initarg :expect-continuation
+                        :type          (or null (unsigned-byte 31))
+                        :initform       nil
+                        :documentation
+                        "A HEADERS frame without the END_HEADERS flag set MUST be
+                        followed by a CONTINUATION frame for the same
+                        stream. This slot is set to the id of the expected
+                        stream in such case, and is nil otherwise.")
+   (stream-class        :accessor get-stream-class         :initarg :stream-class)
+   (enable-push         :accessor get-enable-push          :initarg :enable-push))
+  (:default-initargs :id-to-use 1
+                     :enable-push 0 ; disable by default. Use a mixin to enable.
+                     :last-id-seen 0
+                     :streams nil
+                     :acked-settings nil
+                     :window-size 0
+                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
+                     :stream-class 'http2-stream)
+  (:documentation
+   "A simple connection: promise push not allowed, empty dynamic header table,
+   reasonable behaviour"))
+
+(defclass client-http2-connection (http2-connection)
+  ()
+  (:default-initargs :id-to-use 1))
+
+(defclass server-http2-connection (http2-connection)
+  ()
+  (:default-initargs :id-to-use 2))
+
+(defclass http2-stream (stream-or-connection)
+  ((stream-id  :accessor get-stream-id  :initarg :stream-id
+               :type (unsigned-byte 31))
+   (state      :accessor get-state      :initarg :state
+               :type (member idle open closed
+                             half-closed/local half-closed/remote
+                             reserved/local reserved/remote))
+   (data       :accessor get-data       :initarg :data)
+   (weight     :accessor get-weight     :initarg :weight)
+   (depends-on :accessor get-depends-on :initarg :depends-on))
+  (:default-initargs :state 'idle :window-size 0
+   ;;   All streams are initially assigned a non-exclusive dependency on
+   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
+   ;;   associated stream.  In both cases, streams are assigned a default
+   ;;   weight of 16.
+                     :weight 16
+                     :depends-on '(:non-exclusive 0)
+   )
+  (:documentation
+   "An independent, bidirectional sequence of frames exchanged between
+  the client and server within an HTTP/2 connection.  Streams have
+  several important characteristics:
+
+  A single HTTP/2 connection can contain multiple concurrently open
+  streams, with either endpoint interleaving frames from multiple
+  streams.
+
+  Streams can be established and used unilaterally or shared by
+  either the client or server.
+
+  Streams can be closed by either endpoint.
+
+  The order in which frames are sent on a stream is significant.
+  Recipients process frames in the order they are received.  In
+  particular, the order of HEADERS and DATA frames is semantically
+  significant.
+
+  Streams are identified by an integer.  Stream identifiers are
+  assigned to streams by the endpoint initiating the stream."))
+
+(defclass log-headers-mixin ()
+  ()
+  (:documentation "Class that logs some activities and state changes."))
+
+(defclass header-collecting-mixin ()
+  ((headers :accessor get-headers :initarg :headers))
+  (:default-initargs :headers nil))
+
+(defclass body-collecting-mixin ()
+  ((body :accessor get-body :initarg :body))
+  (:default-initargs :body ""))
+
+;;;; Connection and stream for logging: tracks every callback in (reversed)
+;;;; history.
+(defclass logging-object ()
+  ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
+  (:default-initargs :reversed-history nil))
+
+(defclass logging-connection (http2-connection logging-object)
+  ())
+
+(defclass logging-stream (http2-stream logging-object)
+  ())
+
+
+
 
 ;;;; Callbacks from frame reading functions
 
@@ -52,7 +184,7 @@ The lifecycle of a stream is shown in Figure 2.
 (defgeneric peer-opens-http-stream (connection stream-id frame-type)
   (:documentation
    "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
-return an object representing new stream.")
+ return an object representing new stream.")
   (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
     (unless (> stream-id (get-last-id-seen connection))
       (http2-error connection +protocol-error+
@@ -67,7 +199,6 @@ return an object representing new stream.")
     (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)))
 
 (defgeneric peer-ends-http-stream (stream))
-
 (defgeneric peer-sends-push-promise (continuation stream)
   ;; this is not actually called (yet) and may need more parameters
   (:method (continuation stream) (error "Push promises not supported.")))
@@ -139,70 +270,15 @@ return an object representing new stream.")
   ())
 
 
-;;;; Classes
-(defclass stream-or-connection ()
-  ((window-size  :accessor get-window-size  :initarg :window-size)))
-
-
-(defclass client-http2-connection (http2-connection)
-  ()
-  (:default-initargs :id-to-use 1))
-
 (defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
   (if (evenp stream-id)
       ;; no formal reaction observed
       (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
 
-(defclass server-http2-connection (http2-connection)
-  ()
-  (:default-initargs :id-to-use 2))
-
 (defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
   (if (oddp stream-id)
       ;; no formal reaction observed
       (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
-
-(defclass http2-connection (stream-or-connection)
-  ((network-stream      :accessor get-network-stream       :initarg :network-stream)
-   (streams             :accessor get-streams              :initarg :streams
-                        :documentation "Sequence of HTTP2 streams")
-   (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
-   (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
-   (last-id-seen        :accessor get-last-id-seen         :initarg :last-id-seen)
-   (id-to-use           :accessor get-id-to-use            :initarg :id-to-use
-                        :type          (unsigned-byte 31)
-                        :documentation
-                        "Streams are identified with an unsigned 31-bit
-                        integer.  Streams initiated by a client MUST
-                        use odd-numbered stream identifiers; those
-                        initiated by the server MUST use
-                        even-numbered stream identifiers.  A stream
-                        identifier of zero (0x0) is used for
-                        connection control messages; the stream
-                        identifier of zero cannot be used to
-                        establish a new stream.")
-   (expect-continuation :accessor get-expect-continuation
-                        :initarg :expect-continuation
-                        :type          (or null (unsigned-byte 31))
-                        :initform       nil
-                        :documentation
-                        "A HEADERS frame without the END_HEADERS flag set MUST be
-                        followed by a CONTINUATION frame for the same
-                        stream. This slot is set to the id of the expected
-                        stream in such case, and is nil otherwise.")
-   (stream-class        :accessor get-stream-class         :initarg :stream-class)
-   (enable-push         :accessor get-enable-push          :initarg :enable-push))
-  (:default-initargs :id-to-use 1
-                     :enable-push 0 ; disable by default. Use a mixin to enable.
-                     :last-id-seen 0
-                     :streams nil
-                     :acked-settings nil
-                     :window-size 0
-                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
-                     :stream-class 'http2-stream)
-  (:documentation
-   "A simple connection: promise push not allowed, empty dynamic header table,
-   reasonable behaviour"))
 
 (defun dynamic-table-entry-size (name value)
   "The size of an entry is the sum of its name's length in octets (as
@@ -218,46 +294,6 @@ return an object representing new stream.")
     (:header-table-size . ,0)))
 
 (defmethod get-stream-id ((conn http2-connection)) 0)
-
-(defclass http2-stream (stream-or-connection)
-  ((stream-id  :accessor get-stream-id  :initarg :stream-id
-               :type (unsigned-byte 31))
-   (state      :accessor get-state      :initarg :state
-               :type (member idle open closed
-                             half-closed/local half-closed/remote
-                             reserved/local reserved/remote))
-   (data       :accessor get-data       :initarg :data)
-   (weight     :accessor get-weight     :initarg :weight)
-   (depends-on :accessor get-depends-on :initarg :depends-on))
-  (:default-initargs :state 'idle :window-size 0
-   ;;   All streams are initially assigned a non-exclusive dependency on
-   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
-   ;;   associated stream.  In both cases, streams are assigned a default
-   ;;   weight of 16.
-                     :weight 16
-                     :depends-on '(:non-exclusive 0)
-   )
-  (:documentation
-   "An independent, bidirectional sequence of frames exchanged between
-  the client and server within an HTTP/2 connection.  Streams have
-  several important characteristics:
-
-  A single HTTP/2 connection can contain multiple concurrently open
-  streams, with either endpoint interleaving frames from multiple
-  streams.
-
-  Streams can be established and used unilaterally or shared by
-  either the client or server.
-
-  Streams can be closed by either endpoint.
-
-  The order in which frames are sent on a stream is significant.
-  Recipients process frames in the order they are received.  In
-  particular, the order of HEADERS and DATA frames is semantically
-  significant.
-
-  Streams are identified by an integer.  Stream identifiers are
-  assigned to streams by the endpoint initiating the stream."))
 
 (defmethod print-object ((o http2-stream) out)
   (print-unreadable-object (o out :type t :identity nil)
@@ -350,23 +386,13 @@ PAYLOAD)."
                   :error-code error-code
                   :debug-data debug-data))
 
-(defclass log-headers-mixin ()
-  ()
-  (:documentation "Class that logs some activities and state changes."))
-
 (defmethod add-header :after ((stream log-headers-mixin) name value)
   (format t "~&header: ~a = ~a~%" name value))
 
-(defclass header-collecting-mixin ()
-  ((headers :accessor get-headers :initarg :headers))
-  (:default-initargs :headers nil))
+
 
 (defmethod add-header ((stream header-collecting-mixin) name value)
   (push (cons name value) (get-headers stream)))
-
-(defclass body-collecting-mixin ()
-  ((body :accessor get-body :initarg :body))
-  (:default-initargs :body ""))
 
 (defmethod apply-data-frame (connection (stream body-collecting-mixin) data)
   (setf (get-body stream) (concatenate 'string (get-body stream)
@@ -380,18 +406,6 @@ PAYLOAD)."
 extensions..")
 
 
-;;;; Connection and stream for logging: tracks every callback in (reversed)
-;;;; history.
-(defclass logging-object ()
-  ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
-  (:default-initargs :reversed-history nil))
-
-(defclass logging-connection (http2-connection logging-object)
-  ())
-
-(defclass logging-stream (http2-stream logging-object)
-  ())
-
 (defun add-log (object log-pars)
   (push log-pars (get-reversed-history object)))
 
