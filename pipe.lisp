@@ -37,6 +37,9 @@
       (prog1 (aref (get-buffer stream) (get-index stream))
         (incf (get-index stream)))))
 
+(defmethod trivial-gray-streams:stream-write-byte ((stream pipe-end-for-write) byte)
+  (vector-push-extend byte (get-buffer stream)))
+
 (defmethod trivial-gray-streams:stream-listen (stream)
   "If the index is not on end of stream, it can probably be read."
   (< (get-index stream) (length (get-buffer stream))))
