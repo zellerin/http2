@@ -318,7 +318,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
     ;; performance.
     (if (> length *max-frame-size*)
         ;; fixme: sometimes connection error.
-        (http2-error connection 'frame-size-error
+        (http2-error connection +frame-size-error+
                      "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the
 size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
 type, or is too small to contain mandatory frame data. "))
@@ -354,7 +354,7 @@ arrangement or negotiation."
                                http-stream))
                        length flags))
              (t (read-sequence payload stream)
-                (logger "~s" (list :frame  payload http-stream type flags))))
+                (warn "~s" (list :frame  payload http-stream type flags))))
        (frame-type-name frame-type-object)))))
 
 
@@ -429,10 +429,11 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     ;; reader
     ((when priority
        (read-priority-frame connection http-stream 5 0))
-      (unless end-headers
+      (if end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
         ;; another CONTINUATION frame.
-        (setf (get-expect-continuation connection) (get-stream-id http-stream)))
+          (process-end-headers connection http-stream)
+          (setf (get-expect-continuation connection) (get-stream-id http-stream)))
 
       (when (minusp length)
 

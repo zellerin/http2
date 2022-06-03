@@ -9,26 +9,52 @@ frames. What to do with the frames is managed by classes ~CONNECTION~ and
 reasonable with headers and payload; see [[./client.lisp]] for an example.
 
 ** Status
-Already implemented parts allow to request a http/2 document (or more) over TLS.
+Already implemented parts allow to request a http/2 document (or more) over TLS:
 
-Server part should be relatively easy to implemented, but practically would not
-be tested until server support of ALPN lands in cl+ssl (as most clients
-apparently do not support other ways of http/2 setup).
+*** Client
+#+begin_src lisp
+  CL-USER> (http2::retrieve-url "https://example.com")
+#+end_src
 
-| Frame type    | Reading | Sending |
-|---------------+---------+---------|
-| Data          | ✓       | ✓       |
-| Headers       | ✓       | ✓       |
-| Priority      |         | ✓       |
-| Rst-stream    | ✓       | ✓       |
-| Settings      | ✓       | ✓       |
-| Push-promise  |         | ✓       |
-| Ping          | ✓       | ✓       |
-| Goaway        | ✓       | ✓       |
-| Window-update | ✓       | ✓       |
-| Continuation  | ✓       | ✓       |
+#+begin_src text
+  "<!doctype html>
+  <html>
+  <head>
+      <title>Example Domain</title>
 
-Priorities are not implemented. Push promises are not implemented, but they are disabled by default. Dynamic table is not used for encoding and decoding headers.
+      <meta charset="utf-8" />
+      <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+      <meta name="viewport" conten...[sly-elided string of length 1256]"
+  (("content-length" . "1256") ("x-cache" . "HIT") ("vary" . "Accept-Encoding")
+   ("server" . "ECS (bsa/EB23)")
+   ("last-modified" . "Thu, 17 Oct 2019 07:18:26 GMT")
+   ("expires" . "Fri, 10 Jun 2022 19:43:07 GMT")
+   ("etag" . "\"3147526947+ident\"") ("date" . "Fri, 03 Jun 2022 19:43:07 GMT")
+   ("content-type" . "text/html; charset=UTF-8")
+   ("cache-control" . "max-age=604800") ("age" . "495733") (:STATUS . 200))
+#+end_src
+
+*** Server
+Rudimentary server part that is able to handle ~curl --http2-prior-knowledge~
+requests is also implemented:
+
+#+begin_src lisp
+  (http2::create-server 1234)
+#+end_src
+
+#+begin_src sh
+  [zellerin@winter http2]$ curl --http2-prior-knowledge http://localhost:1234/
+  Hello World
+#+end_src
+
+However, server support of ALPN needs to land in cl+ssl to be able to use the
+server in a practical way, as most clients apparently do not support other
+http/2 than TLS.
+
+** Missing pieces
+No handling of priorities is implemented. Push promises are not implemented, but they are disabled by default. Dynamic table is not used for encoding and decoding headers.
+
+Window management is minimal.
 
 ** License
 

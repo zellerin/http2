@@ -43,7 +43,8 @@
                   '((:header "foo" "bar")
                     (:header :path "/")
                     (:header "baz" "bah"))
-                  :stream 2 :init-state nil)
+                  :stream 2 :init-state nil
+                  :expected-log-connection '((:new-stream-requested 1 1)))
 
   (test-one-frame #'write-priority-frame '(t 12 34)
                   :expected-log-stream
@@ -61,14 +62,11 @@
                   :expected-log-stream
                   '((:closed :error +protocol-error+)))
 
-  ; expected error
-  #+nil (test-one-frame 'write-settings-frame '(((1 . 2)))
-                        :expected-log-connection 12)
-
   (test-one-frame 'write-settings-frame '(((1 . 2)))
                   :expected-log-connection '((:setting :header-table-size 2)
                                              (:settings-ACK-NEEDED))
-                  :stream :connection)
+                  :stream :connection
+                  :expected-log-sender '((:settings-ACKed)))
 
   #+nil(test-one-frame 'write-push-promise-frame )
 

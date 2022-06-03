@@ -14,7 +14,8 @@
                (:file "classes")
                (:file "headers")
                (:file "client-utils")
-               (:FILE "client"))
+               (:FILE "client")
+               (:file "server"))
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (asdf:defsystem #:http2/test

@@ -196,7 +196,11 @@ The lifecycle of a stream is shown in Figure 2.
                    unexpected stream identifier MUST respond with a connection
                    error (Section 5.4.1) of type PROTOCOL_ERROR."))
     ;; todo: count and check open streams
-    (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)))
+    (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)
+          (get-streams connection))
+    (car (get-streams connection)))
+  (:method :after ((connection logging-connection) stream-id frame-type)
+    (add-log connection `(:new-stream-requested ,stream-id ,frame-type))))
 
 (defgeneric peer-ends-http-stream (stream))
 (defgeneric peer-sends-push-promise (continuation stream)
@@ -261,13 +265,14 @@ The lifecycle of a stream is shown in Figure 2.
   )
 
 (defmethod peer-expects-settings-ack (connection)
-;  (write-ack-setting-frame (get-network-stream connection))
-;  (write-settings-frame connection connection nil :ack t)
-;  (force-output (get-network-stream connection))
-  )
+  (write-settings-frame connection connection nil :ack t)
+  (force-output (get-network-stream connection)))
 
 (defmethod peer-acks-settings (connection)
   ())
+
+(defmethod peer-acks-settings ((connection logging-connection))
+  (add-log connection '(:settings-acked)))
 
 
 (defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
@@ -351,6 +356,12 @@ PAYLOAD)."
 (defmethod add-header (stream name value)
   nil)
 
+(defmethod process-end-headers :before (connection (stream logging-stream))
+  (add-log stream '(:end-headers)))
+
+(defmethod process-end-headers (connection stream)
+  ())
+
 (defmethod do-ping (connection data)
   (write-ping-frame connection connection data :ack t))
 
@@ -421,6 +432,11 @@ extensions..")
 
 (defmethod apply-stream-priority ((stream logging-stream) exclusive weight stream-dependency)
   (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))
+
+(defmethod initialize-instance :after ((connection server-http2-connection) &key &allow-other-keys)
+  (write-settings-frame connection connection (get-settings connection))
+  (format t "send settings ~s"  (get-settings connection))
+  (force-output (get-network-stream connection)))
 
 (defmethod peer-resets-stream ((stream logging-stream) error-code)
   (add-log stream `(:closed :error ,(get-error-name error-code))))
