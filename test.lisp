@@ -15,10 +15,21 @@
                                        :padded #(0 1 2 3  6 7))
                   :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
 
+  ;; binary inputs
   (test-one-frame #'write-headers-frame
                   (list (list (encode-header "foo" "bar")
                               (encode-header :path "/")
                               (encode-header "baz" "bah")))
+                  :expected-log-stream
+                  '((:header "foo" "bar")
+                    (:header :path "/")
+                    (:header "baz" "bah")))
+
+  ;; string inputs
+  (test-one-frame #'write-headers-frame
+                  '((("foo" "bar")
+                     (:path "/")
+                     ("baz" "bah")))
                   :expected-log-stream
                   '((:header "foo" "bar")
                     (:header :path "/")
@@ -31,7 +42,8 @@
                   :expected-log-stream
                   '((:header "foo" "bar")
                     (:header :path "/")
-                    (:header "baz" "bah")))
+                    (:header "baz" "bah"))
+                  :stream 2 :init-state nil)
 
   (test-one-frame #'write-priority-frame '(t 12 34)
                   :expected-log-stream

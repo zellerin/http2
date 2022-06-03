@@ -50,9 +50,9 @@
 testing."
   (make-instance class
                  :network-stream stream
-                 :streams (list (make-instance 'logging-stream
-                                               :stream-id stream-id
-                                               :state STATE))))
+                 :streams (when state (list (make-instance 'logging-stream
+                                                           :stream-id stream-id
+                                                           :state STATE)))))
 
 (defmacro with-sender-receiver ((&key (init-state 'open)) &body body)
   "Run BODY with sender and receiver bound to a piped streams.
@@ -105,8 +105,9 @@ expected."
     (stefil:is (eq expected-receiver-error
                    (and receiver-signalled (type-of receiver-signalled)))
         "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
-    (check-history send-fn send-pars expected-log-stream
-                   (get-history (car (get-streams receiver))) "stream")
+    (when init-state
+      (check-history send-fn send-pars expected-log-stream
+                     (get-history (car (get-streams receiver))) "stream"))
     (check-history send-fn send-pars expected-log-connection
                    (get-history receiver) "connection")
     (check-history send-fn send-pars expected-log-sender
