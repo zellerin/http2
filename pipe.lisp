@@ -5,7 +5,7 @@
 (defclass binary-stream ()
   ())
 
-(defmethod stream-element-type (binary-stream)
+(defmethod stream-element-type ((stream binary-stream))
   '(unsigned-byte 8))
 
 (defclass pipe-end-for-read (trivial-gray-streams:fundamental-binary-input-stream binary-stream)

@@ -619,7 +619,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :must-not-have-stream t)
     ;; writer
     ((dolist (setting settings)
-       (declare ((cons (or (integer 0 256) symbol) (unsigned-byte 32)) setting))
+       #-ecl(declare ((cons (or (unsigned-byte 16) symbol) (unsigned-byte 32)) setting))
        (write-bytes 2 (if (numberp (car setting)) (car setting)
                           (find-setting-code (car setting))))
        (write-bytes 4 (cdr setting))))

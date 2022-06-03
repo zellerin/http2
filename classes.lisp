@@ -335,9 +335,10 @@ PAYLOAD)."
                         (map 'vector 'char-code formatted)
                         nil)
     (error 'peer-should-go-away
-           0 ; fixme: last processed stream
-           error-code formatted
-           nil)))
+           :last-stream-id 0 ; fixme: last processed stream
+           :error-code error-code
+           :debug-data formatted)
+    nil))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
