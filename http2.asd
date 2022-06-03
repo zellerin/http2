@@ -21,5 +21,7 @@
   :depends-on (http2 stefil trivial-gray-streams)
   :perform (test-op (o s)
                     (uiop:symbol-call :http2 'do-test) )
+  :serial t
   :components ((:file "pipe")
-               (:file "test")))
+               (:file "test")
+               (:file "tests-hpack")))

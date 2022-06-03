@@ -58,168 +58,38 @@ C.2.1.  Literal Header Field with Indexing
    The header field representation uses a literal name and a literal
    value.  The header field is added to the dynamic table.
 
-   Header list to encode:
-
-   custom-key: custom-header
-
-   Hex dump of encoded data:
-
-   400a 6375 7374 6f6d 2d6b 6579 0d63 7573 | @.custom-key.cus
-   746f 6d2d 6865 6164 6572                | tom-header
 |#
 
 (stefil:deftest headers-representation ()
   (multiple-value-bind (write read) (make-pipe)
-    (let ((*bytes-read* 0)
-          (connection (make-instance 'http2-connection :network-stream read)))
-      (write-sequence (vector-from-hex-text "400a637573746f6d2d6b65790d637573746f6d2d686561646572") write)
-      (destructuring-bind (name value)
-          (read-http-header connection)
-        (stefil:is (equal name "custom-key"))
-        (stefil:is (equal value "custom-header"))
-        ;; this is not based on spec.
-        (get-dynamic-table connection)
-        ))))
+    (flet ((test-decode (source-text expect-name expect-value &optional dynamic-table)
+             (let ((*bytes-read* 0)
+                   (connection (make-instance 'http2-connection :network-stream read)))
+                                        ; C.2.1
+               (write-sequence (vector-from-hex-text source-text) write)
+               (destructuring-bind (name value)
+                   (print (read-http-header connection))
+                 (stefil:is (equal name expect-name))
+                 (stefil:is (equal value expect-value))
+                                        ;    [  1] (s =  55) custom-key: custom-header
+                                        ;          Table size:  55
+                 (stefil:is (equalp (if dynamic-table (vector `(,name ,value)) #())
+                                    (get-dynamic-table connection)))))))
+      (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
+                     "custom-key"  "custom-header" t)
+
+      ;; C.2.2.  Literal Header Field without Indexing
+
+      (test-decode "040c2f73616d706c652f70617468" :path  "/sample/path")
+
+      ;; C.2.3.  Literal Header Field Never Indexed
+      (test-decode "100870617373776f726406736563726574"
+                   "password" "secret")
+
+      ;; C.2.4 Indexed header field
+      (test-decode "82" :method "GET"))))
 
 #|
-   Decoding process:
-
-   40                                      | == Literal indexed ==
-   0a                                      |   Literal name (len = 10)
-   6375 7374 6f6d 2d6b 6579                |
-   0d                                      |   Literal value (len = 13)
-   6375 7374 6f6d 2d68 6561 6465 72        | custom-header
-                                           | -> custom-key:
-                                           |   custom-header
-
-   Dynamic Table (after decoding):
-
-   [  1] (s =  55) custom-key: custom-header
-         Table size:  55
-
-   Decoded header list:
-
-   custom-key: custom-header
-
-C.2.2.  Literal Header Field without Indexing
-
-   The header field representation uses an indexed name and a literal
-   value.  The header field is not added to the dynamic table.
-
-   Header list to encode:
-
-   :path: /sample/path
-
-   Hex dump of encoded data:
-
-   040c 2f73 616d 706c 652f 7061 7468      | ../sample/path
-
-   Decoding process:
-
-   04                                      | == Literal not indexed ==
-                                           |   Indexed name (idx = 4)
-                                           |     :path
-   0c                                      |   Literal value (len = 12)
-   2f73 616d 706c 652f 7061 7468           | /sample/path
-                                           | -> :path: /sample/path
-
-   Dynamic table (after decoding): empty.
-
-   Decoded header list:
-
-   :path: /sample/path
-
-
-
-
-
-Peon & Ruellan               Standards Track                   [Page 35]
-
-
-RFC 7541                          HPACK                         May 2015
-
-
-C.2.3.  Literal Header Field Never Indexed
-
-   The header field representation uses a literal name and a literal
-   value.  The header field is not added to the dynamic table and must
-   use the same representation if re-encoded by an intermediary.
-
-   Header list to encode:
-
-   password: secret
-
-   Hex dump of encoded data:
-
-   1008 7061 7373 776f 7264 0673 6563 7265 | ..password.secre
-   74                                      | t
-
-   Decoding process:
-
-   10                                      | == Literal never indexed ==
-   08                                      |   Literal name (len = 8)
-   7061 7373 776f 7264                     | password
-   06                                      |   Literal value (len = 6)
-   7365 6372 6574                          | secret
-                                           | -> password: secret
-
-   Dynamic table (after decoding): empty.
-
-   Decoded header list:
-
-   password: secret
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Peon & Ruellan               Standards Track                   [Page 36]
-
-
-RFC 7541                          HPACK                         May 2015
-
-
-C.2.4.  Indexed Header Field
-
-   The header field representation uses an indexed header field from the
-   static table.
-
-   Header list to encode:
-
-   :method: GET
-
-   Hex dump of encoded data:
-
-   82                                      | .
-
-   Decoding process:
-
-   82                                      | == Indexed - Add ==
-                                           |   idx = 2
-                                           | -> :method: GET
-
-   Dynamic table (after decoding): empty.
-
-   Decoded header list:
-
-   :method: GET
 
 C.3.  Request Examples without Huffman Coding
 
