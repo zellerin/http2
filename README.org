@@ -28,7 +28,7 @@ apparently do not support other ways of http/2 setup).
 | Window-update | ✓       | ✓       |
 | Continuation  | ✓       | ✓       |
 
-Priorities are not implemented. Push promises are not implemented, but they are disabled by default.
+Priorities are not implemented. Push promises are not implemented, but they are disabled by default. Dynamic table is not used for encoding and decoding headers.
 
 ** License
 

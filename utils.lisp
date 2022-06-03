@@ -45,3 +45,10 @@ when describing frame sizes.")
   "Send a format message to *LOG-STREAM*."
   (apply #'format *log-stream* fmt pars)
   (car pars))
+
+(defun vector-from-hex-text (text)
+  ""
+  (loop with prefix = text
+        with i from 0 to (1- (length prefix)) by 2
+        collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
+        finally (return (map 'simple-vector 'identity l))))
