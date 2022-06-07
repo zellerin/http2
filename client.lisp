@@ -31,5 +31,5 @@
       (values (http2::get-body (first (http2::get-streams connection)))
               (http2::get-headers  (first (http2::get-streams connection)))))))
 
-(defmethod peer-ends-http-stream (connection stream)
+(defmethod peer-ends-http-stream ((connection sample-client-connection) stream)
   (terminate-locally connection))

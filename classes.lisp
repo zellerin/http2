@@ -217,7 +217,8 @@ instance of a stream, or class of a new stream to open, or name of such class.")
     (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)
           (get-streams connection))
     (car (get-streams connection)))
-    (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
+
+  (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
       (unless (> stream-id (get-last-id-seen connection))
         (http2-error connection +protocol-error+
                      "The identifier of a newly established stream MUST be
@@ -235,14 +236,20 @@ instance of a stream, or class of a new stream to open, or name of such class.")
     (add-log connection `(:new-stream-requested ,stream-id ,frame-type)))
 
   (:method :before ((connection client-http2-connection) stream-id frame-type)
-    (if (evenp stream-id)
+    (if (oddp stream-id)
         ;; Q: does RFC document what to do?
         (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
 
   (:method :before ((connection server-http2-connection) stream-id frame-type)
-    (if (oddp stream-id)
+    (when (evenp stream-id)
         ;; Q: does RFC document what to do?
-        (warn "Streams initiated by a client MUST use odd-numbered stream identifiers"))))
+      (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
+
+  (:method :around ((connection logging-connection) stream-id frame-type)
+    (let ((stream (call-next-method)))
+      (add-log stream `(:opened :id ,stream-id
+                                :frame-type ,(frame-type-name (aref *frame-types* frame-type))))
+      stream)))
 
 (defgeneric peer-sends-push-promise (continuation stream)
   ;; this is not actually called (yet) and may need more parameters
@@ -394,7 +401,7 @@ PAYLOAD).")
           (ecase (get-state stream)
             ((open) 'half-closed/remote)
             ((half-closed/local) 'closed))))
-  (:method (connection (stream logging-stream))
+  (:method :after (connection (stream logging-stream))
     (add-log stream '(:closed-remotely))))
 
 (defmethod add-header :around ((stream http2-stream) name value)

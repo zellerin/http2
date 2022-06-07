@@ -15,6 +15,7 @@
                (:file "headers")
                (:file "client-utils")
                (:FILE "client")
+               (:file "cl+ssl")
                (:file "server"))
   :in-order-to ((test-op (test-op "http2/test"))))
 

@@ -4,10 +4,7 @@
     :void
   (ctx ssl-ctx)
   (alpn-select-cb :pointer)
-  (args :pointer))
-
-(defun select-h2-callback ())
- (cffi:get-callback pem-password-callback)
+#+nil  (args :pointer))
 
 (cffi:defcallback select-h2-callback
     :int

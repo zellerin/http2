@@ -38,7 +38,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 Rudimentary server is also implemented:
 
 #+begin_src lisp
-  (http2::create-server 1234)
+  (http2::create-server 1234 "key.pem" "cert.pem")
 #+end_src
 
 #+begin_src sh
