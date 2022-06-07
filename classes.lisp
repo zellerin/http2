@@ -199,6 +199,20 @@ The lifecycle of a stream is shown in Figure 2.
     (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'open)
           (get-streams connection))
     (car (get-streams connection)))
+    (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
+    (unless (> stream-id (get-last-id-seen connection))
+      (http2-error connection +protocol-error+
+                   "The identifier of a newly established stream MUST be
+                   numerically greater than all streams that the initiating
+                   endpoint has opened or reserved.  This governs streams that
+                   are opened using a HEADERS frame and streams that are
+                   reserved using PUSH_PROMISE.  An endpoint that receives an
+                   unexpected stream identifier MUST respond with a connection
+                   error (Section 5.4.1) of type PROTOCOL_ERROR."))
+    ;; todo: count and check open streams
+      (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'idle)
+            (get-streams connection))
+      (car (get-streams connection)))
   (:method :after ((connection logging-connection) stream-id frame-type)
     (add-log connection `(:new-stream-requested ,stream-id ,frame-type))))
 
