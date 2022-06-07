@@ -159,9 +159,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
                (declare (ignorable end-headers ack priority))
                (when padding-size (decf length (1+ padding-size)))
                (flet ((read-bytes (n) (read-bytes ,stream-name n))
-                      (read-byte* () (read-byte* ,stream-name))
                       (read-vector (seq) (read-sequence seq ,stream-name)))
-                 (declare (ignorable #'read-bytes #'read-byte* #'read-vector))
+                 (declare (ignorable #'read-bytes #'read-vector))
                  ,@(cond (must-have-stream-in
                           `((when (eq connection http-stream)
                               (http2-error connection 'protocol-error
