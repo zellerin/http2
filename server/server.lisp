@@ -13,7 +13,7 @@
   (print-unreadable-object (stream out)
     (format out "#~d ~s ~s" (get-stream-id stream) (get-url stream) (get-state stream))))
 
-(defmethod add-header (stream (name (eql :path)) value)
+(defmethod add-header ((stream sample-server-stream) (name (eql :path)) value)
   (setf (get-path stream) value))
 
 (defparameter *text-to-send* (format nil "<h1>Hello World</h1>~&"))
