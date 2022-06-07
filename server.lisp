@@ -7,7 +7,7 @@
   ()
   (:default-initargs :stream-class 'sample-server-stream))
 
-(defclass SAMPLE-SERVER-STREAM (LOGGING-STREAM http2-stream)
+(defclass sample-server-stream (logging-stream http2-stream)
   ())
 
 (defparameter *text-to-send* (format nil "Hello World~&"))
@@ -19,28 +19,43 @@
                     :end-stream t)
   (force-output (get-network-stream connection)))
 
-(defun create-server (port)
-  (let ((socket (usocket:socket-listen "127.0.0.1" port)))
+(defun process-server-stream (stream)
+  (let ((connection (make-instance 'sample-server-connection
+                                    :network-stream stream)))
+    (with-simple-restart (close-connection "Close current connection")
+      (unwind-protect
+           (progn
+             (let ((preface-buffer (make-array (length +client-preface-start+))))
+               (read-sequence preface-buffer stream)
+               (unless (equalp preface-buffer +client-preface-start+)
+                 (warn "Client preface mismatch: got ~a" preface-buffer)))
+             (handler-case
+                 (loop (read-frame connection))
+               (end-of-file () nil)))
+        (progn
+          (print (get-history connection))
+          (print (mapcar 'get-history (get-streams connection))))))))
+
+(defun create-server (port key cert)
+  (let ((socket (usocket:socket-listen "127.0.0.1" port))
+        (cl+ssl::*ssl-global-context* (cl+ssl::make-context)))
+    (cl+ssl::ssl-ctx-set-alpn-select-cb  cl+ssl::*ssl-global-context*
+                                         (cffi:get-callback 'cl+ssl::select-h2-callback))
     (unwind-protect
          (loop
            (let* ((network-socket (usocket:socket-accept socket :element-type '(unsigned-byte 8)))
-                             (network-stream (usocket:socket-stream network-socket))
-                  (connection (make-instance 'sample-server-connection
-                                             :network-stream network-stream)))
-             (with-simple-restart (close-connection "Close current connection")
-               (unwind-protect
-                    (progn
-                      (let ((preface-buffer (make-array (length +client-preface-start+))))
-                        (read-sequence preface-buffer network-stream)
-                        (unless (equalp preface-buffer +client-preface-start+)
-                          (warn "Client preface mismatch")))
-                      (handler-case
-                          (loop (read-frame connection))
-                        (end-of-file () nil)))
-                 (progn
-                   (print (get-history connection))
-                   (print (mapcar 'get-history (get-streams connection)))
-                   (usocket:socket-close network-socket))))))
+                  (network-stream (usocket:socket-stream network-socket)))
+             (unwind-protect
+                  (let ((tls-stream (cl+ssl:make-ssl-server-stream
+                                     network-stream
+
+                                     :certificate cert
+                                     :key key)))
+                    (unwind-protect
+                         (process-server-stream tls-stream)
+                      (close tls-stream)))
+               (usocket:socket-close network-socket)
+               (close network-stream))))
       (usocket:socket-close socket))))
 
 ;;;;
