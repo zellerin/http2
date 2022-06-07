@@ -80,7 +80,7 @@ quiet."
          ,@body))))
 
 (defun check-history (fn pars expected got type)
-  (stefil:is (equalp expected got)
+  (fiasco:is (equalp expected got)
       "(~a ~{~s~^ ~}): ~a should have log~%+++ ~s, not~%--- ~s~%" fn pars type
       expected got))
 
@@ -103,9 +103,9 @@ expected."
                (t (error "Stream parameter must be stream id number or :connection")))
              send-pars)
       (process-messages)
-      (stefil:is (eq expected-sender-error (and sender-signalled (type-of sender-signalled)))
+      (fiasco:is (eq expected-sender-error (and sender-signalled (type-of sender-signalled)))
           "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
-      (stefil:is (eq expected-receiver-error
+      (fiasco:is (eq expected-receiver-error
                      (and receiver-signalled (type-of receiver-signalled)))
           "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
       (when init-state

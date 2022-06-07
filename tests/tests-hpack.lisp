@@ -1,10 +1,10 @@
 (in-package http2)
 
 
-(stefil:deftest int-pack-tests ()
+(fiasco:deftest int-pack-tests ()
 
     ;;
-  (stefil:is (= 10 (get-integer-from-octet nil #x0a 5)) "
+  (fiasco:is (= 10 (get-integer-from-octet nil #x0a 5)) "
  C.1.1.  Example 1: Encoding 10 Using a 5-Bit Prefix
 
     The value 10 is to be encoded with a 5-bit prefix.
@@ -18,7 +18,7 @@
     +---+---+---+---+---+---+---+---+")
   ;;
   (let ((*bytes-left* 2))
-    (stefil:is
+    (fiasco:is
         (= 1337
            (multiple-value-bind (write read) (make-pipe)
              (write-sequence #(154 10) write)
@@ -33,9 +33,9 @@
         | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 |  10<128, encode(10), done
         +---+---+---+---+---+---+---+---+")
 
-    (stefil:is (zerop *bytes-left*) "C.1.2 read different bytes."))
+    (fiasco:is (zerop *bytes-left*) "C.1.2 read different bytes."))
 
-  (stefil:is (= 42 (get-integer-from-octet nil 42 8))
+  (fiasco:is (= 42 (get-integer-from-octet nil 42 8))
       "C.1.3.  Example 3: Encoding 42 Starting at an Octet Boundary
 
    The value 42 is to be encoded starting at an octet boundary.  This
@@ -60,7 +60,7 @@ C.2.1.  Literal Header Field with Indexing
 
 |#
 
-(stefil:deftest headers-representation ()
+(fiasco:deftest headers-representation ()
   (multiple-value-bind (write read) (make-pipe)
     (flet ((test-decode (source-text expect-name expect-value &optional dynamic-table)
              (let ((*bytes-read* 0)
@@ -69,11 +69,11 @@ C.2.1.  Literal Header Field with Indexing
                (write-sequence (vector-from-hex-text source-text) write)
                (destructuring-bind (name value)
                    (print (read-http-header connection))
-                 (stefil:is (equal name expect-name))
-                 (stefil:is (equal value expect-value))
+                 (fiasco:is (equal name expect-name))
+                 (fiasco:is (equal value expect-value))
                                         ;    [  1] (s =  55) custom-key: custom-header
                                         ;          Table size:  55
-                 (stefil:is (equalp (if dynamic-table (vector `(,name ,value)) #())
+                 (fiasco:is (equalp (if dynamic-table (vector `(,name ,value)) #())
                                     (get-dynamic-table connection)))))))
       (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
                      "custom-key"  "custom-header" t)

@@ -219,17 +219,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
    Just as in HTTP/1.x, header field names are strings of ASCII
    characters that are compared in a case-insensitive fashion.  However,
    header field names MUST be converted to lowercase prior to their
-   encoding in HTTP/2.  A request or response containing uppercase
-   header field names MUST be treated as malformed (Section 8.1.2.6).
-
-   While HTTP/1.x used the message start-line (see [RFC7230],
-   Section 3.1) to convey the target URI, the method of the request, and
-   the status code for the response, HTTP/2 uses special pseudo-header
-   fields beginning with ':' character (ASCII 0x3a) for this purpose.
-
-   Pseudo-header fields are not HTTP header fields.  Endpoints MUST NOT
-   generate pseudo-header fields other than those defined in this
-   document.
+   encoding in HTTP/2..
 
    Pseudo-header fields are only valid in the context in which they are
    defined.  Pseudo-header fields defined for requests MUST NOT appear

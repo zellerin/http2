@@ -1,7 +1,7 @@
 (in-package http2)
 
 
-(stefil:deftest test-frames ()
+(fiasco:deftest test-frames ()
 
   (test-one-frame #'write-data-frame '(#(1 2 3 4 5))
                   :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
@@ -119,17 +119,15 @@
             ("https://www.seznam.cz" "" 200))
   "List of tripples for testing pages: URL, text on page and status code.")
 
-(defun test-webs (&optional (webs *test-webs*))
+#+nil(defun test-webs (&optional (webs *test-webs*))
   (loop for (page search-term code) in webs
         do
            (multiple-value-bind (body headers)
                (http2/client::retrieve-url page)
-             (stefil:is (search search-term body)
+             (fiasco:is (search search-term body)
                  "Page ~a does not contain ~a" page search-term)
-             (stefil:is (equal code (cdr (assoc :status headers)))
+             (fiasco:is (equal code (cdr (assoc :status headers)))
                  "Page ~a does not have status ~a" page code)))  )
 
 (defun do-test (&optional remote-tests)
-  (test-frames)
-  (when remote-tests
-    (test-webs)))
+  (test-frames))

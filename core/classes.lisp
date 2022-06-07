@@ -409,13 +409,18 @@ PAYLOAD).")
 
 (defmethod add-header :around ((stream http2-stream) name value)
   "Decode compressed headers"
-  (call-next-method stream
-                    (etypecase name
-                      ((or string symbol) name)
-                      ((vector (unsigned-byte 8)) (decode-huffman name)))
-                    (etypecase value
-                      ((or null string integer) value) ; integer can be removed if we removed "200"
-                      ((vector (unsigned-byte 8)) (decode-huffman value)))))
+  (let ((decoded-name
+          (etypecase name
+            ((or string symbol) name)
+            ((vector (unsigned-byte 8)) (decode-huffman name)))))
+    (when (some #'upper-case-p name)
+      (error " A request or response containing uppercase header field names MUST be treated
+as malformed"))
+    (call-next-method stream
+                      decoded-name
+                      (etypecase value
+                        ((or null string integer) value) ; integer can be removed if we removed "200"
+                        ((vector (unsigned-byte 8)) (decode-huffman value))))))
 
 (defmethod add-header (stream name value)
   (warn "You should overwrite default method for adding new header."))

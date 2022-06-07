@@ -47,7 +47,8 @@ Rudimentary server is implemented:
 #+end_src
 
 ** Missing pieces
-- Window management is minimal. We should limit outgoing data as required by the peer.
+- Window management is minimal. We should limit outgoing data as required by the
+  peer. This depends on application.
 - RFC accepts that individual headers can be split between frames. This is not implemented (and should be).
 - No handling of priorities is implemented. This is OK, as these are only suggestions.
 - Push promises are not implemented. This is OK, they are disabled by default (settings)

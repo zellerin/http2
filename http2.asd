@@ -7,7 +7,6 @@
   :license  "MIT"
   :version "0.2"
   :serial t
-  :depends-on (#:cl+ssl #:puri)
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")
@@ -39,7 +38,7 @@
                (:file "server")))
 
 (asdf:defsystem #:http2/test
-  :depends-on (http2 stefil trivial-gray-streams)
+  :depends-on (http2 fiasco trivial-gray-streams)
   :perform (test-op (o s)
                     (uiop:symbol-call :http2 'do-test) )
   :serial t
