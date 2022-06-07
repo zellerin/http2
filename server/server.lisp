@@ -20,7 +20,8 @@
 (defparameter *headers-to-send* '(("content-type" "text/html")))
 
 (defmethod process-end-headers (connection (stream sample-server-stream))
-)
+  ;; do nothing
+  )
 
 (defmethod peer-ends-http-stream (connection (stream sample-server-stream))
   (cond

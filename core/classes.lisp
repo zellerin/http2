@@ -307,8 +307,6 @@ not now.")
    STREAM_CLOSED."
     (change-state stream '(((open half-closed/local) :keep)) 'stream-closed)))
 
-
-
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
   (:method  (stream exclusive weight stream-dependency)
     (setf (get-weight stream) weight
@@ -453,11 +451,12 @@ PAYLOAD).")
     (declare (ignore payload))
     (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
 
-(defmethod process-end-headers :before (connection (stream logging-stream))
-  (add-log stream '(:end-headers)))
+(defgeneric process-end-headers (connection stream)
+  (:method  :before (connection (stream logging-stream))
+    (add-log stream '(:end-headers)))
 
-(defmethod process-end-headers (connection stream)
-  ())
+  (:method (connection stream)
+    (warn "Do something on end of headers")))
 
 (defmethod do-ping (connection data)
   (write-ping-frame connection connection data :ack t))
