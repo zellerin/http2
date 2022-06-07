@@ -40,7 +40,7 @@
 (asdf:defsystem #:http2/test
   :depends-on (http2 fiasco trivial-gray-streams)
   :perform (test-op (o s)
-                    (uiop:symbol-call :http2 'do-test) )
+                    (uiop:symbol-call :http2 'do-test))
   :serial t
   :pathname "tests"
   :components ((:file "pipe")

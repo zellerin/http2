@@ -129,5 +129,5 @@
              (fiasco:is (equal code (cdr (assoc :status headers)))
                  "Page ~a does not have status ~a" page code)))  )
 
-(defun do-test (&optional remote-tests)
+(defun do-test ()
   (test-frames))

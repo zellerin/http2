@@ -272,6 +272,12 @@ not now.")
 
 #+nil (defgeneric peer-pushes-promise)
 
+(defgeneric send-stream-error (connection stream error-code note)
+  (:method (connection (stream http2-stream) error-code note)
+    (write-rst-stream-frame connection stream error-code)
+    (warn "Stream error: rst frame sent locally - ~s" note)
+    (setf (get-state stream) 'closed)))
+
 ;;;; Other callbacks
 (defgeneric apply-data-frame (connection stream payload)
   (:documentation "Data frame is received.")
@@ -407,23 +413,35 @@ PAYLOAD).")
   (:method :after (connection (stream logging-stream))
     (add-log stream '(:closed-remotely))))
 
-(defmethod add-header :around ((stream http2-stream) name value)
-  "Decode compressed headers"
-  (let ((decoded-name
-          (etypecase name
-            ((or string symbol) name)
-            ((vector (unsigned-byte 8)) (decode-huffman name)))))
-    (when (some #'upper-case-p name)
-      (error " A request or response containing uppercase header field names MUST be treated
-as malformed"))
-    (call-next-method stream
-                      decoded-name
-                      (etypecase value
-                        ((or null string integer) value) ; integer can be removed if we removed "200"
-                        ((vector (unsigned-byte 8)) (decode-huffman value))))))
+(defgeneric add-header (connection stream name value)
+  (:method :around (connection (stream http2-stream) name value)
+    "Decode compressed headers"
+    (let ((decoded-name
+            (etypecase name
+              ((or string symbol) name)
+              ((vector (unsigned-byte 8)) (decode-huffman name)))))
+      (when (and (stringp name) (some #'upper-case-p name))
+        (send-stream-error connection stream  +protocol-error+
+                           "A request or response containing uppercase header field names MUST be treated as malformed. (...) Malformed requests or responses that are detected MUST be
+   treated as a stream error of type PROTOCOL_ERROR. "))
+      (call-next-method connection stream
+                        decoded-name
+                        (etypecase value
+                          ((or null string integer) value) ; integer can be removed if we removed "200"
+                          ((vector (unsigned-byte 8)) (decode-huffman value))))))
 
-(defmethod add-header (stream name value)
-  (warn "You should overwrite default method for adding new header."))
+  (:method (connection stream name value)
+    (warn "You should overwrite default method for adding new header."))
+  (:method :after (connection (stream log-headers-mixin) name value)
+    (format t "~&header: ~a = ~a~%" name value))
+
+  (:method (connection (stream header-collecting-mixin) name value)
+    (push (cons name value) (get-headers stream)))
+
+  (:method :before (connection (stream logging-stream) name value)
+    (add-log stream `(:header ,name ,value))))
+
+
 
 (defgeneric send-ping (connection &optional payload)
   (:documentation
@@ -478,14 +496,6 @@ as malformed"))
                   :error-code error-code
                   :debug-data debug-data))
 
-(defmethod add-header :after ((stream log-headers-mixin) name value)
-  (format t "~&header: ~a = ~a~%" name value))
-
-
-
-(defmethod add-header ((stream header-collecting-mixin) name value)
-  (push (cons name value) (get-headers stream)))
-
 (defmethod handle-undefined-frame (type flags length)
   "Callback that is called when a frame of unknown type is received - see
 extensions..")
@@ -496,9 +506,6 @@ extensions..")
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))
-
-(defmethod add-header :before ((stream logging-stream) name value)
-  (add-log stream `(:header ,name ,value)))
 
 (defmethod apply-stream-priority ((stream logging-stream) exclusive weight stream-dependency)
   (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))

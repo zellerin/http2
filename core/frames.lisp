@@ -443,7 +443,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     (loop while (plusp *bytes-left*)
           for (name value) = (read-http-header connection)
           when name
-          do (add-header http-stream name value))))
+          do (add-header connection http-stream name value))))
 
 #|
    Prioritization information in a HEADERS frame is logically equivalent
