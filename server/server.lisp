@@ -9,6 +9,10 @@
   ((path    :accessor get-path    :initarg :path))
   (:default-initargs :path :undefined))
 
+(defmethod print-object ((stream sample-server-stream) out)
+  (print-unreadable-object (stream out)
+    (format out "#~d ~s ~s" (get-stream-id stream) (get-url stream) (get-state stream))))
+
 (defmethod add-header (stream (name (eql :path)) value)
   (setf (get-path stream) value))
 
@@ -20,9 +24,8 @@
 
 (defmethod peer-ends-http-stream (connection (stream sample-server-stream))
   (cond
-    ((equal "/" (print (get-path stream)))
-     (write-headers-frame connection stream `((:status 200) ,@*headers-to-send*)
-                          :end-headers t)
+    ((equal "/" (get-path stream))
+     (send-headers connection stream `((:status 200) ,@*headers-to-send*))
      (write-data-frame connection stream (map 'vector 'char-code *text-to-send*)
                        :end-stream t))
     (t
@@ -52,6 +55,15 @@
               (print (get-history connection))))
         (go-away ())))))
 
+(defun wrap-to-tls-and-process-server-stream (raw-stream key cert)
+  (let ((tls-stream (cl+ssl:make-ssl-server-stream
+                     raw-stream
+                     :certificate cert
+                     :key key)))
+    (unwind-protect
+         (process-server-stream tls-stream)
+      (close tls-stream))))
+
 (defun create-server (port key cert)
   (let ((socket (usocket:socket-listen "127.0.0.1" port))
         (cl+ssl::*ssl-global-context* (cl+ssl::make-context)))
@@ -62,16 +74,8 @@
            (let* ((network-socket (usocket:socket-accept socket :element-type '(unsigned-byte 8)))
                   (network-stream (usocket:socket-stream network-socket)))
              (unwind-protect
-                  (let ((tls-stream (cl+ssl:make-ssl-server-stream
-                                     network-stream
-
-                                     :certificate cert
-                                     :key key)))
-                    (unwind-protect
-                         (process-server-stream tls-stream)
-                      (close tls-stream)))
-               (usocket:socket-close network-socket)
-               (close network-stream))))
+                  (wrap-to-tls-and-process-server-stream network-stream key cert)
+               (usocket:socket-close network-socket))))
       (usocket:socket-close socket))))
 
 ;;;;

@@ -9,21 +9,41 @@
   :serial t
   :depends-on (#:cl+ssl #:puri)
   :components ((:file "package")
-               (:file "utils")
-               (:file "http2")
-               (:file "classes")
-               (:file "headers")
-               (:file "client-utils")
-               (:FILE "client")
-               (:file "cl+ssl")
-               (:file "server"))
+               (:module "core"
+                :components ((:file "utils")
+                             (:file "frames")
+                             (:file "classes")
+                             (:file "headers"))))
   :in-order-to ((test-op (test-op "http2/test"))))
+
+(asdf:defsystem #:http2/client
+  :description "HTTP2 protocol implementation"
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :license  "MIT"
+  :version "0.2"
+  :serial t
+  :pathname "client"
+  :depends-on (#:cl+ssl #:puri #:http2)
+  :components ((:file "client-utils")
+               (:FILE "client")))
+
+(asdf:defsystem #:http2/server
+  :description "HTTP2 protocol implementation"
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :license  "MIT"
+  :version "0.2"
+  :serial t
+  :pathname "server"
+  :depends-on (#:cl+ssl #:puri #:http2)
+  :components ((:file "cl+ssl")
+               (:file "server")))
 
 (asdf:defsystem #:http2/test
   :depends-on (http2 stefil trivial-gray-streams)
   :perform (test-op (o s)
                     (uiop:symbol-call :http2 'do-test) )
   :serial t
+  :pathname "tests"
   :components ((:file "pipe")
                (:file "test")
                (:file "tests-hpack")))

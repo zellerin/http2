@@ -35,7 +35,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 *** Server
-Rudimentary server is also implemented:
+Rudimentary server is implemented:
 
 #+begin_src lisp
   (http2::create-server 1234 "key.pem" "cert.pem")
@@ -46,17 +46,22 @@ Rudimentary server is also implemented:
   Hello World
 #+end_src
 
-However, server support of ALPN needs to land in cl+ssl to be able to use the
-server in a practical way, as most clients apparently do not support other
-http/2 than TLS.
-
 ** Missing pieces
-No handling of priorities is implemented. Push promises are not implemented, but they are disabled by default. Dynamic table is not used for encoding and decoding headers.
+- Window management is minimal. We should limit outgoing data as required by the peer.
+- RFC accepts that individual headers can be split between frames. This is not implemented (and should be).
+- No handling of priorities is implemented. This is OK, as these are only suggestions.
+- Push promises are not implemented. This is OK, they are disabled by default (settings)
+- Dynamic table is not used for encoding and decoding headers. This is OK, header table size is set to 0
 
-Window management is minimal.
+** Implementation details
+
+- [[./frames.lisp]] implements frame reading and writing. It is intended to be
+  correct and fast, in this order. Read frames call callbacks that are supposed
+  to be generic functions for extensibility.
+- [[./classes.lisp]] defines class hierarchy for vanilla connections and streams,
+  and the generic methods for callbacks for these classes.
 
 ** License
-
 Licensed by MIT license.
 
 Significant part of the comments is taken over from the RFCs above and
