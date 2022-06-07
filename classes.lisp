@@ -253,6 +253,7 @@ The lifecycle of a stream is shown in Figure 2.
     (setf (get-window-size object) increment)))
 
 (defmethod update-dynamic-table-size (connection new-size)
+  (setf (fill-pointer (get-dynamic-table connection)) new-size)
   (adjust-array (get-dynamic-table connection) new-size))
 
 (defmethod set-peer-setting (connection name value)
