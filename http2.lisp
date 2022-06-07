@@ -427,6 +427,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
     ;; reader
     ((when priority
+       (decf length 5)
        (read-priority-frame connection http-stream 5 0))
       (if end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
