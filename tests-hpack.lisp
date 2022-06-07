@@ -17,7 +17,7 @@
     | X | X | X | 0 | 1 | 0 | 1 | 0 |   10 stored on 5 bits
     +---+---+---+---+---+---+---+---+")
   ;;
-  (let ((*bytes-read* 0))
+  (let ((*bytes-left* 2))
     (stefil:is
         (= 1337
            (multiple-value-bind (write read) (make-pipe)
@@ -33,7 +33,7 @@
         | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 |  10<128, encode(10), done
         +---+---+---+---+---+---+---+---+")
 
-    (stefil:is (= *bytes-read* 2) "C.1.2 read different bytes."))
+    (stefil:is (zerop *bytes-left*) "C.1.2 read different bytes."))
 
   (stefil:is (= 42 (get-integer-from-octet nil 42 8))
       "C.1.3.  Example 3: Encoding 42 Starting at an Octet Boundary

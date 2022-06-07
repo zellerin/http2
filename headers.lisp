@@ -141,7 +141,7 @@
                  (- index (length static-headers-table))))))
 
 (defun read-http-header (connection)
-  "Read header field from stream. Increment *bytes-read* as needed."
+  "Read header field from stream. Decrement *bytes-left* as needed."
   (let* ((stream (get-network-stream connection))
          (octet0 (read-byte* stream)))
     (cond

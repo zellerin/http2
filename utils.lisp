@@ -1,6 +1,10 @@
 (in-package http2)
 
-(defvar *bytes-read* nil "Number of bytes read from stream")
+(defvar *bytes-left* nil "Number of bytes left in frame")
+(defvar *bytes-to-possibly-reuse* (make-array 0 :element-type '(unsigned-byte 8)
+                                              :adjustable t
+                                                :fill-pointer 0))
+(defvar *bytes-to-reuse* nil)
 
 #|
 The size of a frame payload is limited by the maximum size that a
@@ -21,7 +25,9 @@ when describing frame sizes.")
 (declaim ((integer 16384 16777215) *max-frame-size*))
 
 (defun read-byte* (stream)
-  (incf *bytes-read*)
+  (unless (plusp *bytes-left*)
+    (error "No bytes left to read"))
+  (decf *bytes-left*)
   (read-byte stream))
 
 (defun read-bytes (stream n)

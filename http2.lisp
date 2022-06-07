@@ -441,14 +441,11 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       (read-and-add-headers connection http-stream length)))
 
 (defun read-and-add-headers (connection http-stream length)
-  (let ((*bytes-read* 0))
-    (declare (dynamic-extent *bytes-read*))
-    (loop while (> length *bytes-read*)
+  (let ((*bytes-left* length))
+    (loop while (plusp *bytes-left*)
           for (name value) = (read-http-header connection)
           when name
-          do (add-header http-stream name value))
-    (unless (= length *bytes-read*)
-      (error "Bad length"))))
+          do (add-header http-stream name value))))
 
 #|
    Prioritization information in a HEADERS frame is logically equivalent
