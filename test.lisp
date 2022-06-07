@@ -29,6 +29,17 @@
   (test-one-frame #'write-headers-frame
                   '((("foo" "bar")
                      (:path "/")
+                     ("baz" "bah"))
+                    :end-headers t)
+                  :expected-log-stream
+                  '((:end-headers)
+                    (:header "foo" "bar")
+                    (:header :path "/")
+                    (:header "baz" "bah")))
+
+    (test-one-frame #'write-headers-frame
+                  '((("foo" "bar")
+                     (:path "/")
                      ("baz" "bah")))
                   :expected-log-stream
                   '((:header "foo" "bar")
