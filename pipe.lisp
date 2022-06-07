@@ -16,16 +16,18 @@
   ((buffer :accessor get-buffer :initarg :buffer)))
 
 (defun make-pipe (&key (buffer-size 4096))
-  "Two ends of a freshly created one-way binary pipe: writer and reader."
+  "Two values, each representing one end of a freshly created one-way binary
+pipe: writer and reader."
   (let ((buffer (make-array buffer-size :adjustable t
                                         :fill-pointer 0)))
     (values (make-instance 'pipe-end-for-write
-                                       :buffer buffer)
+                           :buffer buffer)
             (make-instance 'pipe-end-for-read :buffer buffer
-                           :index 0))))
+                                              :index 0))))
 
 (defun make-full-pipe ()
-  "Two end of a full binary pipe: writes to ones are read from the other."
+  "Two values, each representing one end of a full binary pipe: writes to ones are
+read from the other."
   (multiple-value-bind (write-stream-a read-stream-a) (make-pipe)
     (multiple-value-bind (write-stream-b read-stream-b) (make-pipe)
       (values
@@ -88,27 +90,28 @@ quiet."
                                            expected-receiver-error
                                            (stream 1)
                                            (init-state 'open))
-  (with-sender-receiver (:init-state init-state)
-    "Send message by SEND-FN with SEND-PARS to receiver, and let all relevant
+  (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
+    (with-sender-receiver (:init-state init-state)
+      "Send message by SEND-FN with SEND-PARS to receiver, and let all relevant
 communication happen. Check that in the end, logs on sender and receiver are as
 expected."
-    (apply send-fn sender
-              (cond
-                ((numberp stream)
-                 (make-instance 'http2-stream :stream-id 1))
-                ((eq stream :connection) sender)
-                (t (error "Stream parameter must be stream id number or :connection")))
-              send-pars)
-    (process-messages)
-    (stefil:is (eq expected-sender-error (and sender-signalled (type-of sender-signalled)))
-        "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
-    (stefil:is (eq expected-receiver-error
-                   (and receiver-signalled (type-of receiver-signalled)))
-        "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
-    (when init-state
-      (check-history send-fn send-pars expected-log-stream
-                     (get-history (car (get-streams receiver))) "stream"))
-    (check-history send-fn send-pars expected-log-connection
-                   (get-history receiver) "connection")
-    (check-history send-fn send-pars expected-log-sender
-                   (get-history sender) "sender")))
+      (apply send-fn sender
+             (cond
+               ((numberp stream)
+                (make-instance 'http2-stream :stream-id 1))
+               ((eq stream :connection) sender)
+               (t (error "Stream parameter must be stream id number or :connection")))
+             send-pars)
+      (process-messages)
+      (stefil:is (eq expected-sender-error (and sender-signalled (type-of sender-signalled)))
+          "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
+      (stefil:is (eq expected-receiver-error
+                     (and receiver-signalled (type-of receiver-signalled)))
+          "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
+      (when init-state
+        (check-history send-fn send-pars expected-log-stream
+                       (get-history (car (get-streams receiver))) "stream"))
+      (check-history send-fn send-pars expected-log-connection
+                     (get-history receiver) "connection")
+      (check-history send-fn send-pars expected-log-sender
+                     (get-history sender) "sender"))))

@@ -180,7 +180,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; PROTOCOL_ERROR.
                               (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
-                 (when end-stream (process-end-stream connection http-stream))
+                 (when end-stream (peer-ends-http-stream connection http-stream))
                  ,@(when (member 'end-headers flags)
                      '((setf (get-expect-continuation connection) (not end-headers)))))
                (read-padding ,stream-name padding-size)))

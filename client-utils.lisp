@@ -16,13 +16,26 @@ TARGET, using SNI."
               (,connection (make-instance ,connection-class :network-stream ,ssl-stream)))
          (unless (equal (cl+ssl:get-selected-alpn-protocol ,ssl-stream) "h2")
            (error "HTTP/2 not supported by ~a" ,sni))
-         (unwind-protect
-              (progn
-                (write-client-preface ,ssl-stream)
-                (write-settings-frame ,connection ,connection (get-settings ,connection))
-                (force-output ,ssl-stream)
-                ,@body)
-           (close ,ssl-stream))))))
+         (flet ((wait-for-responses ()
+                  (force-output (get-network-stream ,connection))
+                  (with-simple-restart (use-read-so-far "Use data read so far")
+                    (handler-case
+                        (loop
+                          do
+                             (read-frame ,connection)
+                          until (get-finished ,connection))
+                      (end-of-file () nil)))))
+           (unwind-protect
+                (progn
+                  (write-client-preface ,ssl-stream)
+                  (write-settings-frame ,connection ,connection (get-settings ,connection))
+                  (force-output ,ssl-stream)
+                  ,@body)
+             (close ,ssl-stream)))))))
+
+(defun terminate-locally (connection &optional (code +no-error+))
+  (write-goaway-frame connection connection 0 code #() 0)
+  (setf (http2::get-finished connection) t))
 
 ;; 3.5.  HTTP/2 Connection Preface
 (defvar +client-preface-start+

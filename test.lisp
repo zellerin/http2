@@ -2,6 +2,7 @@
 
 
 (stefil:deftest test-frames ()
+
   (test-one-frame #'write-data-frame '(#(1 2 3 4 5))
                   :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
 
@@ -121,7 +122,7 @@
   (loop for (page search-term code) in webs
         do
            (multiple-value-bind (body headers)
-               (retrieve-url page)
+               (http2/client::retrieve-url page)
              (stefil:is (search search-term body)
                  "Page ~a does not contain ~a" page search-term)
              (stefil:is (equal code (cdr (assoc :status headers)))

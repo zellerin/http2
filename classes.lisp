@@ -112,11 +112,19 @@
 
 (defclass header-collecting-mixin ()
   ((headers :accessor get-headers :initarg :headers))
-  (:default-initargs :headers nil))
+  (:default-initargs :headers nil)
+  (:documentation
+   "Mixin to be used to collect all observed headers to a slot."))
 
 (defclass body-collecting-mixin ()
   ((body :accessor get-body :initarg :body))
-  (:default-initargs :body ""))
+  (:default-initargs :body "")
+  (:documentation
+   "Mixin to collect all payload parts to one string."))
+;;;; Q: can one UTF-8 character be split into two frames?
+
+(defclass timeshift-pinging-connection ()
+  ())
 
 ;;;; Connection and stream for logging: tracks every callback in (reversed)
 ;;;; history.
@@ -129,8 +137,6 @@
 
 (defclass logging-stream (http2-stream logging-object)
   ())
-
-
 
 
 ;;;; Callbacks from frame reading functions
@@ -181,6 +187,18 @@ The lifecycle of a stream is shown in Figure 2.
 (defun count-open-streams (connection)
   (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))
 
+(defgeneric send-headers (connection stream headers &key end-stream)
+  (:documentation
+   "Send headers to the connection and stream. Stream is either an existing
+instance of a stream, or class of a new stream to open, or name of such class.")
+  (:method (connection (stream http2-stream) headers &key end-stream)
+    (write-headers-frame connection stream headers
+                         :end-headers t :end-stream end-stream))
+  (:method (connection (stream (eql :new)) headers &key end-stream)
+    (let ((new-stream (create-new-local-stream connection)))
+      (send-headers connection new-stream headers :end-stream end-stream)
+      (setf (get-state new-stream) 'open))))
+
 (defgeneric peer-opens-http-stream (connection stream-id frame-type)
   (:documentation
    "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
@@ -200,23 +218,32 @@ The lifecycle of a stream is shown in Figure 2.
           (get-streams connection))
     (car (get-streams connection)))
     (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
-    (unless (> stream-id (get-last-id-seen connection))
-      (http2-error connection +protocol-error+
-                   "The identifier of a newly established stream MUST be
+      (unless (> stream-id (get-last-id-seen connection))
+        (http2-error connection +protocol-error+
+                     "The identifier of a newly established stream MUST be
                    numerically greater than all streams that the initiating
                    endpoint has opened or reserved.  This governs streams that
                    are opened using a HEADERS frame and streams that are
                    reserved using PUSH_PROMISE.  An endpoint that receives an
                    unexpected stream identifier MUST respond with a connection
                    error (Section 5.4.1) of type PROTOCOL_ERROR."))
-    ;; todo: count and check open streams
+      ;; todo: count and check open streams
       (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'idle)
             (get-streams connection))
       (car (get-streams connection)))
   (:method :after ((connection logging-connection) stream-id frame-type)
-    (add-log connection `(:new-stream-requested ,stream-id ,frame-type))))
+    (add-log connection `(:new-stream-requested ,stream-id ,frame-type)))
 
-(defgeneric peer-ends-http-stream (stream))
+  (:method :before ((connection client-http2-connection) stream-id frame-type)
+    (if (evenp stream-id)
+        ;; Q: does RFC document what to do?
+        (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
+
+  (:method :before ((connection server-http2-connection) stream-id frame-type)
+    (if (oddp stream-id)
+        ;; Q: does RFC document what to do?
+        (warn "Streams initiated by a client MUST use odd-numbered stream identifiers"))))
+
 (defgeneric peer-sends-push-promise (continuation stream)
   ;; this is not actually called (yet) and may need more parameters
   (:method (continuation stream) (error "Push promises not supported.")))
@@ -237,7 +264,34 @@ The lifecycle of a stream is shown in Figure 2.
 
 ;;;; Other callbacks
 (defgeneric apply-data-frame (connection stream payload)
-  (:documentation "Data frame is received."))
+  (:documentation "Data frame is received.")
+
+  (:method (connection stream payload)
+    (warn "No payload action defined."))
+
+  (:method (connection (stream body-collecting-mixin) data)
+    (setf (get-body stream)
+          (concatenate 'string (get-body stream)
+                       (map 'string 'code-char  data)))
+    (write-window-update-frame connection connection (length data) 0)
+    (write-window-update-frame connection stream (length data) 0)
+    (force-output (get-network-stream connection)))
+
+  (:method :before ((connection logging-connection) (stream logging-stream)
+                    payload)
+    (add-log stream `(:payload ,payload)))
+
+#+nil  (:method :after (connection (stream http2-stream) payload)
+    "DATA frames are subject to flow control and can only be sent when a
+   stream is in the \"open\" or \"half-closed (remote)\" state.  The entire
+   DATA frame payload is included in flow control, including the Pad
+   Length and Padding fields if present.  If a DATA frame is received
+   whose stream is not in \"open\" or \"half-closed (local)\" state, the
+   recipient MUST respond with a stream error (Section 5.4.2) of type
+   STREAM_CLOSED."
+    (change-state stream '(((open half-closed/local) :keep)) 'stream-closed)))
+
+
 
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
   (:method  (stream exclusive weight stream-dependency)
@@ -290,16 +344,6 @@ The lifecycle of a stream is shown in Figure 2.
   (add-log connection '(:settings-acked)))
 
 
-(defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
-  (if (evenp stream-id)
-      ;; no formal reaction observed
-      (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
-
-(defmethod peer-opens-http-stream ((connection client-http2-connection) stream-id frame-type)
-  (if (oddp stream-id)
-      ;; no formal reaction observed
-      (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
-
 (defun dynamic-table-entry-size (name value)
   "The size of an entry is the sum of its name's length in octets (as
    defined in Section 5.2), its value's length in octets, and 32.
@@ -322,6 +366,7 @@ The lifecycle of a stream is shown in Figure 2.
 
 (defun change-state (stream state-map other-case-error)
   "Change state from STREAM based on STATE-MAP. If original state not found in STATE-MAP and OTHER-CASE-ERROR is set, raise that (HTTP2) error."
+  (cerror "I am not used" "OK")
   (let* ((old-state (get-state stream))
          (new-state (second (find old-state state-map :test #'member :key #'car))))
     (cond
@@ -330,16 +375,6 @@ The lifecycle of a stream is shown in Figure 2.
       (new-state (setf (get-state stream) new-state))
       (other-case-error (http2-error stream other-case-error "Bad state transition")))
     new-state))
-
-(defmethod apply-data-frame :before (connection (stream http2-stream) payload)
-  "DATA frames are subject to flow control and can only be sent when a
-   stream is in the \"open\" or \"half-closed (remote)\" state.  The entire
-   DATA frame payload is included in flow control, including the Pad
-   Length and Padding fields if present.  If a DATA frame is received
-   whose stream is not in \"open\" or \"half-closed (local)\" state, the
-   recipient MUST respond with a stream error (Section 5.4.2) of type
-   STREAM_CLOSED."
-  (change-state stream '(((open half-closed/local) :keep)) 'stream-closed))
 
 (defmethod open-http-stream (connection (stream http2-stream))
   "This method handles state transitions involved in receiving HEADERS-FRAME.
@@ -350,13 +385,17 @@ idle: Sending or receiving a HEADERS frame causes the stream to become \"open\".
                   ((open half-closed/local) :keep))
                 'protocol-error))
 
-(defmethod process-end-stream (connection (stream http2-stream))
-  "Do relevant state changes when closing http stream (as part of received HEADERS or
-PAYLOAD)."
-  (change-state stream
-                '(((open) half-closed/remote)
-                  ((half-closed/local) closed))
-                nil))
+(defgeneric peer-ends-http-stream (connection stream)
+  (:documentation
+   "Do relevant state changes when closing http stream (as part of received HEADERS or
+PAYLOAD).")
+  (:method :after (connection (stream http2-stream))
+    (setf (get-state stream)
+          (ecase (get-state stream)
+            ((open) 'half-closed/remote)
+            ((half-closed/local) 'closed))))
+  (:method (connection (stream logging-stream))
+    (add-log stream '(:closed-remotely))))
 
 (defmethod add-header :around ((stream http2-stream) name value)
   "Decode compressed headers"
@@ -369,7 +408,17 @@ PAYLOAD)."
                       ((vector (unsigned-byte 8)) (decode-huffman value)))))
 
 (defmethod add-header (stream name value)
-  nil)
+  (warn "You should overwrite default method for adding new header."))
+
+(defgeneric send-ping (connection &optional payload)
+  (:documentation
+   "Send a ping request.")
+  (:method (connection &optional (payload 0))
+    (declare ((unsigned-byte 64) payload))
+    (write-ping-frame connection connection payload))
+  (:method ((connection timeshift-pinging-connection) &optional payload)
+    (declare (ignore payload))
+    (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
 
 (defmethod process-end-headers :before (connection (stream logging-stream))
   (add-log stream '(:end-headers)))
@@ -380,9 +429,11 @@ PAYLOAD)."
 (defmethod do-ping (connection data)
   (write-ping-frame connection connection data :ack t))
 
-(defmethod do-pong (connection data)
-  ;; measure time?
-  )
+(defgeneric do-pong (connection data)
+  (:method (connection data)
+    (warn "The connection ~a did not expect ping response" connection))
+  (:method ((connection timeshift-pinging-connection) data)
+    (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second))))
 
 (define-condition peer-should-go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
@@ -420,13 +471,6 @@ PAYLOAD)."
 (defmethod add-header ((stream header-collecting-mixin) name value)
   (push (cons name value) (get-headers stream)))
 
-(defmethod apply-data-frame (connection (stream body-collecting-mixin) data)
-  (setf (get-body stream) (concatenate 'string (get-body stream)
-                                       (map 'string 'code-char  data)))
-  (write-window-update-frame connection connection (length data) 0)
-  (write-window-update-frame connection stream (length data) 0)
-  (force-output (get-network-stream connection)))
-
 (defmethod handle-undefined-frame (type flags length)
   "Callback that is called when a frame of unknown type is received - see
 extensions..")
@@ -437,10 +481,6 @@ extensions..")
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))
-
-(defmethod apply-data-frame ((connection logging-connection) (stream logging-stream)
-                             payload)
-  (add-log stream `(:payload ,payload)))
 
 (defmethod add-header :before ((stream logging-stream) name value)
   (add-log stream `(:header ,name ,value)))
