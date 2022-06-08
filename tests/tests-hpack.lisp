@@ -63,8 +63,7 @@ C.2.1.  Literal Header Field with Indexing
 (fiasco:deftest headers-representation ()
   (multiple-value-bind (write read) (make-pipe)
     (flet ((test-decode (source-text expect-name expect-value &optional dynamic-table)
-             (let ((*bytes-read* 0)
-                   (connection (make-instance 'http2-connection :network-stream read)))
+             (let ((connection (make-instance 'http2-connection :network-stream read)))
                                         ; C.2.1
                (write-sequence (vector-from-hex-text source-text) write)
                (destructuring-bind (name value)

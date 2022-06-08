@@ -148,8 +148,10 @@ The macro defining FRAME-TYPE-NAME :foo defines
                  ,@writer-body
                  ,@(when (find 'padded flags)
                      '((when padded (write-vector padded))))
-                 ,@ (when (find 'end-stream flags)
-                      '((when end-stream (setf (get-state http-stream) 'half-closed/local)))))))
+                 ,@(when (find 'end-stream flags)
+                     '((when end-stream
+                         (setf (get-state http-stream)
+                               (if (eql (get-state http-stream) 'open) 'half-closed/local 'closed))))))))
 
            (defun ,reader-name (connection http-stream length flags)
              ,documentation
@@ -384,8 +386,8 @@ arrangement or negotiation."
 connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
         (loop while (plusp length)
-              do (decf length (read-vector data)))
-        (apply-data-frame connection http-stream data))))
+              do (decf length (read-vector data))
+                 (apply-data-frame connection http-stream data)))))
 
 (define-frame-type 1 :headers-frame
     "
@@ -775,10 +777,10 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    enables administrative actions, like server maintenance."
     ((last-stream-id 31)
      (error-code 32)
-     (debug-data vector)
-     (reserved t))
+     (debug-data vector))
     (:length (+ 8 (length debug-data))
-     :must-not-have-stream t)
+     :must-not-have-stream t
+     :has-reserved t)
 
     ((write-bytes 4 (logior last-stream-id (if reserved #x80000000 0)))
      (write-bytes 4 error-code)

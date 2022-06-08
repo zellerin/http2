@@ -27,27 +27,9 @@ TARGET, using SNI."
                       (end-of-file () nil)))))
            (unwind-protect
                 (progn
-                  (write-client-preface ,ssl-stream)
-                  (write-settings-frame ,connection ,connection (get-settings ,connection))
-                  (force-output ,ssl-stream)
                   ,@body)
              (close ,ssl-stream)))))))
 
 (defun terminate-locally (connection &optional (code +no-error+))
-  (write-goaway-frame connection connection 0 code #() 0)
+  (write-goaway-frame connection connection 0 code #())
   (setf (http2::get-finished connection) t))
-
-;; 3.5.  HTTP/2 Connection Preface
-(defvar +client-preface-start+
-  #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
-  "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
- \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
-
-(defun write-client-preface (stream)
-  "In HTTP/2, each endpoint is required to send a connection preface as a
-   final confirmation of the protocol in use and to establish the
-   initial settings for the HTTP/2 connection.  The client and server
-   each send a different connection preface.
-
-   The client connection preface starts with a sequence of 24 octets.   This sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty."
-  (write-sequence +client-preface-start+ stream))

@@ -56,6 +56,22 @@ testing."
                                                            :stream-id stream-id
                                                            :state STATE)))))
 
+(defun process-messages (participants)
+  "Let PARTICIPANTS process outstaning messages as long as there are any."
+  (loop while participants
+        unless
+        (loop for participant in participants
+              for frame-available = (listen (get-network-stream participant))
+              do (add-log participant `(:frame-available ,frame-available))
+              when frame-available
+                do
+                   (handler-case
+                       (read-frame participant)
+#+nil                     (serious-condition ()
+                       (setf participants (remove participant participants))))
+                   (return :handled))
+        do (return)))
+
 (defmacro with-sender-receiver ((&key (init-state 'open)) &body body)
   "Run BODY with sender and receiver bound to a piped streams.
 
@@ -107,7 +123,7 @@ expected."
           "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
       (fiasco:is (eq expected-receiver-error
                      (and receiver-signalled (type-of receiver-signalled)))
-          "Sender error should be ~s is ~s" expected-receiver-error receiver-signalled)
+          "Receiver error should be ~s is ~s" expected-receiver-error receiver-signalled)
       (when init-state
         (check-history send-fn send-pars expected-log-stream
                        (get-history (car (get-streams receiver))) "stream"))

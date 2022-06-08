@@ -1,17 +1,17 @@
 (in-package http2)
 
 ;;;; Sample server with constant payload
-(defclass sample-server-connection (server-http2-connection logging-connection)
+(defclass sample-server-connection (server-http2-connection history-printing-object)
   ()
   (:default-initargs :stream-class 'sample-server-stream))
 
-(defclass sample-server-stream (logging-stream http2-stream)
+(defclass sample-server-stream (http2-stream history-printing-object)
   ((path    :accessor get-path    :initarg :path))
   (:default-initargs :path :undefined))
 
 (defmethod print-object ((stream sample-server-stream) out)
-  (print-unreadable-object (stream out)
-    (format out "#~d ~s ~s" (get-stream-id stream) (get-url stream) (get-state stream))))
+  (print-unreadable-object (stream out :type t)
+    (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
 
 (defmethod add-header (connection (stream sample-server-stream) (name (eql :path)) value)
   (setf (get-path stream) value))
@@ -35,25 +35,15 @@
                        :end-stream t)))
   (force-output (get-network-stream connection)))
 
-(defmethod peer-ends-http-stream (connection (stream sample-server-stream))
-  (print (get-history stream)))
-
 (defun process-server-stream (stream)
   (let ((connection (make-instance 'sample-server-connection
                                    :network-stream stream)))
     (with-simple-restart (close-connection "Close current connection")
       (handler-case
           (unwind-protect
-               (progn
-                 (let ((preface-buffer (make-array (length +client-preface-start+))))
-                   (read-sequence preface-buffer stream)
-                   (unless (equalp preface-buffer +client-preface-start+)
-                     (warn "Client preface mismatch: got ~a" preface-buffer)))
-                 (handler-case
-                     (loop (read-frame connection))
-                   (end-of-file () nil)))
-            (progn
-              (print (get-history connection))))
+               (handler-case
+                   (loop (read-frame connection))
+                 (end-of-file () nil)))
         (go-away ())))))
 
 (defun wrap-to-tls-and-process-server-stream (raw-stream key cert)

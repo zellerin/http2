@@ -129,13 +129,19 @@
 ;;;; Connection and stream for logging: tracks every callback in (reversed)
 ;;;; history.
 (defclass logging-object ()
+  ())
+
+(defclass history-keeping-object (logging-object)
   ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
   (:default-initargs :reversed-history nil))
 
-(defclass logging-connection (http2-connection logging-object)
+(defclass history-printing-object (logging-object)
   ())
 
-(defclass logging-stream (http2-stream logging-object)
+(defclass logging-connection (http2-connection history-keeping-object)
+  ())
+
+(defclass logging-stream (http2-stream history-keeping-object)
   ())
 
 
@@ -187,6 +193,12 @@ The lifecycle of a stream is shown in Figure 2.
 (defun count-open-streams (connection)
   (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))
 
+(defmethod (setf get-state) :around (value (stream logging-object))
+  (let ((before (get-state stream)))
+    (add-log stream `(:state-change ,before -> ,value))
+    (call-next-method))
+  (call-next-method))
+
 (defgeneric send-headers (connection stream headers &key end-stream)
   (:documentation
    "Send headers to the connection and stream. Stream is either an existing
@@ -197,15 +209,21 @@ not now.")
   (:method (connection (stream http2-stream) headers &key end-stream)
     (write-headers-frame connection stream headers
                          :end-headers t :end-stream end-stream))
+
+  (:method :before (connection (stream logging-object) headers &key end-stream)
+    (add-log stream `(:sending-headers ,headers :end-stream ,end-stream)))
   (:method (connection (stream (eql :new)) headers &key end-stream)
     (let ((new-stream (create-new-local-stream connection)))
-      (send-headers connection new-stream headers :end-stream end-stream)
-      (setf (get-state new-stream) 'open))))
+      (setf (get-state new-stream) 'open)
+      (send-headers connection new-stream headers :end-stream end-stream))))
 
 (defgeneric peer-opens-http-stream (connection stream-id frame-type)
   (:documentation
    "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
  return an object representing new stream.")
+  (:method :before ((connection logging-object) stream-id frame-type)
+    (add-log connection `(:new-stream-received :id ,stream-id :type
+                                               ,(frame-type-name (aref *frame-types* frame-type)))))
   (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
     (unless (> stream-id (get-last-id-seen connection))
       (http2-error connection +protocol-error+
@@ -235,7 +253,7 @@ not now.")
       (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'idle)
             (get-streams connection))
       (car (get-streams connection)))
-  (:method :after ((connection logging-connection) stream-id frame-type)
+  (:method :after ((connection logging-object) stream-id frame-type)
     (add-log connection `(:new-stream-requested ,stream-id ,frame-type)))
 
   (:method :before ((connection client-http2-connection) stream-id frame-type)
@@ -248,7 +266,7 @@ not now.")
         ;; Q: does RFC document what to do?
       (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
 
-  (:method :around ((connection logging-connection) stream-id frame-type)
+  (:method :around ((connection logging-object) stream-id frame-type)
     (let ((stream (call-next-method)))
       (add-log stream `(:opened :id ,stream-id
                                 :frame-type ,(frame-type-name (aref *frame-types* frame-type))))
@@ -293,7 +311,7 @@ not now.")
     (write-window-update-frame connection stream (length data) 0)
     (force-output (get-network-stream connection)))
 
-  (:method :before ((connection logging-connection) (stream logging-stream)
+  (:method :before ((connection logging-object) (stream logging-object)
                     payload)
     (add-log stream `(:payload ,payload)))
 
@@ -354,7 +372,7 @@ not now.")
 (defmethod peer-acks-settings (connection)
   ())
 
-(defmethod peer-acks-settings ((connection logging-connection))
+(defmethod peer-acks-settings ((connection logging-object))
   (add-log connection '(:settings-acked)))
 
 
@@ -408,7 +426,7 @@ PAYLOAD).")
           (ecase (get-state stream)
             ((open) 'half-closed/remote)
             ((half-closed/local) 'closed))))
-  (:method :after (connection (stream logging-stream))
+  (:method :after (connection (stream logging-object))
     (add-log stream '(:closed-remotely))))
 
 (defgeneric add-header (connection stream name value)
@@ -436,7 +454,7 @@ PAYLOAD).")
   (:method (connection (stream header-collecting-mixin) name value)
     (push (cons name value) (get-headers stream)))
 
-  (:method :before (connection (stream logging-stream) name value)
+  (:method :before (connection (stream logging-object) name value)
     (add-log stream `(:header ,name ,value))))
 
 
@@ -452,11 +470,12 @@ PAYLOAD).")
     (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
 
 (defgeneric process-end-headers (connection stream)
-  (:method  :before (connection (stream logging-stream))
+  (:method  :before (connection (stream logging-object))
     (add-log stream '(:end-headers)))
 
   (:method (connection stream)
-    (warn "Do something on end of headers")))
+    ;; anything sane to do?
+    ))
 
 (defmethod do-ping (connection data)
   (write-ping-frame connection connection data :ack t))
@@ -477,9 +496,8 @@ PAYLOAD).")
     (write-goaway-frame connection connection
                         0 ; fixme: last processed stream
                         error-code
-                        (map 'vector 'char-code formatted)
-                        nil)
-    (error 'peer-should-go-away
+                        (map 'vector 'char-code formatted) )
+    #+nil(error 'peer-should-go-away
            :last-stream-id 0 ; fixme: last processed stream
            :error-code error-code
            :debug-data formatted)
@@ -491,49 +509,77 @@ PAYLOAD).")
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
 
 (defmethod do-goaway (connection error-code last-stream-id debug-data)
-  (error 'go-away :last-stream-id last-stream-id
-                  :error-code error-code
-                  :debug-data debug-data))
+  (unless (eq error-code '+no-error+)
+    (error 'go-away :last-stream-id last-stream-id
+                    :error-code error-code
+                    :debug-data debug-data)))
 
 (defmethod handle-undefined-frame (type flags length)
   "Callback that is called when a frame of unknown type is received - see
 extensions..")
 
 
-(defun add-log (object log-pars)
-  (push log-pars (get-reversed-history object)))
+(defgeneric add-log (object log-pars)
+  (:method ((object history-keeping-object) log-pars)
+    (push log-pars (get-reversed-history object)))
+  (:method ((object history-printing-object) log-pars)
+    (let ((*print-length* 10))
+      (format t "~&~s: ~{~s~^ ~}~%" object log-pars))))
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))
 
-(defmethod apply-stream-priority ((stream logging-stream) exclusive weight stream-dependency)
+(defmethod apply-stream-priority ((stream logging-object) exclusive weight stream-dependency)
   (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))
 
 (defmethod initialize-instance :after ((connection server-http2-connection) &key &allow-other-keys)
+  (let ((preface-buffer (make-array (length +client-preface-start+))))
+    (read-sequence preface-buffer (get-network-stream connection))
+    (unless (equalp preface-buffer +client-preface-start+)
+      (warn "Client preface mismatch: got ~a" preface-buffer)))
   (write-settings-frame connection connection (get-settings connection))
-  (format t "send settings ~s"  (get-settings connection))
   (force-output (get-network-stream connection)))
 
-(defmethod peer-resets-stream ((stream logging-stream) error-code)
+;; 3.5.  HTTP/2 Connection Preface
+(defvar +client-preface-start+
+  #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
+  "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
+ \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
+
+(defmethod initialize-instance :after ((connection client-http2-connection) &key &allow-other-keys)
+  "In HTTP/2, each endpoint is required to send a connection preface as a
+   final confirmation of the protocol in use and to establish the
+   initial settings for the HTTP/2 connection.  The client and server
+   each send a different connection preface.
+
+   The client connection preface starts with a sequence of 24 octets.  This
+   sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be
+   empty."
+
+  (write-sequence +client-preface-start+ (get-network-stream connection))
+  (write-settings-frame connection connection (get-settings connection))
+  (force-output (get-network-stream connection)))
+
+(defmethod peer-resets-stream ((stream logging-object) error-code)
   (add-log stream `(:closed :error ,(get-error-name error-code))))
 
-(defmethod set-peer-setting :before ((connection logging-connection) name value)
+(defmethod set-peer-setting :before ((connection logging-object) name value)
   (add-log connection `(:setting ,name ,value)))
 
-(defmethod peer-expects-settings-ack :before ((connection logging-connection))
+(defmethod peer-expects-settings-ack :before ((connection logging-object))
   (add-log connection '(:settings-ack-needed)))
 
-(defmethod do-ping :before ((connection logging-connection) data)
+(defmethod do-ping :before ((connection logging-object) data)
   (add-log connection `(:ping ,data)))
 
-(defmethod do-pong :before ((connection logging-connection) data)
+(defmethod do-pong :before ((connection logging-object) data)
   (add-log connection `(:pong ,data)))
 
-(defmethod do-goaway :before ((connection logging-connection) error-code last-stream-id debug-data)
+(defmethod do-goaway :before ((connection logging-object) error-code last-stream-id debug-data)
   (add-log connection `(:go-away :last-stream-id ,last-stream-id
                            :error-code ,error-code)))
 
-(defmethod do-goaway :around ((connection logging-connection) error-code last-stream-id debug-data)
+(defmethod do-goaway :around ((connection logging-object) error-code last-stream-id debug-data)
   (call-next-method))
 
 (defmethod apply-window-size-increment :before ((object logging-object) increment)

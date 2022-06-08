@@ -4,13 +4,15 @@
 
 (in-package http2/client)
 
-(defclass sample-client-connection (http2::logging-connection http2::timeshift-pinging-connection)
+(defclass sample-client-connection (client-http2-connection http2::history-printing-object
+                                    http2::timeshift-pinging-connection)
   ((finished :accessor http2::get-finished :initarg :finished
              :initform nil))
   (:default-initargs :stream-class 'sample-client-stream))
 
-(defclass sample-client-stream (logging-stream http2::body-collecting-mixin
-                                http2::header-collecting-mixin)
+(defclass sample-client-stream (http2::http2-stream http2::body-collecting-mixin
+                                http2::header-collecting-mixin
+                                http2::history-printing-object)
   ((content-type :accessor get-content-type :initarg :content-type)))
 
 (defun retrieve-url (url &key (method "GET"))
