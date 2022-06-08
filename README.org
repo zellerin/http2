@@ -8,12 +8,13 @@ frames. What to do with the frames is managed by classes ~CONNECTION~ and
 ~HTTP2-STREAM~ that are supposed to be extended by application to do something
 reasonable with headers and payload; see [[./client.lisp]] for an example.
 
-** Status
+** Status and quickstart
 Already implemented parts allow to request a http/2 document (or more) over TLS:
 
 *** Client
 #+begin_src lisp
-  CL-USER> (http2::retrieve-url "https://example.com")
+  (ql:quickload 'http2/client)
+  (http2/client:retrieve-url "https://example.com")
 #+end_src
 
 #+begin_src text
@@ -35,20 +36,24 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 *** Server
-Rudimentary server is implemented:
+Rudimentary https server (that signals h2 support with ALPN) is implemented; Key and cert are needed. It handles requests one by one, this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
 
 #+begin_src lisp
+  (ql:quickload 'http2/server)
   (http2::create-server 1234 "key.pem" "cert.pem")
 #+end_src
 
+and point your browser (not eww nor drakma, of course - must support http2) to https://localhost:1234 or
 #+begin_src sh
   [zellerin@winter http2]$ curl http://localhost:1234/
   Hello World
 #+end_src
 
+Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers if you do not want to see their data), and maybe add a method to ADD-HEADER to pay attention to what other headers than URL the client sends.
+
 ** Missing pieces
 - Window management is minimal. We should limit outgoing data as required by the
-  peer. This depends on application.
+  peer. This depends on application that sends the data.
 - RFC accepts that individual headers can be split between frames. This is not implemented (and should be).
 - No handling of priorities is implemented. This is OK, as these are only suggestions.
 - Push promises are not implemented. This is OK, they are disabled by default (settings)

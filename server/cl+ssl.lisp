@@ -22,7 +22,7 @@
           do
              (setf
               (cffi:mem-ref outlen :char) 2
-              (cffi:mem-ref (print out) :pointer) (print (cffi:inc-pointer in (1+ idx))))
+              (cffi:mem-ref out :pointer) (cffi:inc-pointer in (1+ idx)))
              (return 0)
         finally
            (print "H2 not found!")

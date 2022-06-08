@@ -55,18 +55,21 @@
          (process-server-stream tls-stream)
       (close tls-stream))))
 
-(defun create-server (port key cert)
+(defun create-server (port key cert &key ((:verbose http2::*do-print-log*))
+                                      (dispatch-fn #'funcall))
   (let ((socket (usocket:socket-listen "127.0.0.1" port))
         (cl+ssl::*ssl-global-context* (cl+ssl::make-context)))
     (cl+ssl::ssl-ctx-set-alpn-select-cb  cl+ssl::*ssl-global-context*
                                          (cffi:get-callback 'cl+ssl::select-h2-callback))
     (unwind-protect
          (loop
-           (let* ((network-socket (usocket:socket-accept socket :element-type '(unsigned-byte 8)))
-                  (network-stream (usocket:socket-stream network-socket)))
-             (unwind-protect
-                  (wrap-to-tls-and-process-server-stream network-stream key cert)
-               (usocket:socket-close network-socket))))
+           (let* ((network-socket (usocket:socket-accept socket :element-type '(unsigned-byte 8))))
+             (funcall dispatch-fn
+                      (lambda ()
+                        (let ((network-stream (usocket:socket-stream network-socket)))
+                          (unwind-protect
+                               (wrap-to-tls-and-process-server-stream network-stream key cert)
+                            (usocket:socket-close network-socket)))))))
       (usocket:socket-close socket))))
 
 ;;;;

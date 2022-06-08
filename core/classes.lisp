@@ -519,12 +519,16 @@ PAYLOAD).")
 extensions..")
 
 
+(defvar *do-print-log* nil
+  "Set to true value to log to stderr.")
+
 (defgeneric add-log (object log-pars)
   (:method ((object history-keeping-object) log-pars)
     (push log-pars (get-reversed-history object)))
   (:method ((object history-printing-object) log-pars)
-    (let ((*print-length* 10))
-      (format t "~&~s: ~{~s~^ ~}~%" object log-pars))))
+    (when *do-print-log*
+      (let ((*print-length* 10))
+        (format t "~&~s: ~{~s~^ ~}~%" object log-pars)))))
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))

@@ -5,8 +5,9 @@
   (:export #:client-http2-connection
            #:client-http2-stream
            #:server-http2-connection
-           #:logging-stream
-           #:logging-connection
+           #:logging-object
+           #:*do-print-log*
+
 
            #:with-http-connection
            #:get-finished
@@ -16,7 +17,7 @@
            #:wait-for-responses
            #:terminate-locally
 
-           #:request-headers ; headers for a request
+           #:request-headers ; compile headers for a request
 
            #:peer-opens-http-stream
            #:peer-ends-http-stream

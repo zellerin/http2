@@ -15,8 +15,8 @@
                                 http2::history-printing-object)
   ((content-type :accessor get-content-type :initarg :content-type)))
 
-(defun retrieve-url (url &key (method "GET"))
-  "Retrieve URL through http/2 over TLS."
+(defun retrieve-url (url &key (method "GET") ((:verbose http2::*do-print-log*)))
+  "Retrieve URL through http/2 over TLS. Log events with VERBOSE."
   (let ((parsed-url (puri:parse-uri url)))
     (with-http-connection (connection (puri:uri-host parsed-url)
                            :port (or (puri:uri-port parsed-url) 443)
