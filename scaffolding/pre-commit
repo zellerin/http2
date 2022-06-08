@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Clone so that we work on the staged version
+rm -rf to-test
+git clone . to-test
+git diff --cached |patch -p1 -d to-test
+
+cd to-test
+sbcl --script scaffolding/do-test.lisp
