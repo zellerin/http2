@@ -1,12 +1,20 @@
 (in-package http2)
 
 ;;;; Sample server with constant payload
-(defclass sample-server-connection (server-http2-connection history-printing-object)
+(defclass sample-server-connection (server-http2-connection
+
+                                    ;; when *do-print-log* is set, extensive event
+                                    ;; log is printed
+                                    history-printing-object)
   ()
   (:default-initargs :stream-class 'sample-server-stream))
 
-(defclass sample-server-stream (http2-stream history-printing-object)
-  ((path    :accessor get-path    :initarg :path))
+(defclass sample-server-stream (server-stream
+
+                                ;; when *do-print-log* is set, extensive event
+                                ;; log is printed
+                                history-printing-object)
+  ()
   (:default-initargs :path :undefined))
 
 (defmethod print-object ((stream sample-server-stream) out)
@@ -16,7 +24,6 @@
 (defmethod add-header (connection (stream sample-server-stream) (name (eql :path)) value)
   (setf (get-path stream) value))
 
-(defparameter *text-to-send* (format nil "<h1>Hello World</h1>~&"))
 (defparameter *headers-to-send* '(("content-type" "text/html")))
 (defparameter *exit-on-/exit* nil
   "If T, exit when /exit request is received (on sbcl). This is used by tests to
@@ -26,25 +33,85 @@ shut down the server.")
   ;; do nothing
   )
 
+(defvar *prefix-handlers*
+  nil
+  "Alist of prefixes and functions of connection and stream to make http response.")
+
+(defvar *exact-handlers*
+  ()
+  "Alist of paths and functions of connection and stream to make http response.")
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (defun define-some-handler (target prefix fn)
+    `(push (cons ,prefix ,fn)
+           ,target)))
+
+(defmacro handler (&body body)
+  `(lambda (connection stream)
+     (flet ((send-headers (&rest args)
+              (apply #'send-headers connection stream args))
+            (send-data (&rest args)
+              (apply #'write-data-frame connection stream args))
+            (send-text (text &rest args)
+              (apply #'write-data-frame connection stream
+                     (map 'vector 'char-code text)
+                    args)))
+       (declare (ignorable #'send-data #'send-text))
+       ,@body)))
+
+(defmacro define-prefix-handler (prefix fn)
+  (define-some-handler '*prefix-handlers* prefix fn))
+
+(defmacro define-exact-handler (prefix fn)
+  (define-some-handler '*exact-handlers* prefix fn))
+
+(defun send-text-handler (text &optional (content-type "text/html"))
+  (handler
+    (send-headers `((:status "200") ("content-type" ,content-type)))
+    (send-text text :end-stream t)    ))
+
+(defun redirect-handler (target &key (code "301") (content-type "text/html") content)
+  (handler
+    (send-headers `((:status ,code)
+                    ("location" ,target)
+                    ,@(when content `(("content-type" ,content-type))))
+                  :end-stream (null content))
+    (when content
+      (send-text content :end-stream t))))
+
+(define-prefix-handler "/re" (redirect-handler "https://www.example.com"))
+
+(define-exact-handler "/ok" (send-text-handler "Hello, all is OK" "text/plain" ))
+
+(define-exact-handler "/" (send-text-handler  "<h1>Hello World</h1>" ))
+
+(define-exact-handler "/exit"
+  (handler
+    (send-headers `((:status "200") ,@*headers-to-send*))
+    (send-text "Goodbye" :end-stream t)
+    (write-goaway-frame connection connection 0 +no-error+ #())
+    (force-output (get-network-stream connection))
+    (sb-ext:quit)))
+
 (defmethod peer-ends-http-stream (connection (stream sample-server-stream))
   "Send some random payloads, or shut down the server."
-  (cond
-    ((equal "/" (get-path stream))
-     (send-headers connection stream `((:status "200") ,@*headers-to-send*))
-     (write-data-frame connection stream (map 'vector 'char-code *text-to-send*)
-                       :end-stream t))
-    #+sbcl
-    ((equal "/exit" (get-path stream))
-     (send-headers connection stream `((:status "200") ,@*headers-to-send*))
-     (write-data-frame connection stream (map 'vector 'char-code (format nil "Goodbye"))
-                       :end-stream t)
-     (write-goaway-frame connection connection 0 +no-error+ #())
-     (force-output (get-network-stream connection))
-     (sb-ext:quit))
-    (t
-     (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
-     (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
-                       :end-stream t)))
+  (let ((handler
+          (or
+           (cdr (assoc (get-path stream) *exact-handlers*
+                          :test (lambda (prefix path)
+                                  (let ((mismatch (mismatch prefix path)))
+                                    (or (null mismatch)
+                                        (and (eql mismatch (position #\? path))
+                                             (eql mismatch (length path))))))))
+           (cdr (assoc (get-path stream) *prefix-handlers*
+                          :test (lambda (prefix path)
+                                  (let ((mismatch (mismatch prefix path)))
+                                    (or (null mismatch) (equal mismatch (length path))))))))))
+    (if handler (funcall handler connection stream)
+     (progn
+       (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
+       (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
+                         :end-stream t))))
   (force-output (get-network-stream connection)))
 
 (defun process-server-stream (stream)
