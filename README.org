@@ -36,7 +36,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 *** Server
-Rudimentary https server (that signals h2 support with ALPN) is implemented; Key and cert are needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
+Rudimentary https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
 
 #+begin_src lisp
   (ql:quickload 'http2/server)
