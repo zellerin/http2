@@ -6,7 +6,7 @@ RFC7540 and RFC7541.
 The core part of the library is implementing reading and writing http2
 frames. What to do with the frames is managed by classes ~CONNECTION~ and
 ~HTTP2-STREAM~ that are supposed to be extended by application to do something
-reasonable with headers and payload; see [[./client.lisp]] for an example.
+reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] for an example.
 
 ** Status and quickstart
 Already implemented parts allow to request a http/2 document (or more) over TLS:
@@ -62,10 +62,10 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
 
 ** Implementation details
 
-- [[./frames.lisp]] implements frame reading and writing. It is intended to be
+- [[./core/frames.lisp]] implements frame reading and writing. It is intended to be
   correct and fast, in this order. Read frames call callbacks that are supposed
   to be generic functions for extensibility.
-- [[./classes.lisp]] defines class hierarchy for vanilla connections and streams,
+- [[./core/classes.lisp]] defines class hierarchy for vanilla connections and streams,
   and the generic methods for callbacks for these classes.
 
 ** License
