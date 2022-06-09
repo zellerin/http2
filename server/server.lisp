@@ -63,27 +63,53 @@ shut down the server.")
   "How to call process-server-stream. Default is funcall, or sb-thredify on sbcl.")
 
 (defun wrap-to-tls-and-process-server-stream (raw-stream key cert)
-  (handler-case
-      (let ((tls-stream (cl+ssl:make-ssl-server-stream
-                         raw-stream
-                         :certificate cert
-                         :key key)))
-        (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-            (funcall *dispatch-fn*
-                     #'process-server-stream  tls-stream)))
-    (cl+ssl::ssl-error-ssl (err)
-      (describe err))))
+  (unwind-protect
+       (handler-case
+           (let ((tls-stream (cl+ssl:make-ssl-server-stream
+                              raw-stream
+                              :certificate cert
+                              :key key)))
+             (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
+                 (funcall *dispatch-fn*
+                          #'process-server-stream  tls-stream)))
+         (error (err)
+           (describe err)))
+    (close raw-stream)))
+
+(defun make-http2-tls-context ()
+  (let ((context
+          (cl+ssl:make-context
+           ;; Implementations of HTTP/2 MUST use TLS
+           ;; version 1.2 [TLS12] or higher for HTTP/2
+           ;; over TLS.
+           :min-proto-version cl+ssl::+TLS1-2-VERSION+
+
+           ;;   A deployment of HTTP/2 over TLS 1.2 MUST disable compression.  TLS
+           ;;   compression can lead to the exposure of information that would not
+           ;;   otherwise be revealed [RFC3749].  Generic compression is unnecessary
+           ;;   since HTTP/2 provides compression features that are more aware of
+           ;;   context and therefore likely to be more appropriate for use for
+           ;;   performance, security, or other reasons.
+           :options (list #x20000 ; +ssl-op-no-compression+
+                          cl+ssl::+ssl-op-all+
+                          #x40000000) ; no renegotiation
+           ;; do not requiest client cert
+           :verify-mode cl+ssl:+ssl-verify-none+)))
+    (cl+ssl::ssl-ctx-set-alpn-select-cb
+     context
+     (cffi:get-callback 'cl+ssl::select-h2-callback))
+    context))
 
 (defun create-server (port key cert &key ((:verbose http2::*do-print-log*)))
-  (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port))
-    (cl+ssl:with-global-context ((cl+ssl:make-context) :auto-free-p t)
-      (cl+ssl::ssl-ctx-set-alpn-select-cb
-       cl+ssl::*ssl-global-context*
-       (cffi:get-callback 'cl+ssl::select-h2-callback))
+  (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
+                                                             :reuse-address t
+                                                             :backlog 200))
+    (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
       (loop
         (wrap-to-tls-and-process-server-stream
          (usocket:socket-stream
-          (handler-case (usocket:socket-accept socket  :element-type '(unsigned-byte 8))
+          (handler-case
+              (usocket:socket-accept socket  :element-type '(unsigned-byte 8))
             ;; ignore condition
             (usocket:connection-aborted-error ())))
          key cert)))))
