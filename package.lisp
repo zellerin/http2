@@ -10,6 +10,8 @@
            #:*do-print-log*
 
 
+           #:get-path
+
            #:with-http-connection
            #:get-finished
            #:send-headers

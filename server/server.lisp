@@ -3,6 +3,7 @@
 ;;;; Sample server with constant payload
 (defclass sample-server-connection (server-http2-connection
 
+                                    dispatcher-mixin
                                     ;; when *do-print-log* is set, extensive event
                                     ;; log is printed
                                     history-printing-object)
@@ -11,83 +12,39 @@
 
 (defclass sample-server-stream (server-stream
 
+                                body-collecting-mixin
                                 ;; when *do-print-log* is set, extensive event
                                 ;; log is printed
                                 history-printing-object)
-  ()
-  (:default-initargs :path :undefined))
+  ())
 
-(defmethod print-object ((stream sample-server-stream) out)
-  (print-unreadable-object (stream out :type t)
-    (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
-
-(defmethod add-header (connection (stream sample-server-stream) (name (eql :path)) value)
-  (setf (get-path stream) value))
-
-(defparameter *headers-to-send* '(("content-type" "text/html")))
 (defparameter *exit-on-/exit* nil
   "If T, exit when /exit request is received (on sbcl). This is used by tests to
 shut down the server.")
 
-(defmethod process-end-headers (connection (stream sample-server-stream))
-  ;; do nothing
-  )
+(define-prefix-handler "/re" (redirect-handler "/ok"))
 
-(defvar *prefix-handlers*
-  nil
-  "Alist of prefixes and functions of connection and stream to make http response.")
+(define-exact-handler "/ok" (send-text-handler "Redirect was OK"
+                                               :content-type "text/plain"
+                                               :additional-headers '(("refresh" "3; url=/"))))
 
-(defvar *exact-handlers*
-  ()
-  "Alist of paths and functions of connection and stream to make http response.")
+(defvar *intro-page*
+  "<h1>Hello World</h1>
+<p>This server is for testing http2 protocol</p>
+<p><a href='/redir'>Redirect test</a>
+<form action='/body' method='post'><input type='submit' name='xxx' value='POST query test'></form")
 
-(eval-when (:compile-toplevel :load-toplevel)
-  (defun define-some-handler (target prefix fn)
-    `(push (cons ,prefix ,fn)
-           ,target)))
+(define-exact-handler "/" (send-text-handler  *intro-page* ))
 
-(defmacro handler (&body body)
-  `(lambda (connection stream)
-     (flet ((send-headers (&rest args)
-              (apply #'send-headers connection stream args))
-            (send-data (&rest args)
-              (apply #'write-data-frame connection stream args))
-            (send-text (text &rest args)
-              (apply #'write-data-frame connection stream
-                     (map 'vector 'char-code text)
-                    args)))
-       (declare (ignorable #'send-data #'send-text))
-       ,@body)))
-
-(defmacro define-prefix-handler (prefix fn)
-  (define-some-handler '*prefix-handlers* prefix fn))
-
-(defmacro define-exact-handler (prefix fn)
-  (define-some-handler '*exact-handlers* prefix fn))
-
-(defun send-text-handler (text &optional (content-type "text/html"))
-  (handler
-    (send-headers `((:status "200") ("content-type" ,content-type)))
-    (send-text text :end-stream t)    ))
-
-(defun redirect-handler (target &key (code "301") (content-type "text/html") content)
-  (handler
-    (send-headers `((:status ,code)
-                    ("location" ,target)
-                    ,@(when content `(("content-type" ,content-type))))
-                  :end-stream (null content))
-    (when content
-      (send-text content :end-stream t))))
-
-(define-prefix-handler "/re" (redirect-handler "https://www.example.com"))
-
-(define-exact-handler "/ok" (send-text-handler "Hello, all is OK" "text/plain" ))
-
-(define-exact-handler "/" (send-text-handler  "<h1>Hello World</h1>" ))
+(define-exact-handler "/body"
+    (handler
+      (send-headers `((:status "200") ("content-type" "text/plain")
+                      ("refresh" "3; url=/")))
+      (send-text (get-body stream) :end-stream t)))
 
 (define-exact-handler "/exit"
   (handler
-    (send-headers `((:status "200") ,@*headers-to-send*))
+    (send-headers `((:status "200")))
     (send-text "Goodbye" :end-stream t)
     (write-goaway-frame connection connection 0 +no-error+ #())
     (force-output (get-network-stream connection))

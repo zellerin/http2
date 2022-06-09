@@ -433,12 +433,12 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
        (read-priority-frame connection http-stream 5 0))
       (when (minusp length)
         (http2-error connection 'protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
+      (read-and-add-headers connection http-stream length)
       (if end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
         ;; another CONTINUATION frame.
           (process-end-headers connection http-stream)
-          (setf (get-expect-continuation connection) (get-stream-id http-stream)))
-      (read-and-add-headers connection http-stream length)))
+          (setf (get-expect-continuation connection) (get-stream-id http-stream)))))
 
 (defun read-and-add-headers (connection http-stream length)
   (let ((*bytes-left* length))
@@ -801,9 +801,9 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     +-+-------------------------------------------------------------+
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
-    ((window-size-increment 31)
-     (reserved t))
-    (:length 4)
+    ((window-size-increment 31))
+    (:length 4
+     :has-reserved t)
     ((write-bytes 4 (logior window-size-increment (if reserved #x80000000 0))))
 
     (;;reader

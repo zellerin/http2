@@ -116,6 +116,10 @@
               "The path and query parts of the target URI"))
   (:default-initargs :method nil :scheme nil :authority nil :path nil))
 
+(defmethod print-object ((stream server-stream) out)
+  (print-unreadable-object (stream out :type t)
+    (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
+
 (defclass log-headers-mixin ()
   ()
   (:documentation "Class that logs some activities and state changes."))
@@ -318,8 +322,8 @@ not now.")
     (setf (get-body stream)
           (concatenate 'string (get-body stream)
                        (map 'string 'code-char  data)))
-    (write-window-update-frame connection connection (length data) 0)
-    (write-window-update-frame connection stream (length data) 0)
+    (write-window-update-frame connection connection (length data))
+    (write-window-update-frame connection stream (length data))
     (force-output (get-network-stream connection)))
 
   (:method :before ((connection logging-object) (stream logging-object)
@@ -524,9 +528,24 @@ PAYLOAD).")
   (:method  :before (connection (stream logging-object))
     (add-log stream '(:end-headers)))
 
-  (:method (connection stream)
-    ;; anything sane to do?
-    ))
+  (:method (connection stream))
+
+  (:method (connection (stream client-stream))
+    ;; Headers sanity check
+    (unless (get-status stream)
+      (send-stream-error connection stream  +protocol-error+
+                         ":status pseud-header field MUST be included in all responses"))
+    ;; next header section may contain another :status
+    (setf (get-seen-text-header stream) nil))
+
+  (:method (connection (stream server-stream))
+    ;; Headers sanity check
+    (unless (or (equal (get-method stream) "CONNECT")
+             (and (get-method stream) (get-scheme stream) (get-path stream)))
+      (send-stream-error connection stream  +protocol-error+
+                         "All HTTP/2 requests MUST include exactly one valid value for the
+   :method, :scheme, and :path pseudo-header fields, unless it is
+   a CONNECT request"))))
 
 (defmethod do-ping (connection data)
   (write-ping-frame connection connection data :ack t))

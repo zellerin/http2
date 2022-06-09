@@ -35,6 +35,7 @@
   :pathname "server"
   :depends-on (#:cl+ssl #:puri #:http2)
   :components ((:file "cl+ssl")
+               (:file "dispatch")
                (:file "server")))
 
 (asdf:defsystem #:http2/test

@@ -32,10 +32,10 @@
                      ("baz" "bah"))
                     :end-headers t)
                   :expected-log-stream
-                  '((:end-headers)
-                    (:header "foo" "bar")
+                  '((:header "foo" "bar")
                     (:header :path "/")
-                    (:header "baz" "bah")))
+                    (:header "baz" "bah")
+                    (:end-headers)))
 
     (test-one-frame #'write-headers-frame
                   '((("foo" "bar")
@@ -101,11 +101,11 @@
                               ))
                   :stream :connection)
 
-  (test-one-frame #'write-window-update-frame '(#x40000 nil)
+  (test-one-frame #'write-window-update-frame '(#x40000)
                   :expected-log-stream
                   '((:window-size-increment #x40000)))
 
-  (test-one-frame #'write-window-update-frame '(#x40000 nil)
+  (test-one-frame #'write-window-update-frame '(#x40000)
                   :stream :connection
                   :expected-log-connection
                   '((:window-size-increment #x40000))))
