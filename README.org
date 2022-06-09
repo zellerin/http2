@@ -36,7 +36,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 *** Server
-Rudimentary https server (that signals h2 support with ALPN) is implemented; Key and cert are needed. It handles requests one by one, this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
+Rudimentary https server (that signals h2 support with ALPN) is implemented; Key and cert are needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
 
 #+begin_src lisp
   (ql:quickload 'http2/server)
@@ -58,6 +58,7 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
 - No handling of priorities is implemented. This is OK, as these are only suggestions.
 - Push promises are not implemented. This is OK, they are disabled by default (settings)
 - Dynamic table is not used for encoding and decoding headers. This is OK, header table size is set to 0
+- There are TLS session caching problems when accessing from real browsers for the second time.
 
 ** Implementation details
 

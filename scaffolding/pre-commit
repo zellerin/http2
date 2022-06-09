@@ -1,9 +1,16 @@
 #!/bin/bash
 
+set -e
 # Clone so that we work on the staged version
 rm -rf to-test
 git clone . to-test
 git diff --cached |patch -p1 -d to-test
 
+# Test that it works with real ecosystem
+set -x
 cd to-test
 sbcl --script scaffolding/do-test.lisp
+sbcl --script scaffolding/run-server.lisp &
+sleep 1
+[[ $(curl https://localhost:1230/ -k) = "<h1>Hello World</h1>" ]]
+[[ $(curl https://localhost:1230/exit -k) = "Goodbye" ]]

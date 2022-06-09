@@ -1,5 +1,7 @@
 (in-package cl+ssl)
 
+(defconstant +SSL-TLSEXT-ERR-ALERT-FATAL+ 2)
+
 (define-ssl-function ("SSL_CTX_set_alpn_select_cb" ssl-ctx-set-alpn-select-cb)
     :void
   (ctx ssl-ctx)
@@ -26,4 +28,4 @@
              (return 0)
         finally
            (print "H2 not found!")
-           (return 1)))
+           (return +SSL-TLSEXT-ERR-ALERT-FATAL+)))
