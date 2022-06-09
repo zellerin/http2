@@ -484,7 +484,7 @@ PAYLOAD).")
       (call-next-method connection stream
                         decoded-name
                         (etypecase value
-                          ((or null string integer) value) ; integer can be removed if we removed "200"
+                          (string value) ; integer can be removed if we removed "200"
                           ((vector (unsigned-byte 8)) (decode-huffman value))))))
 
   (:method (connection stream name value)

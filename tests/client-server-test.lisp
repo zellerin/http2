@@ -1,10 +1,10 @@
 (in-package http2)
 
 (defvar *test-webs*
-          '(("https://example.com" "<title>Example Domain</title>" 200)
+          '(("https://example.com" "<title>Example Domain</title>" "200")
             ("https://lupa.cz" "Moved Permanently" "301")
-            ("https://www.lupa.cz" "Lupa" 200)
-            ("https://www.seznam.cz" "" 200))
+            ("https://www.lupa.cz" "Lupa" "200")
+            ("https://www.seznam.cz" "" "200"))
   "List of tripples for testing pages: URL, text on page and status code.")
 
 (fiasco:deftest test-webs (&optional (webs *test-webs*))
