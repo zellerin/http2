@@ -3,7 +3,8 @@
 (cl:defpackage #:http2
   (:use #:cl)
   (:export #:client-http2-connection
-           #:client-http2-stream
+           #:client-stream
+           #:server-stream
            #:server-http2-connection
            #:logging-object
            #:*do-print-log*

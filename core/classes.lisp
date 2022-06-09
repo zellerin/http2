@@ -67,15 +67,18 @@
   (:default-initargs :id-to-use 2))
 
 (defclass http2-stream (stream-or-connection)
-  ((stream-id  :accessor get-stream-id  :initarg :stream-id
-               :type (unsigned-byte 31))
-   (state      :accessor get-state      :initarg :state
-               :type (member idle open closed
-                             half-closed/local half-closed/remote
-                             reserved/local reserved/remote))
-   (data       :accessor get-data       :initarg :data)
-   (weight     :accessor get-weight     :initarg :weight)
-   (depends-on :accessor get-depends-on :initarg :depends-on))
+  ((stream-id        :accessor get-stream-id        :initarg :stream-id
+                     :type (unsigned-byte 31))
+   (state            :accessor get-state            :initarg :state
+                     :type (member idle open closed
+                                   half-closed/local half-closed/remote
+                                   reserved/local reserved/remote))
+   (data             :accessor get-data             :initarg :data)
+   (weight           :accessor get-weight           :initarg :weight)
+   (depends-on       :accessor get-depends-on       :initarg :depends-on)
+   (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
+                     :documentation
+                     "Set if in the header block a non-pseudo header was already seen."))
   (:default-initargs :state 'idle :window-size 0
    ;;   All streams are initially assigned a non-exclusive dependency on
    ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
@@ -83,6 +86,7 @@
    ;;   weight of 16.
                      :weight 16
                      :depends-on '(:non-exclusive 0)
+                     :seen-text-header nil
    )
   (:documentation
    "An independent, bidirectional sequence of frames exchanged between
@@ -105,6 +109,31 @@
 
   Streams are identified by an integer.  Stream identifiers are
   assigned to streams by the endpoint initiating the stream."))
+
+(defclass client-stream (http2-stream)
+  ((status :accessor get-status :initarg :status
+           :documentation
+           "HTTP status code field (see [RFC7231], Section 6)"))
+  (:default-initargs :status nil))
+
+(defclass server-stream (http2-stream)
+  ((method    :accessor get-method    :initarg :method
+              :documentation
+              "The HTTP method ([RFC7231], Section 4)")
+   (scheme    :accessor get-scheme    :initarg :scheme
+              :documentation
+              "Scheme portion of the target URI ([RFC3986], Section 3.1).
+
+               Not restricted to \"http\" and \"https\" schemed URIs.
+               A proxy or gateway can translate requests for non-HTTP schemes,
+               enabling the use of HTTP to interact with non-HTTP services")
+   (authority :accessor get-authority :initarg :authority
+              :documentation
+              "The authority portion of the target URI ([RFC3986], Section 3.2)")
+   (path      :accessor get-path      :initarg :path
+              :documentation
+              "The path and query parts of the target URI"))
+  (:default-initargs :method nil :scheme nil :authority nil :path nil))
 
 (defclass log-headers-mixin ()
   ()
@@ -429,6 +458,17 @@ PAYLOAD).")
   (:method :after (connection (stream logging-object))
     (add-log stream '(:closed-remotely))))
 
+(defmacro check-place-empty-and-set-it (new-value accessor)
+  "All HTTP/2 requests MUST include exactly one valid value for the
+   :method, :scheme, and :path pseudo-header fields, unless it is
+   a CONNECT request (Section 8.3).  An HTTP request that omits
+   mandatory pseudo-header fields is malformed (Section 8.1.2.6)."
+  ;; fixme: use place expanders
+  `(if (,accessor stream)
+       (send-stream-error connection stream  +protocol-error+
+                          "Duplicated header")
+       (setf (,accessor stream) ,new-value)))
+
 (defgeneric add-header (connection stream name value)
   (:method :around (connection (stream http2-stream) name value)
     "Decode compressed headers"
@@ -448,6 +488,35 @@ PAYLOAD).")
 
   (:method (connection stream name value)
     (warn "You should overwrite default method for adding new header."))
+
+  (:method (connection (stream server-stream) (name symbol) value)
+    (when (get-seen-text-header stream)
+      (send-stream-error connection stream  +protocol-error+
+                         "Pseudo header follows text header."))
+    (case name
+      (:method
+       (check-place-empty-and-set-it value get-method))
+      (:scheme
+       (check-place-empty-and-set-it value get-scheme))
+      (:authority
+       (check-place-empty-and-set-it value get-authority))
+      (:path
+       (check-place-empty-and-set-it value get-path))
+      (t
+       (send-stream-error connection stream  +protocol-error+
+                          "Incorrect pseudo header on response"))))
+
+  (:method (connection (stream client-stream) (name symbol) value)
+    (when (get-seen-text-header stream)
+      (send-stream-error connection stream  +protocol-error+
+                         "Pseudo header follows text header."))
+    (case name
+      (:status
+          (setf (get-status stream) value))
+      (t
+       (send-stream-error connection stream  +protocol-error+
+                          "Incorrect pseudo header on request"))))
+
   (:method :after (connection (stream log-headers-mixin) name value)
     (format t "~&header: ~a = ~a~%" name value))
 

@@ -6,7 +6,4 @@
 (ql:quickload "http2/client")
 (ql:quickload "http2/server")
 (load "tests/client-server-test")
-
-#+nil(http2::test-webs)
-
 (http2::test-client-server)

@@ -10,7 +10,7 @@
              :initform nil))
   (:default-initargs :stream-class 'sample-client-stream))
 
-(defclass sample-client-stream (http2::http2-stream http2::body-collecting-mixin
+(defclass sample-client-stream (client-stream http2::body-collecting-mixin
                                 http2::header-collecting-mixin
                                 http2::history-printing-object)
   ((content-type :accessor get-content-type :initarg :content-type)))
@@ -31,6 +31,7 @@
         (send-ping connection))
       (wait-for-responses)
       (values (http2::get-body (first (http2::get-streams connection)))
+              (http2::get-status (first (http2::get-streams connection)))
               (http2::get-headers  (first (http2::get-streams connection)))))))
 
 (defmethod peer-ends-http-stream ((connection sample-client-connection) stream)

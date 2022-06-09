@@ -10,11 +10,11 @@
 (fiasco:deftest test-webs (&optional (webs *test-webs*))
   (loop for (page search-term code) in webs
         do
-           (multiple-value-bind (body headers)
+           (multiple-value-bind (body status)
                (http2/client::retrieve-url page)
              (fiasco:is (search search-term body)
                  "Page ~a does not contain ~a" page search-term)
-             (fiasco:is (equal code (cdr (assoc :status headers)))
+             (fiasco:is (equal code status)
                  "Page ~a does not have status ~a" page code))))
 
 (fiasco:deftest test-client-server ()
