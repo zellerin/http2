@@ -10,29 +10,52 @@
              :initform nil))
   (:default-initargs :stream-class 'sample-client-stream))
 
-(defclass sample-client-stream (client-stream http2::body-collecting-mixin
+(defclass sample-client-stream (client-stream ;; basic semantics and pseudoheaders
+                                ;; recieved data are stored in slot BODY
+                                http2::body-collecting-mixin
+                                ;; headers (not pseudoheaders) are collected in
+                                ;; slot HEADERS
                                 http2::header-collecting-mixin
+                                ;; when *do-print-log* is set, extensive event
+                                ;; log is printed
                                 http2::history-printing-object)
-  ((content-type :accessor get-content-type :initarg :content-type)))
+  ())
 
-(defun retrieve-url (url &key (method "GET") ((:verbose http2::*do-print-log*)))
-  "Retrieve URL through http/2 over TLS. Log events with VERBOSE."
+(defun retrieve-url (url &key (method "GET") ((:verbose http2::*do-print-log*))
+                           ping
+                           additional-headers
+                           content)
+  "Retrieve URL through http/2 over TLS.
+
+Log events to standard output with VERBOSE set.
+
+Ping peer and print round trip time if PING is set, repeatedly if this is a
+number."
   (let ((parsed-url (puri:parse-uri url)))
     (with-http-connection (connection (puri:uri-host parsed-url)
                            :port (or (puri:uri-port parsed-url) 443)
                            :connection-class 'sample-client-connection)
-      (send-headers connection :new
-                    (request-headers method
-                                     (or (puri:uri-path parsed-url) "/")
-                                     (puri:uri-host parsed-url))
-                               :end-stream t)
-        ;; and test ping
-#+nil      (dotimes (i 3)
-        (send-ping connection))
-      (wait-for-responses)
-      (values (http2::get-body (first (http2::get-streams connection)))
-              (http2::get-status (first (http2::get-streams connection)))
-              (http2::get-headers  (first (http2::get-streams connection)))))))
+      (let ((stream
+              (send-headers connection :new
+                            (append
+                             (request-headers method
+                                              (or (puri:uri-path parsed-url) "/")
+                                              (puri:uri-host parsed-url))
+                             (mapcar 'http2::encode-header additional-headers))
+                                       :end-stream (null content))))
+        (when content
+          (http2::write-data-frame connection stream
+                                   content :end-stream t))
+        (typecase ping
+          (integer
+           (dotimes (i ping)
+             (send-ping connection)))
+          (null)
+          (t (send-ping connection)))
+        (wait-for-responses)
+        (values (http2::get-body stream)
+                (http2::get-status stream)
+                (http2::get-headers stream))))))
 
 (defmethod peer-ends-http-stream ((connection sample-client-connection) stream)
   (terminate-locally connection))

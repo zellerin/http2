@@ -18,21 +18,22 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 #+begin_src text
-  "<!doctype html>
-  <html>
-  <head>
-      <title>Example Domain</title>
+<!doctype html>
+<html>
+<head>
+    <title>Example Domain</title>
 
-      <meta charset="utf-8" />
-      <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-      <meta name="viewport" conten...[sly-elided string of length 1256]"
-  (("content-length" . "1256") ("x-cache" . "HIT") ("vary" . "Accept-Encoding")
-   ("server" . "ECS (bsa/EB23)")
-   ("last-modified" . "Thu, 17 Oct 2019 07:18:26 GMT")
-   ("expires" . "Fri, 10 Jun 2022 19:43:07 GMT")
-   ("etag" . "\"3147526947+ident\"") ("date" . "Fri, 03 Jun 2022 19:43:07 GMT")
-   ("content-type" . "text/html; charset=UTF-8")
-   ("cache-control" . "max-age=604800") ("age" . "495733") (:STATUS . 200))
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" conten...[sly-elided string of length 1256]"
+200 (8 bits, #xC8, #o310, #b11001000)
+(("content-length" . "1256") ("x-cache" . "HIT") ("vary" . "Accept-Encoding")
+ ("server" . "ECS (bsa/EB24)")
+ ("last-modified" . "Thu, 17 Oct 2019 07:18:26 GMT")
+ ("expires" . "Thu, 16 Jun 2022 09:35:21 GMT")
+ ("etag" . "\"3147526947+ident\"") ("date" . "Thu, 09 Jun 2022 09:35:21 GMT")
+ ("content-type" . "text/html; charset=UTF-8")
+ ("cache-control" . "max-age=604800") ("age" . "239205"))
 #+end_src
 
 *** Server

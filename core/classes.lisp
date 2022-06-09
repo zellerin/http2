@@ -231,13 +231,14 @@ The lifecycle of a stream is shown in Figure 2.
 (defgeneric send-headers (connection stream headers &key end-stream)
   (:documentation
    "Send headers to the connection and stream. Stream is either an existing
-instance of a stream, or a symbol :new.
+instance of a stream, or a symbol :new. Stream is returned.
 
 In future should ensure splitting too long headers to continuations, but does
 not now.")
   (:method (connection (stream http2-stream) headers &key end-stream)
     (write-headers-frame connection stream headers
-                         :end-headers t :end-stream end-stream))
+                         :end-headers t :end-stream end-stream)
+    stream)
 
   (:method :before (connection (stream logging-object) headers &key end-stream)
     (add-log stream `(:sending-headers ,headers :end-stream ,end-stream)))
