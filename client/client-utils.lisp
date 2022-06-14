@@ -1,7 +1,12 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
+;;;; define VANILLA-CLIENT-CONNECTION with relatively sane client side
+;;;; behaviour. Define WITH-HTTP-CONNECTION macro that allows to talk to other
+;;;; ports.
 (in-package http2)
 
 (defmacro with-http-connection ((connection target &key (sni target) (port 443)
-                                          (connection-class ''http2-connection)
+                                          (connection-class ''vanilla-client-connection)
                                           (verify nil))
                                 &body body)
   "Run BODY with established HTTP2 connection over TLS to PORT on
@@ -23,7 +28,8 @@ TARGET, using SNI."
                         (loop
                           do
                              (read-frame ,connection)
-                          until (get-finished ,connection))
+                          until (and (get-finished ,connection)
+                                     (null (listen (get-network-stream ,connection)))))
                       (end-of-file () nil)))))
            (unwind-protect
                 (progn
@@ -33,3 +39,28 @@ TARGET, using SNI."
 (defun terminate-locally (connection &optional (code +no-error+))
   (write-goaway-frame connection connection 0 code #())
   (setf (http2::get-finished connection) t))
+
+(defclass vanilla-client-connection (client-http2-connection http2::history-printing-object
+                                    http2::timeshift-pinging-connection)
+  ((finished :accessor http2::get-finished :initarg :finished
+             :initform nil))
+  (:default-initargs :stream-class 'vanilla-client-stream))
+
+(defclass vanilla-client-stream (client-stream ;; basic semantics and pseudoheaders
+                                 ;; recieved data are stored in slot BODY
+                                 http2::body-collecting-mixin
+                                 ;; headers (not pseudoheaders) are collected in
+                                 ;; slot HEADERS
+                                 http2::header-collecting-mixin
+                                 ;; when *do-print-log* is set, extensive event
+                                 ;; log is printed
+                                 http2::history-printing-object)
+  ((end-stream-callback :accessor get-end-stream-callback :initarg :end-stream-callback
+                        :documentation
+                        "Callback to handle finished stream. Callled with one argument,
+                         the stream. If result is true, terminate connection"))
+  (:default-initargs :end-stream-callback (constantly nil)))
+
+(defmethod peer-ends-http-stream ((connection vanilla-client-connection) stream)
+  (when (funcall (get-end-stream-callback stream) stream)
+    (terminate-locally connection)))

@@ -1,3 +1,18 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
+;;;; As an example of how could server be built, define class
+;;;; vanilla-server-connection that dispatches incoming requests based on their
+;;;; path to a handler function.  Handlers are mapped either to specific path
+;;;; (exact handler) or to a prefix (prefix handler).
+;;;;
+;;;; use HANDLER macro to wrap handlers; it provides convenient and exported
+;;;; function for the handler to use (SEND-DATA, SEND-TEXT, SEND-HEADERS,
+;;;; SEND-GOAWAY).
+;;;;
+;;;; Of course, existing framework arount http/1.1 (Hunchentoot, ...) provide
+;;;; much more. I would prefer not do duplicate.
+
+
 (in-package http2)
 
 (defclass dispatcher-mixin ()
@@ -22,8 +37,12 @@ request when peer closes the stream."))
             (send-text (text &rest args)
               (apply #'write-data-frame connection stream
                      (map 'vector 'char-code text)
-                    args)))
-       (declare (ignorable #'send-data #'send-text))
+                     args))
+            (send-goaway (code debug-data)
+              (http2::write-goaway-frame connection connection
+                                         0 code debug-data)
+              (force-output (get-network-stream connection))))
+       (declare (ignorable #'send-data #'send-text #'send-goaway))
        ,@body
        (force-output (get-network-stream connection)))))
 
@@ -60,3 +79,45 @@ request when peer closes the stream."))
                   :end-stream (null content))
     (when content
       (send-text content :end-stream t))))
+
+;;;; Sample server with constant payload
+(defclass vanilla-server-connection (server-http2-connection
+                                    dispatcher-mixin
+                                    history-printing-object)
+  ()
+  (:default-initargs :stream-class 'vanilla-server-stream))
+
+(defclass vanilla-server-stream (server-stream
+                                body-collecting-mixin
+                                history-printing-object)
+  ())
+
+(defmethod peer-ends-http-stream (connection (stream vanilla-server-stream))
+  "Send some random payloads, or shut down the server."
+  (let ((handler
+          (or
+           (cdr (assoc (get-path stream) *exact-handlers*
+                          :test (lambda (prefix path)
+                                  (let ((mismatch (mismatch prefix path)))
+                                    (or (null mismatch)
+                                        (and (eql mismatch (position #\? path))
+                                             (eql mismatch (length path))))))))
+           (cdr (assoc (get-path stream) *prefix-handlers*
+                          :test (lambda (prefix path)
+                                  (let ((mismatch (mismatch prefix path)))
+                                    (or (null mismatch) (equal mismatch (length path))))))))))
+    (if handler (funcall handler connection stream)
+     (progn
+       (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
+       (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
+                         :end-stream t))))
+  (force-output (get-network-stream connection)))
+
+(defun process-server-stream (stream &key (connection-class 'vanilla-server-connection))
+  (let ((connection (make-instance connection-class
+                                   :network-stream stream)))
+    (with-simple-restart (close-connection "Close current connection")
+      (handler-case
+          (loop (read-frame connection))
+        (end-of-file () nil)
+        (go-away ())))))

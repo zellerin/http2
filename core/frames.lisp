@@ -1,3 +1,5 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
 ;;;; http2.lisp
 
 (in-package #:http2)
@@ -191,10 +193,12 @@ The macro defining FRAME-TYPE-NAME :foo defines
                  (make-frame-type ,frame-type-name ,documentation
                                   #',reader-name))))))
 
-(defun create-new-local-stream (connection)
-  "A new stream."
-  (let ((stream (make-instance (get-stream-class connection)
-                               :stream-id (get-id-to-use connection))))
+(defun create-new-local-stream (connection &optional pars)
+  "Create new local stream of default class on CONNECTION. Additional PARS are
+passed to the make-instance"
+  (let ((stream (apply #'make-instance (get-stream-class connection)
+                       :stream-id (get-id-to-use connection)
+                       pars)))
     (incf (get-id-to-use connection))
     (push stream (get-streams connection))
     stream))

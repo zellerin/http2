@@ -1,3 +1,5 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
 (in-package http2)
 
 (defvar *test-webs*
@@ -20,8 +22,8 @@
 (fiasco:deftest test-client-server ()
   (multiple-value-bind (client-stream server-stream) (make-full-pipe)
     ;; order matters: client needs to write client message so that server can read it.
-    (let ((client (make-instance 'http2/client::sample-client-connection :network-stream client-stream))
-          (server (make-instance 'sample-server-connection :network-stream server-stream))
+    (let ((client (make-instance 'http2/client::vanilla-client-connection :network-stream client-stream))
+          (server (make-instance 'vanilla-server-connection :network-stream server-stream))
 )
       (send-headers client :new
                     (request-headers "GET"  "/" "localhost")

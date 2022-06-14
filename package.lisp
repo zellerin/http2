@@ -1,16 +1,17 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
 ;;;; package.lisp
 
 (cl:defpackage #:http2
   (:use #:cl)
-  (:export #:client-http2-connection
-           #:client-stream
-           #:server-stream
-           #:server-http2-connection
-           #:logging-object
+  (:export #:logging-object
            #:*do-print-log*
 
-
+           #:vanilla-client-connection
+           #:vanilla-server-connection
            #:get-path
+           #:get-body
+           #:get-headers
 
            #:with-http-connection
            #:get-finished
@@ -33,4 +34,17 @@
            #:update-dynamic-table-size
            #:set-peer-setting
            #:peer-expects-settings-ack
-           #:peer-acks-settings))
+           #:peer-acks-settings
+
+           #:define-prefix-handler
+           #:define-exact-handler
+           #:handler
+           #:redirect-handler
+           #:send-text-handler
+           #:send-text
+           #:send-headers
+           #:send-goaway
+           #:process-server-stream
+           #:get-body
+
+           #:+no-error+))

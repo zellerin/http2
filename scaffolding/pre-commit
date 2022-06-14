@@ -12,5 +12,5 @@ cd to-test
 sbcl --script scaffolding/do-test.lisp
 sbcl --script scaffolding/run-server.lisp &
 sleep 1
-[[ $(curl https://localhost:1230/ -k) = "<h1>Hello World</h1>" ]]
+[[ $(curl https://localhost:1230/ok -k) == "Redirect was OK" ]]
 [[ $(curl https://localhost:1230/exit -k) = "Goodbye" ]]

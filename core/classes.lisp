@@ -1,3 +1,5 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
 (in-package http2)
 
 ;;;; Classes
@@ -10,53 +12,51 @@
                        /                      \
      (stream mixins)  /                        \        (connection mixins)
                \     /                          \             /
-              sample-client-stream     sample-client-connection
+             vanilla-client-stream     vanilla-client-connection
 |#
 
 (defclass stream-or-connection ()
   ((window-size  :accessor get-window-size  :initarg :window-size)))
 
 (defclass http2-connection (stream-or-connection)
-  ((network-stream      :accessor get-network-stream       :initarg :network-stream)
-   (streams             :accessor get-streams              :initarg :streams
-                        :documentation "Sequence of HTTP2 streams")
-   (acked-settings      :accessor get-acked-settings       :initarg :acked-settings)
-   (dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
-   (last-id-seen        :accessor get-last-id-seen         :initarg :last-id-seen)
-   (id-to-use           :accessor get-id-to-use            :initarg :id-to-use
-                        :type          (unsigned-byte 31)
-                        :documentation
-                        "Streams are identified with an unsigned 31-bit
-                        integer.  Streams initiated by a client MUST
-                        use odd-numbered stream identifiers; those
-                        initiated by the server MUST use
-                        even-numbered stream identifiers.  A stream
-                        identifier of zero (0x0) is used for
-                        connection control messages; the stream
-                        identifier of zero cannot be used to
-                        establish a new stream.")
-   (expect-continuation :accessor get-expect-continuation
-                        :initarg :expect-continuation
-                        :type          (or null (unsigned-byte 31))
-                        :initform       nil
-                        :documentation
-                        "A HEADERS frame without the END_HEADERS flag set MUST be
+  ((network-stream        :accessor get-network-stream        :initarg :network-stream)
+   (streams               :accessor get-streams               :initarg :streams
+                          :documentation "Sequence of HTTP2 streams")
+   (acked-settings        :accessor get-acked-settings        :initarg :acked-settings)
+   (compression-context   :accessor get-compression-context   :initarg :compression-context)
+   (decompression-context :accessor get-decompression-context :initarg :decompression-context)
+   (last-id-seen          :accessor get-last-id-seen          :initarg :last-id-seen)
+   (id-to-use             :accessor get-id-to-use             :initarg :id-to-use
+                          :type          (unsigned-byte 31)
+                          :documentation
+                          "Streams are identified with an unsigned 31-bit  integer.")
+   (expect-continuation   :accessor get-expect-continuation
+                          :initarg :expect-continuation
+                          :type          (or null (unsigned-byte 31))
+                          :initform       nil
+                          :documentation
+                          "A HEADERS frame without the END_HEADERS flag set MUST be
                         followed by a CONTINUATION frame for the same
                         stream. This slot is set to the id of the expected
-                        stream in such case, and is nil otherwise.")
-   (stream-class        :accessor get-stream-class         :initarg :stream-class)
-   (enable-push         :accessor get-enable-push          :initarg :enable-push))
+                        stream in such case, and is nil otherwise.
+
+                        FIXME: continuation frames should be read directly where
+                        needed, and when they appear in read-frame should raise
+                        a (connection?) error.")
+   (stream-class          :accessor get-stream-class          :initarg :stream-class
+                          :documentation "Class for new streams")
+   (enable-push           :accessor get-enable-push           :initarg :enable-push))
   (:default-initargs :id-to-use 1
                      :enable-push 0 ; disable by default. Use a mixin to enable.
                      :last-id-seen 0
                      :streams nil
                      :acked-settings nil
                      :window-size 0
-                     :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
+                     :compression-context (make-instance 'hpack-context)
+                     :decompression-context (make-instance 'hpack-context)
                      :stream-class 'http2-stream)
   (:documentation
-   "A simple connection: promise push not allowed, empty dynamic header table,
-   reasonable behaviour"))
+   "A simple connection: promise push not allowed, otherwise reasonable behaviour"))
 
 (defclass client-http2-connection (http2-connection)
   ()
@@ -213,7 +213,7 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
-(defgeneric send-headers (connection stream headers &key end-stream)
+(defgeneric send-headers (connection stream headers &key end-stream &allow-other-keys)
   (:documentation
    "Send headers to the connection and stream. Stream is either an existing
 instance of a stream, or a symbol :new. Stream is returned.
@@ -221,16 +221,21 @@ instance of a stream, or a symbol :new. Stream is returned.
 In future should ensure splitting too long headers to continuations, but does
 not now.")
   (:method (connection (stream http2-stream) headers &key end-stream)
+    (when (get-updates-needed (get-compression-context connection))
+      (warn "FIXME: we should send dynamical update."))
     (write-headers-frame connection stream headers
                          :end-headers t :end-stream end-stream)
     stream)
 
   (:method :before (connection (stream logging-object) headers &key end-stream)
     (add-log stream `(:sending-headers ,headers :end-stream ,end-stream)))
-  (:method (connection (stream (eql :new)) headers &key end-stream)
-    (let ((new-stream (create-new-local-stream connection)))
-      (setf (get-state new-stream) 'open)
-      (send-headers connection new-stream headers :end-stream end-stream))))
+  (:method (connection (stream (eql :new)) headers &rest raw-stream-args
+            &key end-stream &allow-other-keys)
+    (let ((stream-args (copy-list raw-stream-args)))
+      (remf stream-args :end-stream)
+      (send-headers connection
+                    (create-new-local-stream connection `(:state open ,@stream-args))
+                    headers :end-stream end-stream))))
 
 (defgeneric peer-opens-http-stream (connection stream-id frame-type)
   (:documentation
@@ -353,16 +358,16 @@ not now.")
       (http2-error object +protocol-error+ ""))
     (setf (get-window-size object) increment)))
 
-(defmethod update-dynamic-table-size (connection new-size)
-  (setf (fill-pointer (get-dynamic-table connection)) new-size)
-  (adjust-array (get-dynamic-table connection) new-size))
-
 (defmethod set-peer-setting (connection name value)
   (warn "Peer settings not used - ~a ~a." name value))
 
+
+;; FIXME: prepare tests
 (defmethod set-peer-setting (connection (name (eql :header-table-size)) value)
-  ;; do something
-  )
+  (let ((context (get-compression-context connection)))
+    (when (> value (get-dynamic-table-size context))
+      (update-dynamic-table-size context value)
+      (push value (get-updates-needed context)))))
 
 (defmethod set-peer-setting (connection (name (eql :initial-window-size)) value)
   ;; do something
@@ -547,8 +552,12 @@ PAYLOAD).")
    :method, :scheme, and :path pseudo-header fields, unless it is
    a CONNECT request"))))
 
-(defmethod do-ping (connection data)
-  (write-ping-frame connection connection data :ack t))
+(defgeneric do-ping (connection data)
+  (:method (connection data)
+    (write-ping-frame connection connection data :ack t)
+    (force-output (get-network-stream connection)))
+  (:method :before ((connection logging-object) data)
+    (add-log connection `(:ping ,data))))
 
 (defgeneric do-pong (connection data)
   (:method (connection data)
@@ -642,9 +651,6 @@ extensions..")
 
 (defmethod peer-expects-settings-ack :before ((connection logging-object))
   (add-log connection '(:settings-ack-needed)))
-
-(defmethod do-ping :before ((connection logging-object) data)
-  (add-log connection `(:ping ,data)))
 
 (defmethod do-pong :before ((connection logging-object) data)
   (add-log connection `(:pong ,data)))

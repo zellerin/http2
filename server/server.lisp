@@ -1,26 +1,13 @@
-(in-package http2)
+;;;; Copyright 2022 by Tomáš Zellerin
 
-;;;; Sample server with constant payload
-(defclass sample-server-connection (server-http2-connection
+;;;; Create a specific server. Use dispatch handlers to define behaviour of the
+;;;; server, and actually bind it to a TLS socket.
 
-                                    dispatcher-mixin
-                                    ;; when *do-print-log* is set, extensive event
-                                    ;; log is printed
-                                    history-printing-object)
-  ()
-  (:default-initargs :stream-class 'sample-server-stream))
+(defpackage http2/server
+  (:use #:cl #:http2)
+  (:export #:create-server))
 
-(defclass sample-server-stream (server-stream
-
-                                body-collecting-mixin
-                                ;; when *do-print-log* is set, extensive event
-                                ;; log is printed
-                                history-printing-object)
-  ())
-
-(defparameter *exit-on-/exit* nil
-  "If T, exit when /exit request is received (on sbcl). This is used by tests to
-shut down the server.")
+(in-package http2/server)
 
 (define-prefix-handler "/re" (redirect-handler "/ok"))
 
@@ -34,7 +21,7 @@ shut down the server.")
 <p><a href='/redir'>Redirect test</a>
 <form action='/body' method='post'><input type='submit' name='xxx' value='POST query test'></form")
 
-(define-exact-handler "/" (send-text-handler  *intro-page* ))
+(define-exact-handler "/" (send-text-handler *intro-page*))
 
 (define-exact-handler "/body"
     (handler
@@ -42,43 +29,12 @@ shut down the server.")
                       ("refresh" "3; url=/")))
       (send-text (get-body stream) :end-stream t)))
 
-(define-exact-handler "/exit"
+#+sbcl (define-exact-handler "/exit"
   (handler
     (send-headers `((:status "200")))
     (send-text "Goodbye" :end-stream t)
-    (write-goaway-frame connection connection 0 +no-error+ #())
-    (force-output (get-network-stream connection))
+    (send-goaway +no-error+ #())
     (sb-ext:quit)))
-
-(defmethod peer-ends-http-stream (connection (stream sample-server-stream))
-  "Send some random payloads, or shut down the server."
-  (let ((handler
-          (or
-           (cdr (assoc (get-path stream) *exact-handlers*
-                          :test (lambda (prefix path)
-                                  (let ((mismatch (mismatch prefix path)))
-                                    (or (null mismatch)
-                                        (and (eql mismatch (position #\? path))
-                                             (eql mismatch (length path))))))))
-           (cdr (assoc (get-path stream) *prefix-handlers*
-                          :test (lambda (prefix path)
-                                  (let ((mismatch (mismatch prefix path)))
-                                    (or (null mismatch) (equal mismatch (length path))))))))))
-    (if handler (funcall handler connection stream)
-     (progn
-       (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
-       (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
-                         :end-stream t))))
-  (force-output (get-network-stream connection)))
-
-(defun process-server-stream (stream)
-  (let ((connection (make-instance 'sample-server-connection
-                                   :network-stream stream)))
-    (with-simple-restart (close-connection "Close current connection")
-      (handler-case
-          (loop (read-frame connection))
-        (end-of-file () nil)
-        (go-away ())))))
 
 #+sbcl (defun sb-threadify (fn &rest args)
          (sb-thread:make-thread fn :arguments args))
@@ -124,11 +80,13 @@ shut down the server.")
      (cffi:get-callback 'cl+ssl::select-h2-callback))
     context))
 
-(defun create-server (port key cert &key ((:verbose http2::*do-print-log*)))
+(defun create-server (port key cert &key ((:verbose http2::*do-print-log*))
+                                      (announce-open-fn (constantly nil)))
   (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
                                                              :reuse-address t
                                                              :backlog 200))
     (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
+      (funcall announce-open-fn)
       (loop
         (wrap-to-tls-and-process-server-stream
          (usocket:socket-stream
@@ -137,6 +95,11 @@ shut down the server.")
             ;; ignore condition
             (usocket:connection-aborted-error ())))
          key cert)))))
+
+(defun main ()
+  (handler-bind ((warning 'muffle-warning))
+    (create-server 1230 "/tmp/server.key" "/tmp/server.crt"
+                   :verbose nil)))
 
 ;;;;
 ;;;; curl: send settings and wait for settings.

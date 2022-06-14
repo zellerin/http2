@@ -1,3 +1,5 @@
+;;;; Copyright 2022 by Tomáš Zellerin
+
 (in-package http2)
 
 
@@ -111,4 +113,10 @@
                   '((:window-size-increment #x40000))))
 
 (defun do-test ()
-  (test-frames))
+  (test-frames)
+  (int-pack-tests)
+  (headers-representation)
+  (test-header-packings)
+  (test-huffman-decoding)
+  (test-header-packings-response)
+  (test-header-packing-huffman-response))

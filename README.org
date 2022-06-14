@@ -1,15 +1,17 @@
 #+TITLE: http/2 in Common Lisp
 
-This is a (work in progress) implementation of http/2 protocol as described in
-RFC7540 and RFC7541.
+This is a (work in progress) implementation of HTTP/2 protocol as described in
+RFC9113 (and RFC7540 before) and RFC7541 (HPACK).
 
-The core part of the library is implementing reading and writing http2
-frames. What to do with the frames is managed by classes ~CONNECTION~ and
-~HTTP2-STREAM~ that are supposed to be extended by application to do something
-reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] for an example.
+The core part of the library is implementing writing http2 frames, reading them,
+and reacting on read frames. What to do with the frames is managed by classes
+~CONNECTION~ and ~HTTP2-STREAM~ that are supposed to be extended by application to
+do something reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]] for an
+example.
 
 ** Status and quickstart
-Already implemented parts allow to request a http/2 document (or more) over TLS:
+Already implemented parts allow to request a http/2 document (or more documents)
+over TLS as well as serve documents.
 
 *** Client
 #+begin_src lisp
@@ -17,6 +19,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
   (http2/client:retrieve-url "https://example.com")
 #+end_src
 
+#+RESULTS:
 #+begin_src text
 <!doctype html>
 <html>
@@ -26,7 +29,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
     <meta charset="utf-8" />
     <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
     <meta name="viewport" conten...[sly-elided string of length 1256]"
-200 (8 bits, #xC8, #o310, #b11001000)
+"200"
 (("content-length" . "1256") ("x-cache" . "HIT") ("vary" . "Accept-Encoding")
  ("server" . "ECS (bsa/EB24)")
  ("last-modified" . "Thu, 17 Oct 2019 07:18:26 GMT")
@@ -37,7 +40,7 @@ Already implemented parts allow to request a http/2 document (or more) over TLS:
 #+end_src
 
 *** Server
-Rudimentary https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this.
+Example https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this project.
 
 #+begin_src lisp
   (ql:quickload 'http2/server)
@@ -54,12 +57,12 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
 
 ** Missing pieces
 - Window management is minimal. We should limit outgoing data as required by the
-  peer. This depends on application that sends the data.
+  peer. This depends on application that sends the data, no support is provided except signalling.
 - RFC accepts that individual headers can be split between frames. This is not implemented (and should be).
-- No handling of priorities is implemented. This is OK, as these are only suggestions.
+- No handling of priorities is implemented. This is OK, as these are only
+  suggestions, and they are more or less dropped in RFC9113 anyway.
 - Push promises are not implemented. This is OK, they are disabled by default (settings)
-- Dynamic table is not used for encoding and decoding headers. This is OK, header table size is set to 0
-- There are TLS session caching problems when accessing from real browsers for the second time.
+- Huffman coding is understood, but not generated.
 
 ** Implementation details
 
