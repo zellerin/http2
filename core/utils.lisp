@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package http2)
+(in-package :http2)
 
 (defvar *bytes-left* nil "Number of bytes left in frame")
 (defvar *bytes-to-possibly-reuse* (make-array 0 :element-type '(unsigned-byte 8)

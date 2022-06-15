@@ -6,7 +6,7 @@
 (ql:quickload "cl+ssl")
 (ql:quickload "puri")
 (declaim (optimize sb-cover:store-coverage-data))
-(load "./http2.asd")
+(asdf::load-asd (truename "./http2.asd"))
 (ql:quickload "http2" :force t)
 (ql:quickload "http2/all" :force t)
 

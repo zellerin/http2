@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package http2)
+(in-package :http2)
 
 ;;;; See RFC7541
 (defvar static-headers-table

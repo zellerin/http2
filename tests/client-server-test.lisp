@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package http2)
+(in-package :http2)
 
 (defvar *test-webs*
           '(("https://example.com" "<title>Example Domain</title>" "200")

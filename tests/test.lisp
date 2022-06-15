@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package http2)
+(in-package :http2)
 
 
 (fiasco:deftest test-frames ()

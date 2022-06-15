@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package cl+ssl)
+(in-package :cl+ssl)
 
 (defconstant +SSL-TLSEXT-ERR-ALERT-FATAL+ 2)
 

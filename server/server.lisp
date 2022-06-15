@@ -3,11 +3,11 @@
 ;;;; Create a specific server. Use dispatch handlers to define behaviour of the
 ;;;; server, and actually bind it to a TLS socket.
 
-(defpackage http2/server
-  (:use #:cl #:http2)
+(defpackage :http2/server
+  (:use :cl :http2)
   (:export #:create-server))
 
-(in-package http2/server)
+(in-package :http2/server)
 
 (define-prefix-handler "/re" (redirect-handler "/ok"))
 

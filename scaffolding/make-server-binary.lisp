@@ -4,7 +4,7 @@
 ;;; resulting binary fails.
 
 (load "~/quicklisp/setup")
-(load "./http2.asd")
+(asdf::load-asd (truename "./http2.asd"))
 (ql:quickload "http2/server")
 
 ;; store executable locally, and possibly compressed.

@@ -2,8 +2,8 @@
 
 ;;;; package.lisp
 
-(cl:defpackage #:http2
-  (:use #:cl)
+(cl:defpackage :http2
+  (:use :cl)
   (:export #:logging-object
            #:*do-print-log*
 

@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package http2)
+(in-package :http2)
 ;;;; Implement pipes for testing client-server pairs.
 ;;;; No synchronization, usage in concurrently running processes not expected.
 

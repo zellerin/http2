@@ -1,7 +1,7 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
 (load "~/quicklisp/setup")
-(load "./http2.asd")
+(asdf::load-asd (truename "./http2.asd"))
 (ql:quickload "http2/test")
 (http2::do-test)
 

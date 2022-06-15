@@ -3,7 +3,7 @@
 ;;;; define VANILLA-CLIENT-CONNECTION with relatively sane client side
 ;;;; behaviour. Define WITH-HTTP-CONNECTION macro that allows to talk to other
 ;;;; ports.
-(in-package http2)
+(in-package :http2)
 
 (defmacro with-http-connection ((connection target &key (sni target) (port 443)
                                           (connection-class ''vanilla-client-connection)

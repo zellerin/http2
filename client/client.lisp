@@ -1,12 +1,12 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(defpackage http2/client
-  (:use #:cl #:http2)
+(defpackage :http2/client
+  (:use :cl :http2)
   (:export #:retrieve-url))
 
 
 
-(in-package http2/client)
+(in-package :http2/client)
 
 (defun retrieve-url (url &key (method "GET") ((:verbose http2::*do-print-log*))
                            ping

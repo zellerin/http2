@@ -2,7 +2,7 @@
 
 ;;;; http2.lisp
 
-(in-package #:http2)
+(in-package :http2)
 #|
    client:  The endpoint that initiates an HTTP/2 connection.  Clients
       send HTTP requests and receive HTTP responses.
