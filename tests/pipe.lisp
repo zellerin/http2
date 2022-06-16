@@ -10,11 +10,11 @@
 (defmethod stream-element-type ((stream binary-stream))
   '(unsigned-byte 8))
 
-(defclass pipe-end-for-read (trivial-gray-streams:fundamental-binary-input-stream binary-stream)
+(defclass pipe-end-for-read (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((buffer :accessor get-buffer :initarg :buffer)
    (index  :accessor get-index  :initarg :index)))
 
-(defclass pipe-end-for-write (trivial-gray-streams:fundamental-binary-output-stream binary-stream)
+(defclass pipe-end-for-write (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
   ((buffer :accessor get-buffer :initarg :buffer)))
 
 (defun make-pipe (&key (buffer-size 4096))
@@ -44,8 +44,10 @@ read from the other."
 (defmethod trivial-gray-streams:stream-write-byte ((stream pipe-end-for-write) byte)
   (vector-push-extend byte (get-buffer stream)))
 
-(defmethod trivial-gray-streams:stream-listen (stream)
+(defmethod trivial-gray-streams:stream-listen ((stream pipe-end-for-read))
   "If the index is not on end of stream, it can probably be read."
+  ;;  This does not work with clisp, see
+  ;;  https://clisp.sourceforge.io/impnotes/non-block-io.html
   (< (get-index stream) (length (get-buffer stream))))
 
 (defun make-dummy-connection (stream &key (class 'logging-connection)
@@ -108,11 +110,11 @@ quiet."
                                            expected-receiver-error
                                            (stream 1)
                                            (init-state 'open))
-  (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
-    (with-sender-receiver (:init-state init-state)
       "Send message by SEND-FN with SEND-PARS to receiver, and let all relevant
 communication happen. Check that in the end, logs on sender and receiver are as
 expected."
+  (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
+    (with-sender-receiver (:init-state init-state)
       (apply send-fn sender
              (cond
                ((numberp stream)

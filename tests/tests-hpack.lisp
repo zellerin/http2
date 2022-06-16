@@ -112,14 +112,16 @@ C.2.  Header Field Representation Examples
       (equalp (mapcar 'list headers values)
               (loop
                 with source = (vector-from-hex-text encoded)
+                with *bytes-left* = (length source)
+                for (name value) =  (read-http-header connection)
                 initially (setf (get-buffer (get-network-stream connection)) source
                                 (get-index (get-network-stream connection)) 0)
 
-                with *bytes-left* = (length source)
-                while (plusp *bytes-left*)
-                for (name value) =  (read-http-header connection)
+
+
                 collect (list  (maybe-hufman-decode name)
-                               (maybe-hufman-decode value))))))
+                               (maybe-hufman-decode value))
+                while (plusp *bytes-left*)))))
 
 ;; C.4.  Request Examples with Huffman Coding
 
