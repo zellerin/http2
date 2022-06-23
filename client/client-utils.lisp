@@ -12,7 +12,8 @@
   "Run BODY with established HTTP2 connection over TLS to PORT on
 TARGET, using SNI."
   (alexandria:with-gensyms (socket stream ssl-stream)
-    `(usocket:with-client-socket (,socket ,stream ,target ,port )
+    `(usocket:with-client-socket (,socket ,stream ,target ,port
+                                          :element-type '(unsigned-byte 8))
        (let* ((,ssl-stream (cl+ssl:make-ssl-client-stream
                            ,stream
                            :verify ,verify
@@ -38,6 +39,7 @@ TARGET, using SNI."
 
 (defun terminate-locally (connection &optional (code +no-error+))
   (write-goaway-frame connection connection 0 code #())
+  (force-output (get-network-stream connection))
   (setf (http2::get-finished connection) t))
 
 (defclass vanilla-client-connection (client-http2-connection http2::history-printing-object
@@ -64,3 +66,6 @@ TARGET, using SNI."
 (defmethod peer-ends-http-stream ((connection vanilla-client-connection) stream)
   (when (funcall (get-end-stream-callback stream) stream)
     (terminate-locally connection)))
+
+(defmethod initialize-instance :after ((connection vanilla-client-stream) &key &allow-other-keys)
+  "Empty method to allow ignorable keys overflown from send-headers")

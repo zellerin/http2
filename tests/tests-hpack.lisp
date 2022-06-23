@@ -62,7 +62,8 @@ C.2.  Header Field Representation Examples
   (fiasco:is (equalp (apply 'concatenate 'vector
                             (mapcar (lambda (a b)
                                       (encode-header a b
-                                                     (get-compression-context connection)))
+                                                     (get-compression-context connection)
+                                                     nil))
                                     headers values))
                      (vector-from-hex-text encoded)))
   (fiasco:is
@@ -119,8 +120,7 @@ C.2.  Header Field Representation Examples
 
 
 
-                collect (list  (maybe-hufman-decode name)
-                               (maybe-hufman-decode value))
+                collect (list name value)
                 while (plusp *bytes-left*)))))
 
 ;; C.4.  Request Examples with Huffman Coding
@@ -132,18 +132,18 @@ C.2.  Header Field Representation Examples
          (decompression-context (get-decompression-context connection)))
 
     ;; C.4.1.  First Request
-    (test-header-decoder connection "828684418cf1e3c2e5f23a6ba0ab90f4ff"
+    (test-huffman-header connection "828684418cf1e3c2e5f23a6ba0ab90f4ff"
                          '(:method :scheme :path :authority)
                          '("GET" "http" "/" "www.example.com"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '(:authority "www.example.com")))
     ;; C.4.2.  Second Request
-    (test-header-decoder connection "828684be5886a8eb10649cbf"
+    (test-huffman-header connection "828684be5886a8eb10649cbf"
                          '(:method :scheme :path :authority "cache-control")
                          '("GET" "http" "/" "www.example.com" "no-cache"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("cache-control" "no-cache")))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 63) '(:authority "www.example.com")))
     ;; C.4.3.  Third Request
-    (test-header-decoder connection "828785bf408825a849e95ba97d7f8925a849e95bb8e8b4bf"
+    (test-huffman-header connection "828785bf408825a849e95ba97d7f8925a849e95bb8e8b4bf"
                          '(:method :scheme :path :authority "custom-key")
                          '("GET" "https" "/index.html" "www.example.com" "custom-value"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("custom-key" "custom-value")))
@@ -197,13 +197,23 @@ C.2.  Header Field Representation Examples
 
 
 ;; C.6.  Response Examples with Huffman Coding
+(defun test-huffman-header (connection encoded headers values)
+  (test-header-decoder connection encoded headers values)
+  (fiasco:is (equalp (apply 'concatenate 'vector
+                            (mapcar (lambda (a b)
+                                      (encode-header a b
+                                                     (get-compression-context connection)
+                                                     t))
+                                    headers values))
+                     (vector-from-hex-text encoded))))
+
 (fiasco:deftest test-header-packing-huffman-response ()
   (let* ((connection (make-instance 'http2-connection
                                     :network-stream
                                     (make-instance 'pipe-end-for-read :index 0)))
          (decompression-context (get-decompression-context connection)))
     ;; C.6.1.  First Response
-    (test-header-decoder connection "488264025885aec3771a4b6196d07abe941054d444a8200595040b8166e082a62d1bff6e919d29ad171863c78f0b97c8e9ae82ae43d3"
+    (test-huffman-header connection "488264025885aec3771a4b6196d07abe941054d444a8200595040b8166e082a62d1bff6e919d29ad171863c78f0b97c8e9ae82ae43d3"
                          '(:status "cache-control" "date" "location")
                          '("302" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("location" "https://www.example.com")))
@@ -212,13 +222,13 @@ C.2.  Header Field Representation Examples
     (fiasco:is (equalp  (dynamic-table-value decompression-context 65) '(:status "302")))
 
     ;; C.6.2.  Second Response
-    (test-header-decoder connection "4883640effc1c0bf"
+    (test-huffman-header connection "4883640effc1c0bf"
                          '(:status "cache-control" "date" "location")
                          '("307" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
     ;; here we should evict part of cache to fit 256 size, but we do not.
     ;; regardless, it works, which probably mean we need another tests.
 
     ;; C.6.3.  Third Response
-    (test-header-decoder connection "88c16196d07abe941054d444a8200595040b8166e084a62d1bffc05a839bd9ab77ad94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007"
+    (test-huffman-header connection "88c16196d07abe941054d444a8200595040b8166e084a62d1bffc05a839bd9ab77ad94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007"
                          '(:status "cache-control" "date" "location" "content-encoding" "set-cookie")
                          '("200" "private" "Mon, 21 Oct 2013 20:13:22 GMT" "https://www.example.com" "gzip" "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"))))

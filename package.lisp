@@ -6,13 +6,19 @@
   (:use :cl)
   (:export #:logging-object
            #:*do-print-log*
+           #:*use-huffman-coding-by-default*
 
            #:vanilla-client-connection
+           #:vanilla-client-stream
            #:vanilla-server-connection
+           #:vanilla-server-stream
+           #:header-collecting-mixin
            #:get-path
            #:get-body
            #:get-headers
+           #:encode-header
 
+           #:connection #:stream
            #:with-http-connection
            #:get-finished
            #:send-headers

@@ -25,8 +25,9 @@ request when peer closes the stream."))
 
 (eval-when (:compile-toplevel :load-toplevel)
   (defun define-some-handler (target prefix fn)
-    `(push (cons ,prefix ,fn)
-           ,target)))
+    `(progn
+       (setf ,target (remove ,prefix ,target :key 'car :test 'equal))
+       (push (cons ,prefix ,fn) ,target))))
 
 (defmacro handler (&body body)
   `(lambda (connection stream)

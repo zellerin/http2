@@ -107,35 +107,42 @@
   (- (+ 61 (length table)) idx))
 
 (defun dynamic-table-value (context idx)
+  "Header on position IDX in the dynamic table in CONTEXT.
+
+This is factored out to be used in testing."
   (aref (get-dynamic-table context)
         (vector-index-to-hpack-index (get-dynamic-table context) idx)))
+
+(defun find-in-tables (context item test key static-end)
+  "Find something (pair or header name) in static and possibly dynamic table."
+  ;; there are several clear possible improvements there; however, if you want
+  ;; performance so much, better precompile the headers in compile time.
+  (or (position item static-headers-table :test test
+                                          :end static-end
+                                          :key key)
+      (when context
+        (let ((dyn (position item (get-dynamic-table context)
+                             :start (get-deleted-items context)
+                             :test test
+                             :key key)))
+          (if dyn (vector-index-to-hpack-index (get-dynamic-table context) dyn))))))
 
 (defun find-pair-in-tables (context pair)
   "Find header PAIR in static table and, if CONNECTION is not null, in its dynamic
 table. Return the index, or NIL if not found."
-  (or (position pair static-headers-table :test 'equalp
-                                          :end 17)
-      (when context
-        ;; fixme: make sure deletions are skipped
-        (let ((dyn (position pair (get-dynamic-table context)
-                             :start (get-deleted-items context)
-                             :test 'equalp)))
-          (if dyn (vector-index-to-hpack-index (get-dynamic-table context) dyn))))))
+  ;; 17 is last pair in static table
+  (find-in-tables context pair #'equalp #'identity 17))
 
 (defun find-header-in-tables (context name)
   "Find header NAME in static table and, if CONNECTION is not null, in its dynamic
 table. Return the index, or NIL if not found."
-  (or
-   (position name static-headers-table
-                                  :test 'equal
-                                  :key (lambda (a) (if (consp a) (car a) a)))
-   (when context
-     (let ((dyn (position name (get-dynamic-table context)
-                          :test 'equal :key 'car)))
-          (if dyn (vector-index-to-hpack-index (get-dynamic-table context) dyn))))))
+  (find-in-tables context name #'equal
+                  (lambda (a) (if (consp a) (car a) a))
+                  nil))
 
 (defun header-size (header)
-  "Length of the header"
+  "Size of the header for dynamic cache purposes: 32 octets plus header and name
+sizes, including leading : at special header names."
   (let* ((name (first header))
          (keyword (keywordp name)))
     (+ (if keyword 33 32)
@@ -167,6 +174,7 @@ table. Return the index, or NIL if not found."
   (vector-push-extend header (get-dynamic-table context))
   (decf (get-bytes-left-in-table context)
         (header-size header))
+  ;; flush out records till we fit the space.
   (loop with table = (get-dynamic-table context)
         while (minusp (get-bytes-left-in-table context))
         for to-evict =  (aref table (get-deleted-items context))
@@ -176,27 +184,49 @@ table. Return the index, or NIL if not found."
            (setf (aref table (get-deleted-items context)) nil)
            (incf (get-deleted-items context))))
 
-(defun encode-header (name value &optional context)
-  "Encode header consisting of NAME and VALUE.
+(defvar *use-huffman-coding-by-default* :maybe
+  "Is set, the headers are by default huffman-encoded. Special value :maybe means
+whatever is shorter, plain encoding in case of draw.")
 
-Does not use Huffman coding (yet).
+(defun store-string (string res huffman)
+  "Add STRING to fillable array RES in format defined by HPACK, possibly using
+huffman encoding."
+  (let ((huffman-size (and huffman (huffman-coded-size string)))
+        (string-size (length string)))
+    (cond
+      ((and huffman (or (> string-size huffman-size)
+                        (not (eq huffman :maybe))))
+       (write-integer-to-array res
+                               huffman-size
+                               7
+                               128)
+       (encode-huffman string res))
+      (t
+       (loop for char across string
+             do (vector-push-extend (char-code char) res)
+             initially (write-integer-to-array res
+                                               string-size 7 0))))))
+
+(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*))
+  "Encode header consisting of NAME and VALUE.
 
 The `never-indexed` format is never generated,
 use a separate function for this (and this function needs to be written).
 
 When CONTEXT is provided, use incremental indexing with dynamic table in
-that CONTEXT."
+that CONTEXT.
+
+Use Huffman when HUFFMAN is true."
   ;; note: ECL reports error in the declaration w/o type
   (declare (type (or null hpack-context) context))
-  (let ((res (make-array 0 :fill-pointer 0 :adjustable t)))
+  (block nil
     (flet ((add-string (string)
-             (loop for char across string
-                   do (vector-push-extend (char-code char) res))))
+             (store-string string res huffman)))
       (let ((pos (find-pair-in-tables context (list name value))))
         ;; 6.1 Indexed header field
         (when pos
           (write-integer-to-array res pos 7 #x80)
-          (return-from encode-header res)))
+          (return res)))
       (let ((header-pos (find-header-in-tables context name)))
         ;; 6.2.1 Literal Header Field with Incremental Indexing
         ;;  Indexed Name
@@ -206,9 +236,8 @@ that CONTEXT."
              (add-dynamic-header context (list name value))
              (write-integer-to-array res header-pos 6 #x40)) ;w/o indexing
             (t (write-integer-to-array res header-pos 4 #x0)))
-          (vector-push-extend (length value) res)
           (add-string value)
-          (return-from encode-header res)))
+          (return res)))
       ;; literal header field with new name
       (cond
         (context
@@ -216,36 +245,49 @@ that CONTEXT."
          (vector-push-extend #x40 res))
         (t
          (vector-push-extend 0 res)))
-      (vector-push-extend (length name) res)
       (add-string name)
-      (vector-push-extend (length value) res)
       (add-string value)
       res)))
 
+(defun encode-header (name value &optional context (huffman *use-huffman-coding-by-default*))
+  "Encode header consisting of NAME and VALUE.
+
+The `never-indexed` format is never generated,
+use a separate function for this (and this function needs to be written).
+
+When CONTEXT is provided, use incremental indexing with dynamic table in
+that CONTEXT.
+
+Use Huffman when HUFFMAN is true."
+  ;; note: ECL reports error in the declaration w/o type
+  (declare (type (or null hpack-context) context))
+  (let ((res (make-array 0 :fill-pointer 0 :adjustable t)))
+    (header-writer res name value context huffman)))
+
 (defun request-headers (method path authority &key (scheme "https"))
-  "Encode standard headers."
+  "Encode standard headers that are obligatory."
   (list (encode-header :method method)
         (encode-header :scheme scheme)
         (encode-header :path path)
         (encode-header :authority authority)))
 
-
-(defun get-integer-from-octet (stream octet bit-size)
+(defun get-integer-from-octet (stream initial-octet bit-size)
   "Decode an integer from starting OCTET and additional octets in STREAM
 as defined in RFC7541 sect. 5.1."
-  (let ((small-res (ldb (byte bit-size 0) octet)))
-    (when (= small-res (ldb (byte bit-size 0) -1))
+  (declare (type (integer 1 8) bit-size)
+           (type (unsigned-byte 8) initial-octet))
+  (let ((small-res (ldb (byte bit-size 0) initial-octet)))
+    (if (= small-res (ldb (byte bit-size 0) -1))
       (loop
-        with res = 0
-        for word = (read-byte* stream)
-        for shift from  0 by 7
-        do
-           (setf (ldb (byte 7 shift) res) (ldb (byte 7 0) word))
-        when (zerop (ldb (byte 1 7) word))
-          do (return-from get-integer-from-octet (+ res small-res)))
-      ;; and do not forgot to increment bytes read
-      )
-    small-res))
+        with res fixnum = 0
+        for octet of-type (unsigned-byte 8) = (read-byte* stream)
+        for shift from 0 by 7
+        for last-octet = (zerop (ldb (byte 1 7) octet))
+        and octet-value = (ldb (byte 7 0) octet)
+        do (setf (ldb (byte 7 shift) res) octet-value)
+        when last-octet
+          do (return (+ res small-res)))
+      small-res)))
 
 (defun write-integer-to-array (array integer bit-size mask)
   "Write integer to a fillable vector as defined in RFC7541 sect. 5.1."
@@ -268,20 +310,21 @@ as defined in RFC7541 sect. 5.1."
     (write-integer-to-array array integer bit-size mask)
     array))
 
-(defun read-hufman (stream len)
+(defun read-huffman (stream len)
   "Read Huffman coded text of length LEN from STREAM."
   (loop with res = (make-array len :element-type '(unsigned-byte 8))
         for i from 0 to (1- len)
         do (setf (aref res i) (read-byte* stream))
-        finally (return res)))
+        finally (return (decode-huffman res))))
 
 (defun read-string-from-stream (stream)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
   (let* ((octet0 (read-byte* stream))
-         (len (ldb (byte 7 0) octet0)))
+         (len (ldb (byte 7 0) octet0))
+         (size (get-integer-from-octet stream octet0 7)))
     (if (plusp (ldb (byte 1 7) octet0))
-        (read-hufman stream (get-integer-from-octet stream octet0 7))
-        (loop with res = (make-array (get-integer-from-octet stream octet0 7)
+        (read-huffman stream size)
+        (loop with res = (make-array size
                                      :element-type 'character)
               for i from 0 to (1- len)
               do  (setf (aref res i) (code-char (read-byte* stream)))
@@ -294,11 +337,6 @@ as defined in RFC7541 sect. 5.1."
         ((< index (length static-headers-table))
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
-
-(defun maybe-hufman-decode (string)
-  (etypecase string
-    ((or string keyword) string)
-    (vector (decode-huffman string))))
 
 (defun read-http-header (connection)
   "Read header field from stream. Decrement *bytes-left* as needed."
@@ -315,8 +353,7 @@ as defined in RFC7541 sect. 5.1."
        ;; 6.2.1 - literal header, new name, with indexing
        (let* ((header (read-string-from-stream stream))
               (value (read-string-from-stream stream))
-              (result (list (maybe-hufman-decode header)
-                            (maybe-hufman-decode value))))
+              (result (list header value)))
          (when (plusp octet0)
            (add-dynamic-header context result))
          (return-from read-http-header result)))
@@ -326,7 +363,7 @@ as defined in RFC7541 sect. 5.1."
                            (get-integer-from-octet stream octet0 6)
                            context)))
          (let ((res (list (if (consp table-match) (car table-match) table-match)
-                          (maybe-hufman-decode (read-string-from-stream stream)))))
+                          (read-string-from-stream stream))))
            (add-dynamic-header context res)
            res)))
       ((zerop (ldb (byte 4 4) octet0))
@@ -617,7 +654,7 @@ as defined in RFC7541 sect. 5.1."
             '(#x3fffffff 30)))
 
   (defun make-cond-branch (i prefix code)
-    "Return decoder code for I matching PREFIX amonf codes."
+    "Return decoder code for I matching PREFIX among codes."
     (let ((data (remove i code :key (lambda (a) (ldb (byte prefix (- (second a) prefix)) (first a)))
                                :test-not '=)))
       (cond ((cdr data)
@@ -668,3 +705,37 @@ as defined in RFC7541 sect. 5.1."
 (defun decode-huffman (bytes)
   (with-output-to-string (s)
     (decode-huffman-to-stream s bytes)))
+
+(defun encode-huffman (string res)
+  "Convert string to huffman encoding."
+  (loop
+    with free-bits = 8
+    with this-byte = 0
+    for char across string
+    for (code len) = (aref *huffman-code* (char-code char))
+    do
+       (loop
+         for bits-in-this-byte = (min free-bits len)
+         while (plusp len)
+         do
+            (setf (ldb (byte bits-in-this-byte (- free-bits bits-in-this-byte)) this-byte)
+                  (ldb (byte bits-in-this-byte (- len bits-in-this-byte)) code))
+            (decf free-bits bits-in-this-byte)
+            (decf len bits-in-this-byte)
+         when (zerop free-bits)
+           do
+              (vector-push-extend this-byte res)
+              (setf this-byte 0 free-bits 8))
+    finally
+       (unless (= free-bits 8)
+         (setf (ldb (byte free-bits 0) this-byte) -1)
+         (vector-push-extend this-byte res))
+       (return res)))
+
+(defun huffman-coded-size (string)
+  "Size of huffman-coded text"
+  (loop
+    for char across string
+    for (code len) = (aref *huffman-code* (char-code char))
+    sum len into total-len
+    finally (return (ceiling total-len 8))))

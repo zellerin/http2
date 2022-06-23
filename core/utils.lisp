@@ -3,6 +3,9 @@
 (in-package :http2)
 
 (defvar *bytes-left* nil "Number of bytes left in frame")
+
+(defvar *when-no-bytes-left-fn* nil "Function to call when no bytes are left. Either errors or calls continuations.")
+
 (defvar *bytes-to-possibly-reuse* (make-array 0 :element-type '(unsigned-byte 8)
                                               :adjustable t
                                                 :fill-pointer 0))
@@ -16,21 +19,14 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 |#
 (declaim ((or null (unsigned-byte 24)) *bytes-read*))
 
-(defparameter *max-frame-size* 16384
-  "Our frame size.
-
-All implementations MUST be capable of receiving and minimally
-processing frames up to 2^14 octets in length, plus the 9-octet frame
-header (Section 4.1).  The size of the frame header is not included
-when describing frame sizes.")
-
-(declaim ((integer 16384 16777215) *max-frame-size*))
-
 (defun read-byte* (stream)
-  (unless (plusp *bytes-left*)
-    (error "No bytes left to read"))
-  (decf *bytes-left*)
-  (read-byte stream))
+  (cond
+    ((plusp *bytes-left*)
+     (decf *bytes-left*)
+     (read-byte stream))
+    (t
+     (funcall *when-no-bytes-left-fn* stream)
+     (read-byte* stream))))
 
 (defun read-bytes (stream n)
   "Read N bytes from stream to an integer"

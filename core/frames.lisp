@@ -184,9 +184,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; PROTOCOL_ERROR.
                               (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
-                 (when end-stream (peer-ends-http-stream connection http-stream))
-                 ,@(when (member 'end-headers flags)
-                     '((setf (get-expect-continuation connection) (not end-headers)))))
+                 (when end-stream (peer-ends-http-stream connection http-stream)))
                (read-padding ,stream-name padding-size)))
 
            (setf (aref *frame-types* ,type-code)
@@ -321,7 +319,7 @@ passed to the make-instance"
     ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
     ;; which, if blocked by the transmission of a large frame, could affect
     ;; performance.
-    (if (> length *max-frame-size*)
+    (if (> length (get-max-frame-size connection))
         ;; fixme: sometimes connection error.
         (http2-error connection +frame-size-error+
                      "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the
@@ -341,14 +339,6 @@ arrangement or negotiation."
                                    (handle-undefined-frame type flags length)
                                    (let ((stream (get-network-stream connection)))
                                      (dotimes (i length) (read-byte stream))))))))
-      (when (get-expect-continuation connection)
-        ;; A receiver MUST treat the receipt of any other type of frame or a
-        ;; frame on a different stream as a connection error (Section 5.4.1) of
-        ;; type PROTOCOL_ERROR.
-        (when (not (eq (frame-type-name frame-type-object) :continuation-frame))
-          (http2-error connection 'protocol-error "Continuation frame expected"))
-        (unless (= http-stream (get-expect-continuation connection))
-          (http2-error connection 'protocol-error "Continuation frame should be for a different stream")))
       (values
        (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
@@ -415,7 +405,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
              (loop for header in headers
                    collect (if (vectorp header) header
                                (encode-header (car header) (second header)))))
-       (reduce '+ (mapcar 'length headers)))
+       (+ (if priority 5 0)
+          (reduce '+ (mapcar 'length headers))))
      :flags (padded end-stream end-headers
                     ;; PRIORITY: When set, bit 5 indicates that the Exclusive
                     ;; Flag (E), Stream Dependency, and Weight fields are
@@ -426,7 +417,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :must-have-stream-in (idle reserved/remote open half-closed/local))
 
     ;; writer
-    ((when priority ; fixme: call write-priority-frame instead
+    ((when priority ;; this is obsoleted, but still in place
        (write-bytes (first priority) 4)
        (write-bytes (second priority) 1))
      (map nil #'write-vector headers))
@@ -437,15 +428,16 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
        (read-priority-frame connection http-stream 5 0))
       (when (minusp length)
         (http2-error connection 'protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
-      (read-and-add-headers connection http-stream length)
+      (read-and-add-headers connection http-stream length end-headers)
       (if end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
         ;; another CONTINUATION frame.
-          (process-end-headers connection http-stream)
-          (setf (get-expect-continuation connection) (get-stream-id http-stream)))))
+          (process-end-headers connection http-stream))))
 
-(defun read-and-add-headers (connection http-stream length)
-  (let ((*bytes-left* length))
+(defun read-and-add-headers (connection http-stream length end-headers)
+  (let ((*bytes-left* length)
+        (*when-no-bytes-left-fn* nil))
+    (set-when-no-bytes-left-fn (get-stream-id http-stream) end-headers)
     (loop while (plusp *bytes-left*)
           for (name value) = (read-http-header connection)
           when name
@@ -832,23 +824,7 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
 The CONTINUATION frame (type=0x9) is used to continue a sequence of header block
 fragments (Section 4.3).  Any number of CONTINUATION frames can be sent, as long
 as the preceding frame is on the same stream and is a HEADERS, PUSH_PROMISE, or
-CONTINUATION frame without the END_HEADERS flag set.
-
-
-The CONTINUATION frame payload contains a header block fragment
-
-The CONTINUATION frame defines the following flag:
-
-   The CONTINUATION frame changes the connection state as defined in
-   Section 4.3.
-
-   CONTINUATION frames MUST be associated with a stream.  If a
-   CONTINUATION frame is received whose stream identifier field is 0x0,
-   the recipient MUST respond with a connection error (Section 5.4.1) of
-   type PROTOCOL_ERROR.
-
-
-"
+CONTINUATION frame without the END_HEADERS flag set."
     ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
      :flags (end-headers))
@@ -856,11 +832,28 @@ The CONTINUATION frame defines the following flag:
 
     ;; reader
     ;; we have already checked that HTTP-STREAM is correct in read-frame
-    ((let ()
-       (unless (get-expect-continuation connection)
-         (http2-error connection +protocol-error+
-                      "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
+    ((http2-error connection +protocol-error+
+                  "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that
    observes violation of this rule MUST respond with a connection error (Section
-   5.4.1) of type PROTOCOL_ERROR."))
-       (read-and-add-headers connection http-stream length))))
+   5.4.1) of type PROTOCOL_ERROR.")))
+
+(defun set-when-no-bytes-left-fn (http2-stream-id end-headers)
+  "Read a header of continuation frame if continuation expected. Set
+*when-no-bytes-left-fn* appropriately."
+  (setf *when-no-bytes-left-fn*
+        (if end-headers
+            (lambda (stream) (error "No bytes left in ~a, should raise malformed headers error"
+                                    stream))
+            (lambda (stream)
+              (let ((length (read-bytes stream 3))
+                    (type (read-byte stream))
+                    (flags (read-byte stream))
+                    (stream-identifier (ldb (byte 31 0) (read-bytes stream 4))))
+                (unless (= type +continuation-frame+)
+                  (error "Expected continuation frame and got ~a, should handle this" type))
+                (unless (= http2-stream-id stream-identifier)
+                  (error "Expected continuation for ~d, got ~d" http2-stream-id
+                         stream-identifier))
+                (set-when-no-bytes-left-fn http2-stream-id (plusp (logand flags #x4)))
+                (setf *bytes-left* length))))))

@@ -58,11 +58,9 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
 ** Missing pieces
 - Window management is minimal. We should limit outgoing data as required by the
   peer. This depends on application that sends the data, no support is provided except signalling.
-- RFC accepts that individual headers can be split between frames. This is not implemented (and should be).
 - No handling of priorities is implemented. This is OK, as these are only
   suggestions, and they are more or less dropped in RFC9113 anyway.
 - Push promises are not implemented. This is OK, they are disabled by default (settings)
-- Huffman coding is understood, but not generated.
 
 ** Implementation details
 

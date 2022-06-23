@@ -42,7 +42,7 @@
 (defvar *dispatch-fn* #'funcall
   "How to call process-server-stream. Default is funcall, or sb-thredify on sbcl.")
 
-(defun wrap-to-tls-and-process-server-stream (raw-stream key cert)
+(defun wrap-to-tls-and-process-server-stream (raw-stream key cert &rest args)
   (unwind-protect
        (handler-case
            (let ((tls-stream (cl+ssl:make-ssl-server-stream
@@ -50,8 +50,8 @@
                               :certificate cert
                               :key key)))
              (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-                 (funcall *dispatch-fn*
-                          #'process-server-stream  tls-stream)))
+                 (apply *dispatch-fn*
+                          #'process-server-stream  tls-stream args)))
          (error (err)
            (describe err)))
     (close raw-stream)))
@@ -81,25 +81,24 @@
     context))
 
 (defun create-server (port key cert &key ((:verbose http2::*do-print-log*))
-                                      (announce-open-fn (constantly nil)))
+                                      (announce-open-fn (constantly nil))
+                                      (connection-class 'vanilla-server-connection))
   (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
                                                              :reuse-address t
-                                                             :backlog 200))
+                                                             :backlog 200
+                                                             :element-type '(unsigned-byte 8)))
     (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
       (funcall announce-open-fn)
       (loop
         (wrap-to-tls-and-process-server-stream
          (usocket:socket-stream
           (handler-case
-              (usocket:socket-accept socket  :element-type '(unsigned-byte 8))
+              (usocket:socket-accept socket :element-type '(unsigned-byte 8))
             ;; ignore condition
             (usocket:connection-aborted-error ())))
-         key cert)))))
+         key cert :connection-class connection-class)))))
 
 (defun main ()
   (handler-bind ((warning 'muffle-warning))
     (create-server 1230 "/tmp/server.key" "/tmp/server.crt"
                    :verbose nil)))
-
-;;;;
-;;;; curl: send settings and wait for settings.
