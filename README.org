@@ -10,10 +10,18 @@ do something reasonable with headers and payload; see [[./client/client.lisp][cl
 example.
 
 ** Status and quickstart
-Already implemented parts allow to request a http/2 document (or more documents)
-over TLS as well as serve documents.
+Almost all parts standards implemented, see below for exceptions.
+
+The library definitely allow to implement a client or server, and a simple ones are attached to it as examples.
 
 *** Client
+
+The bundled client requests remote page and returns values of body (converted to string), result status, and response headers.
+
+Improvements to allow for cookie management, decoding to proper charset, .. are out of scope of this library, as they would probably be better taken over from some existing http1 library or incorporated there.
+
+Improvements to provide stream for reading the output, to query several resources on one server, and to receive pushes are considered for future, as they are http2 specific.
+
 #+begin_src lisp
   (ql:quickload 'http2/client)
   (http2/client:retrieve-url "https://example.com")
@@ -56,11 +64,17 @@ and point your browser (not eww nor drakma, of course - must support http2) to h
 Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers if you do not want to see their data), and maybe add a method to ADD-HEADER to pay attention to what other headers than URL the client sends.
 
 ** Missing pieces
-- Window management is minimal. We should limit outgoing data as required by the
-  peer. This depends on application that sends the data, no support is provided except signalling.
+- Window management is minimal. Application should limit outgoing data as
+  required by the peer. This depends on application that sends the data, no
+  support is provided except signalling. Maybe another stream layer for reading
+  and writing the payload data could be provided; this could implement the
+  limits.
 - No handling of priorities is implemented. This is OK, as these are only
   suggestions, and they are more or less dropped in RFC9113 anyway.
-- Push promises are not implemented. This is OK, they are disabled by default (settings)
+- Push promises are not implemented in the client. This is OK, they are disabled
+  by default (settings)
+- Option to encode headers to /Literal Header Field Never Indexed/ format is not
+  implemented. This is simple to do, but interface would need to be though out.
 
 ** Implementation details
 
@@ -69,6 +83,20 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
   to be generic functions for extensibility.
 - [[./core/classes.lisp]] defines class hierarchy for vanilla connections and streams,
   and the generic methods for callbacks for these classes.
+
+** Dependencies
+No dependencies (except asdf and quicklisp) for the core library at the
+moment. This may change; libraries that are used by cl+ssl anyway can be used
+for 'free'.
+
+Client and server require usocket and cl+ssl to talk over TLS.
+
+Client uses puri to manipulate URLs.
+
+Server also uses cffi directly to [[file:server/cl+ssl.lisp::;;;; Copyright 2022 by Tomáš Zellerin][check and confirm alpn]] (this code needs
+revision and improvement).
+
+Additioanlly, fiasco and trivial-gray-streams are used for testing.
 
 ** License
 Licensed by MIT license.
