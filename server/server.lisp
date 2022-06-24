@@ -51,7 +51,9 @@
                               :key key)))
              (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
                  (apply *dispatch-fn*
-                          #'process-server-stream  tls-stream args)))
+                        #'process-server-stream  tls-stream args)
+                 (error "Someone else would need to handle non-h2 queries (~a)~%"
+                       (cl+ssl:get-selected-alpn-protocol tls-stream))))
          (error (err)
            (describe err)))
     (close raw-stream)))
