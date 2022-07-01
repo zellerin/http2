@@ -2,8 +2,8 @@
 
 (in-package :http2)
 
-
 (fiasco:deftest int-pack-tests ()
+  "Test that integer values are properly packed and unpacked"
   (fiasco:is (= 10 (get-integer-from-octet nil #x0a 5))
       "C.1.1.  Example 1: Encoding 10 Using a 5-Bit Prefix")
   (fiasco:is (equalp #(10) (integer-to-array 10 5 0))

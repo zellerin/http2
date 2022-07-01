@@ -2,6 +2,10 @@
 
 (in-package :http2)
 
+;; I do not want to make separate package for tests. I test too many internals.
+(fiasco:defsuite
+  (fiasco-suites::http2 :bind-to-package #:http2 :in
+   fiasco-suites::all-tests))
 
 (fiasco:deftest test-frames ()
 
@@ -111,12 +115,3 @@
                   :stream :connection
                   :expected-log-connection
                   '((:window-size-increment #x40000))))
-
-(defun do-test ()
-  (test-frames)
-  (int-pack-tests)
-  (headers-representation)
-  (test-header-packings)
-  (test-huffman-decoding)
-  (test-header-packings-response)
-  (test-header-packing-huffman-response))

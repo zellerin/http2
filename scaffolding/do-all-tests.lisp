@@ -2,15 +2,8 @@
 
 (load "~/quicklisp/setup")
 (asdf::load-asd (truename "./http2.asd"))
-(ql:quickload "http2/test")
-(http2::do-test)
-
 (ql:quickload "http2/all")
 (load "tests/client-server-test")
-
-(http2::test-webs)
-
-(http2::test-client-server)
 
 (defvar *server-running* nil)
 (sb-thread:make-thread (lambda ()
@@ -20,9 +13,10 @@
                                                                      (setf *server-running* t))))))
 
 (wait-for *server-running* :timeout 5)
-
-(http2::test-webs '(("https://localhost:1230/foo" "Not found" "404")
-                    ("https://localhost:1230/ok" "OK" "200")))
+(in-package http2)
+(fiasco:deftest test-client-server2 ()
+  (test-webs '(("https://localhost:1230/foo" "Not found" "404")
+                      ("https://localhost:1230/ok" "OK" "200"))))
 
 (fiasco:deftest test-post ()
   (fiasco:is (equal "AB" (http2/client:retrieve-url "https://localhost:1230/body" :method "POST" :content #(65 66)))))
@@ -36,5 +30,4 @@
     (test-ping-returns "https://localhost:1230/ok" :ping 3)
     (test-ping-returns "https://localhost:1230/ok" :ping t)))
 
-(test-post)
-(test-ping)
+(fiasco::run-package-tests :package '#:http2 )
