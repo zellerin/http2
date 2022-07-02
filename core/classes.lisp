@@ -48,7 +48,8 @@
                      :initial-peer-window-size 65535
                      :initial-window-size 65535
                      :max-frame-size 16384
-                     :max-peer-frame-size 16384)
+                     :max-peer-frame-size 16384
+                     :peer-window-size 65535)
 
   (:documentation
    "A simple connection: promise push not allowed, otherwise reasonable behaviour"))
@@ -281,7 +282,10 @@ not now.")
                    unexpected stream identifier MUST respond with a connection
                    error (Section 5.4.1) of type PROTOCOL_ERROR."))
       ;; todo: count and check open streams
-      (push (make-instance (get-stream-class connection) :stream-id stream-id :state 'idle)
+    (push (make-instance (get-stream-class connection)
+                         :stream-id stream-id :state 'idle
+                         :window-size (get-initial-window-size connection)
+                         :peer-window-size (get-initial-peer-window-size connection))
             (get-streams connection))
       (car (get-streams connection)))
   (:method :after ((connection logging-object) stream-id frame-type)

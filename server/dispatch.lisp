@@ -29,23 +29,22 @@ request when peer closes the stream."))
        (setf ,target (remove ,prefix ,target :key 'car :test 'equal))
        (push (cons ,prefix ,fn) ,target))))
 
-(defmacro handler (&body body)
+(defmacro handler ((flexi-stream-name &rest flexi-pars) &body body)
   `(lambda (connection stream)
-     (flet ((send-headers (&rest args)
-              (apply #'send-headers connection stream args))
-            (send-data (&rest args)
-              (apply #'write-data-frame connection stream args))
-            (send-text (text &rest args)
-              (apply #'write-data-frame connection stream
-                     (map 'vector 'char-code text)
-                     args))
-            (send-goaway (code debug-data)
-              (http2::write-goaway-frame connection connection
-                                         0 code debug-data)
-              (force-output (get-network-stream connection))))
-       (declare (ignorable #'send-data #'send-text #'send-goaway))
-       ,@body
-       (force-output (get-network-stream connection)))))
+     (with-open-stream (,flexi-stream-name (flexi-streams:make-flexi-stream
+                             (make-instance 'binary-output-stream-over-data-frames
+                                            :http-stream stream
+                                            :http-connection connection)
+                             ,@flexi-pars))
+       (flet ((send-headers (&rest args)
+                (apply #'send-headers connection stream args))
+              (send-goaway (code debug-data)
+                (http2::write-goaway-frame connection connection
+                                           0 code debug-data)
+                (force-output (get-network-stream connection))))
+         (declare (ignorable #'send-goaway))
+         ,@body
+         (force-output (get-network-stream connection))))))
 
 (defmacro define-prefix-handler (prefix fn &optional connection)
   (define-some-handler (if connection
@@ -67,19 +66,19 @@ request when peer closes the stream."))
 
 (defun send-text-handler (text &key (content-type "text/html")
                                  additional-headers)
-  (handler
+  (handler (out)
     (send-headers `((:status "200") ("content-type" ,content-type)
                     ,@additional-headers))
-    (send-text text :end-stream t)))
+    (princ text out)))
 
 (defun redirect-handler (target &key (code "301") (content-type "text/html") content)
-  (handler
+  (handler (out)
     (send-headers `((:status ,code)
                     ("location" ,target)
                     ,@(when content `(("content-type" ,content-type))))
                   :end-stream (null content))
     (when content
-      (send-text content :end-stream t))))
+      (princ content  out))))
 
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection

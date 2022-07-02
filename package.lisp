@@ -42,6 +42,10 @@
            #:peer-expects-settings-ack
            #:peer-acks-settings
 
+           #:binary-output-stream-over-data-frames
+           ;; Server
+           #:create-https-server
+           #:*dispatch-fn*
            #:define-prefix-handler
            #:define-exact-handler
            #:handler

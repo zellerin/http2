@@ -4,12 +4,6 @@
 ;;;; Implement pipes for testing client-server pairs.
 ;;;; No synchronization, usage in concurrently running processes not expected.
 
-(defclass binary-stream ()
-  ())
-
-(defmethod stream-element-type ((stream binary-stream))
-  '(unsigned-byte 8))
-
 (defclass pipe-end-for-read (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((buffer :accessor get-buffer :initarg :buffer)
    (index  :accessor get-index  :initarg :index)))

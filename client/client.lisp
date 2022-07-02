@@ -11,13 +11,17 @@
 (defun retrieve-url (url &key (method "GET") ((:verbose http2::*do-print-log*))
                            ping
                            additional-headers
-                           content)
+                           content
+                           content-fn)
   "Retrieve URL through http/2 over TLS.
 
 Log events to standard output with VERBOSE set.
 
 Ping peer and print round trip time if PING is set, repeatedly if this is a
-number."
+number.
+
+Send CONTENT if not NIL as payload that fits one frame, or call
+CONTENT-FN (function of one parameter - output binary stream)."
   (let ((parsed-url (puri:parse-uri url)))
     (with-http-connection (connection (puri:uri-host parsed-url)
                            :port (or (puri:uri-port parsed-url) 443))
@@ -29,11 +33,17 @@ number."
                                               (or (puri:uri-path parsed-url) "/")
                                               (puri:uri-host parsed-url))
                              (mapcar 'http2::encode-header additional-headers))
-                            :end-stream (null content)
+                            :end-stream (null (or content content-fn))
                             :end-stream-callback (constantly t))))
-        (when content
-          (http2::write-data-frame connection stream
-                                   content :end-stream t))
+        (cond
+          (content
+           (http2::write-data-frame connection stream
+                                    content :end-stream t))
+          (content-fn
+           (with-open-stream (out (make-instance 'binary-output-stream-over-data-frames
+                                                 :http-stream stream
+                                                 :http-connection connection))
+             (funcall content-fn out))))
         (typecase ping
           (integer
            (dotimes (i ping)

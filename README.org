@@ -48,14 +48,14 @@ Improvements to provide stream for reading the output, to query several resource
 #+end_src
 
 *** Server
-Example https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed. It handles requests one by one except on sbcl; this is trivial to improve in several ways (thread for request, workers, polling...) but out of scope of this project.
+Example https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed ([[./scaffolding/run-server.lisp][test script]] generates it when missing). It handles requests one by one by default; this is trivial to improve in several ways (thread for request, workers, polling...) with customizing ~*dispatch-fn*~  but out of scope of this project.
 
 #+begin_src lisp
   (ql:quickload 'http2/server)
   (http2::create-server 1234 "key.pem" "cert.pem")
 #+end_src
 
-and point your browser (not eww nor drakma, of course - must support http2) to https://localhost:1234 or
+Then point your browser (not eww nor drakma, of course - must support http2) to https://localhost:1234 or
 #+begin_src sh
   [zellerin@winter http2]$ curl http://localhost:1234/
   Hello World
@@ -63,12 +63,9 @@ and point your browser (not eww nor drakma, of course - must support http2) to h
 
 Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers if you do not want to see their data), and maybe add a method to ADD-HEADER to pay attention to what other headers than URL the client sends.
 
+For simple cases, handlers can be defined to send data as text or binary streams, see sample server. Splitting the payload based on window size is done.
+
 ** Missing pieces
-- Window management is minimal. Application should limit outgoing data as
-  required by the peer. This depends on application that sends the data, no
-  support is provided except signalling. Maybe another stream layer for reading
-  and writing the payload data could be provided; this could implement the
-  limits.
 - No handling of priorities is implemented. This is OK, as these are only
   suggestions, and they are more or less dropped in RFC9113 anyway.
 - Push promises are not implemented in the client. This is OK, they are disabled
@@ -85,25 +82,26 @@ Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers i
   and the generic methods for callbacks for these classes.
 
 ** Dependencies
-No dependencies (except asdf and quicklisp) for the core library at the
-moment. This may change; libraries that are used by cl+ssl anyway can be used
-for 'free'.
+
+(to be reviewed)
+
+The core library used trivial-gray-streams to implement streams over data frames.
 
 Client and server require usocket and cl+ssl to talk over TLS.
 
 Client uses puri to manipulate URLs.
 
-Server also uses cffi directly to [[file:server/cl+ssl.lisp::;;;; Copyright 2022 by Tomáš Zellerin][check and confirm alpn]] (this code needs
-revision and improvement).
+Server also uses cffi directly to [[file:tls/cl+ssl.lisp][check and confirm alpn]]. The sample server uses cl-who to create html; this is an arbitrary choice and your server can use anything else.
 
-Additioanlly, fiasco and trivial-gray-streams are used for testing.
+Additioanlly, fiasco is used for testing.
 
 ** License
 Licensed by MIT license.
 
-Significant part of the comments is taken over from the RFCs above and
-copyrighted by RFC contributors. I read the copyright licenses for RFC that this
-is allowed. Big chunks of RFC text mean usually something is not implemented and are slowly converted to code.
+Some comments are taken over from the RFCs above and copyrighted by RFC
+contributors. I read the copyright licenses for RFC that this is allowed. Big
+chunks of RFC text mean usually something is not implemented and are slowly
+converted to code.
 
 ** Related software
 There is an Akamai code on https://github.com/akamai/cl-http2-protocol that

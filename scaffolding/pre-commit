@@ -9,8 +9,4 @@ git diff --cached |patch -p1 -d to-test
 # Test that it works with real ecosystem
 set -x
 cd to-test
-sbcl --script scaffolding/do-test.lisp
-sbcl --script scaffolding/run-server.lisp &
-sleep 1
-[[ $(curl https://localhost:1230/ok -k) == "Redirect was OK" ]]
-[[ $(curl https://localhost:1230/exit -k) = "Goodbye" ]]
+sbcl --script scaffolding/do-all-tests.lisp

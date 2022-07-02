@@ -196,6 +196,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
 passed to the make-instance"
   (let ((stream (apply #'make-instance (get-stream-class connection)
                        :stream-id (get-id-to-use connection)
+                       :peer-window-size (get-initial-peer-window-size connection)
+                       :window-size (get-initial-window-size connection)
                        pars)))
     (incf (get-id-to-use connection))
     (push stream (get-streams connection))
@@ -368,11 +370,13 @@ arrangement or negotiation."
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads."
-    ((data vector))
-    (:length (length data)
+    ((data (or cons vector)))
+    (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    ((write-vector data))
+    ((if (consp data)
+         (map nil #'write-vector data)
+         (write-vector data)))
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
