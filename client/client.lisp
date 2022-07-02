@@ -12,7 +12,8 @@
                            ping
                            additional-headers
                            content
-                           content-fn)
+                           content-fn
+                           (content-encoding :utf-8))
   "Retrieve URL through http/2 over TLS.
 
 Log events to standard output with VERBOSE set.
@@ -40,9 +41,12 @@ CONTENT-FN (function of one parameter - output binary stream)."
            (http2::write-data-frame connection stream
                                     content :end-stream t))
           (content-fn
-           (with-open-stream (out (make-instance 'binary-output-stream-over-data-frames
-                                                 :http-stream stream
-                                                 :http-connection connection))
+           (with-open-stream (out
+                              (flexi-streams:make-flexi-stream
+                               (make-instance 'binary-output-stream-over-data-frames
+                                              :http-stream stream
+                                              :http-connection connection)
+                               :external-format content-encoding))
              (funcall content-fn out))))
         (typecase ping
           (integer
