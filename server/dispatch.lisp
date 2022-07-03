@@ -43,8 +43,7 @@ request when peer closes the stream."))
                                            0 code debug-data)
                 (force-output (get-network-stream connection))))
          (declare (ignorable #'send-goaway))
-         ,@body
-         (force-output (get-network-stream connection))))))
+         ,@body))))
 
 (defmacro define-prefix-handler (prefix fn &optional connection)
   (define-some-handler (if connection
@@ -110,8 +109,7 @@ request when peer closes the stream."))
      (progn
        (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
        (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
-                         :end-stream t))))
-  (force-output (get-network-stream connection)))
+                         :end-stream t)))))
 
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection))
   (let ((connection (make-instance connection-class

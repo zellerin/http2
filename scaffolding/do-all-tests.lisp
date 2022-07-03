@@ -43,15 +43,7 @@
                     (http2/client:retrieve-url "https://localhost:1230/body"
                                                :method "POST"
                                                :content-fn
-                                               (lambda (out) (write-sequence #(65 66) out))))))
-
-(fiasco:deftest test-post-3 ()
-  (fiasco:is (equal "AB"
-                    (http2/client:retrieve-url "https://localhost:1230/body"
-                                               :method "POST"
-                                               :content-fn
-                                               (lambda (out)
-                                                 (write-sequence #(65 66) out))))))
+                                               (lambda (out) (write-sequence "AB" out))))))
 
 (fiasco:deftest test-ping ()
   (flet ((test-ping-returns (&rest pars)

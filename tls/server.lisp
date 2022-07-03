@@ -96,3 +96,34 @@ debug is printed."
             ;; ignore condition
             (usocket:connection-aborted-error ())))
          key cert :connection-class connection-class)))))
+
+(defun create-http-server (port key cert &key
+                                            ((:verbose http2::*do-print-log*))
+                                            (announce-open-fn (constantly nil))
+                                            (connection-class 'vanilla-server-connection))
+  "Open HTTPS/2 server on PORT on localhost.
+
+It accepts new connections.
+establish TLS.
+
+Callbacks defined as methods for the CONNECTION-CLASS are used to implement
+behaviour of the server.
+
+ANNOUNCE-OPEN-FN is called, when set, to inform caller that the server is up and
+running. This is used for testing, when we need to have the server running (in a
+thread) to start testing it.
+
+If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
+debug is printed."
+  (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
+                                                             :reuse-address t
+                                                             :backlog 200
+                                                             :element-type '(unsigned-byte 8)))
+    (funcall announce-open-fn)
+    (loop
+      (process-server-stream (usocket:socket-stream
+                              (handler-case
+                                  (usocket:socket-accept socket :element-type '(unsigned-byte 8))
+                                ;; ignore condition
+                                (usocket:connection-aborted-error ()))))
+      key cert :connection-class connection-class)))

@@ -48,7 +48,8 @@ enough to send the data as a data frame (or forced to by close of force-output).
             ;; we want to send more than window allows, so lets wait for more
             ;; window
             ;; this assumes that the client will not shrink the window too much.
-            do (read-frame http-connection))
+            do
+               (read-frame http-connection))
       (write-data-frame http-connection http-stream output-buffer)
       (setf (fill-pointer output-buffer) 0))))
 
@@ -102,11 +103,11 @@ enough to send the data as a data frame (or forced to by close of force-output).
             (loop for idx from start to (1- end)
                   do (vector-push (aref sequence idx) output-buffer)))))))
 
-(defclass binary-input-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
+(defclass binary-input-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((http-stream     :accessor get-http-stream     :initarg :http-stream)
    (http-connection :accessor get-http-connection :initarg :http-connection)
    (index           :accessor get-index           :initarg :index))
-  (:default-initargs :buffer nil)
+  (:default-initargs :index 0)
   (:documentation
    "Binary stream that reads data from the http stream.
 
@@ -130,11 +131,9 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
   ((data       :accessor get-data       :initarg :data
                ;; cons of list of accepted frames and cons of last frame and nil.
                ;; forgot name, use accessors above.
-               )
-   (to-store   :accessor get-to-store   :initarg :to-store)
-   (to-provide :accessor get-to-provide :initarg :to-provide))
+               ))
   (:default-initargs
-   :to-provide 0 :to-store 0))
+   :data (cons nil nil)))
 
 (defmethod apply-data-frame (connection (stream data-frames-collecting-mixin) frame-data)
   (push-frame (get-data stream) frame-data))
@@ -142,16 +141,18 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
 (defmethod trivial-gray-streams:stream-read-byte ((stream binary-input-stream-over-data-frames))
   (with-slots (http-stream http-connection index) stream
     (with-slots (data to-store to-provide state) http-stream
-      (let ((buffer (car data)))
-        (cond
-          ((eq state 'closed) :eof)
-          (t
-           (loop for buffer = (car data)
-                 until buffer
-                 do (read-frame http-connection))
-           (prog1 (aref buffer index)
-             (when (= (incf index) (length buffer))
-               (pop-frame data)
-               (write-window-update-frame http-connection http-connection index)
-               (write-window-update-frame http-connection http-stream index)
-               (setf index 0)))))))))
+      (loop for buffer = (caar data)
+            until (or buffer (eq state 'closed))
+            do
+               (read-frame http-connection)
+            finally
+               (return
+                 (cond
+                   ((and (null buffer)) (eq state 'closed) :eof)
+                   (t
+                    (prog1 (aref buffer index)
+                      (when (= (incf index) (length (caar data)))
+                        (pop-frame data)
+                        (write-window-update-frame http-connection http-connection index)
+                        (write-window-update-frame http-connection http-stream index)
+                        (setf index 0))))))))))

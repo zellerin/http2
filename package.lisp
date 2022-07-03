@@ -9,6 +9,7 @@
            #:*use-huffman-coding-by-default*
 
            #:vanilla-client-connection
+           #:vanilla-client-io-connection
            #:vanilla-client-stream
            #:vanilla-server-connection
            #:vanilla-server-stream
@@ -19,7 +20,8 @@
            #:encode-header
 
            #:connection #:stream
-           #:with-http-connection
+           #:with-http-connection ; obsolete
+           #:with-http2-connection
            #:get-finished
            #:send-headers
            #:send-ping

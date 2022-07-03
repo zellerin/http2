@@ -343,8 +343,7 @@ not now.")
           (concatenate 'string (get-body stream)
                        (map 'string 'code-char  data)))
     (write-window-update-frame connection connection (length data))
-    (write-window-update-frame connection stream (length data))
-    (force-output (get-network-stream connection)))
+    (write-window-update-frame connection stream (length data)))
 
   (:method :before ((connection logging-object) (stream logging-object)
                     payload)
@@ -425,8 +424,7 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
       )))
 
 (defmethod peer-expects-settings-ack (connection)
-  (write-settings-frame connection connection nil :ack t)
-  (force-output (get-network-stream connection)))
+  (write-settings-frame connection connection nil :ack t))
 
 (defmethod peer-acks-settings (connection)
   ())
@@ -597,8 +595,7 @@ PAYLOAD).")
 
 (defgeneric do-ping (connection data)
   (:method (connection data)
-    (write-ping-frame connection connection data :ack t)
-    (force-output (get-network-stream connection)))
+    (write-ping-frame connection connection data :ack t))
   (:method :before ((connection logging-object) data)
     (add-log connection `(:ping ,data))))
 
@@ -663,8 +660,7 @@ extensions..")
     (read-sequence preface-buffer (get-network-stream connection))
     (unless (equalp preface-buffer +client-preface-start+)
       (warn "Client preface mismatch: got ~a" preface-buffer)))
-  (write-settings-frame connection connection (get-settings connection))
-  (force-output (get-network-stream connection)))
+  (write-settings-frame connection connection (get-settings connection)))
 
 ;; 3.5.  HTTP/2 Connection Preface
 (defvar +client-preface-start+
@@ -683,8 +679,7 @@ extensions..")
    empty."
 
   (write-sequence +client-preface-start+ (get-network-stream connection))
-  (write-settings-frame connection connection (get-settings connection))
-  (force-output (get-network-stream connection)))
+  (write-settings-frame connection connection (get-settings connection)))
 
 (defmethod peer-resets-stream ((stream logging-object) error-code)
   (add-log stream `(:closed :error ,(get-error-name error-code))))
@@ -704,4 +699,9 @@ extensions..")
 
 (defmethod apply-window-size-increment :before ((object logging-object) increment)
   (add-log object `(:window-size-increment ,increment)))
+
+;;;; network comm simplifications
+(defmethod close ((connection http2-connection) &key &allow-other-keys)
+  (close (get-network-stream connection)))
+
 

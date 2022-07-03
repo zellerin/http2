@@ -199,7 +199,7 @@ passed to the make-instance"
                        :peer-window-size (get-initial-peer-window-size connection)
                        :window-size (get-initial-window-size connection)
                        pars)))
-    (incf (get-id-to-use connection))
+    (incf (get-id-to-use connection) 2)
     (push stream (get-streams connection))
     stream))
 
@@ -298,6 +298,8 @@ passed to the make-instance"
       as an unsigned 31-bit integer.  The value 0x0 is reserved for
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
+  ;; first flush anything we should have send to prevent both sides waiting
+  (force-output stream)
   (let* ((length (read-bytes stream 3))
          (payload (make-array length :element-type '(unsigned-byte 8)))
          (type (read-byte stream))

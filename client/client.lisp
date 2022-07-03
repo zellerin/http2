@@ -58,3 +58,45 @@ CONTENT-FN (function of one parameter - output binary stream)."
         (values (http2::get-body stream)
                 (http2::get-status stream)
                 (http2::get-headers stream))))))
+
+(defun input-stream-from-path
+    (connection path hostname &key (method "GET") ((:verbose http2::*do-print-log*))
+           additional-headers
+           content-fn
+           (content-encoding :utf-8))
+  "Retrieve URL through http/2 over TLS.
+
+Log events to standard output with VERBOSE set."
+  (let ((stream
+          (send-headers connection
+                        :new
+                        (append
+                         (request-headers method path hostname)
+                         (mapcar 'http2::encode-header additional-headers))
+                        :end-stream (null content-fn))))
+    ;; send body
+    (when content-fn
+      (with-open-stream (out
+                         (flexi-streams:make-flexi-stream
+                          (make-instance 'binary-output-stream-over-data-frames
+                                         :http-stream stream
+                                         :http-connection connection)
+                          :external-format content-encoding))
+        (funcall content-fn out)))
+    (make-instance 'http2::binary-input-stream-over-data-frames
+                   :http-connection connection
+                   :http-stream stream)))
+
+
+
+(defun example-2 ()
+  (with-http2-connection
+      (connection
+       'vanilla-client-io-connection
+       :network-stream (http2/client::tls-connection-to "localhost" 1230))
+           (with-open-stream (in (flexi-streams:make-flexi-stream (http2/client::input-stream-from-path connection "/ok" "localhost") :external-format :utf-8))
+             (print (read-line in)))
+           (with-open-stream (in (flexi-streams:make-flexi-stream (http2/client::input-stream-from-path connection "/ok" "localhost") :external-format :utf-8))
+             (print (read-line in)))
+           (with-open-stream (in (flexi-streams:make-flexi-stream (http2/client::input-stream-from-path connection "/" "localhost") :external-format :utf-8))
+             (print (read-line in)))))
