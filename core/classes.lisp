@@ -313,7 +313,15 @@ not now.")
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method (stream error-code)
-    (setf (get-state stream) 'closed))
+    (setf (get-state stream) 'closed)
+    (unless (eq error-code '+cancel+)
+      (error 'http-stream-error :stream stream
+                                :error-code error-code
+                                :debug-data nil)))
+  (:method :before ((stream logging-object) error-code)
+    (add-log stream  `(:closed :error ,(get-error-name error-code))))
+
+
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
    causes it to enter the \"closed\" state.  After receiving a RST_STREAM
@@ -328,6 +336,7 @@ not now.")
 (defgeneric send-stream-error (connection stream error-code note)
   (:method (connection (stream http2-stream) error-code note)
     (write-rst-stream-frame connection stream error-code)
+    (force-output (get-network-stream connection))
     (warn "Stream error: rst frame sent locally - ~s" note)
     (setf (get-state stream) 'closed)))
 
@@ -580,7 +589,7 @@ PAYLOAD).")
     ;; Headers sanity check
     (unless (get-status stream)
       (send-stream-error connection stream  +protocol-error+
-                         ":status pseud-header field MUST be included in all responses"))
+                         ":status pseudo-header field MUST be included in all responses"))
     ;; next header section may contain another :status
     (setf (get-seen-text-header stream) nil))
 
@@ -609,6 +618,11 @@ PAYLOAD).")
   ((error-code     :accessor get-error-code     :initarg :error-code)
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
+
+(define-condition http-stream-error (serious-condition)
+  ((error-code :accessor get-error-code :initarg :error-code)
+   (debug-data :accessor get-debug-data :initarg :debug-data)
+   (stream     :accessor get-stream     :initarg :stream)))
 
 (defmethod http2-error (connection error-code debug-code &rest args)
   (let ((formatted (apply #'format nil debug-code args)))
@@ -680,9 +694,6 @@ extensions..")
 
   (write-sequence +client-preface-start+ (get-network-stream connection))
   (write-settings-frame connection connection (get-settings connection)))
-
-(defmethod peer-resets-stream ((stream logging-object) error-code)
-  (add-log stream `(:closed :error ,(get-error-name error-code))))
 
 (defmethod peer-expects-settings-ack :before ((connection logging-object))
   (add-log connection '(:settings-ack-needed)))

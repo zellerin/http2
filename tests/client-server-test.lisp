@@ -21,16 +21,3 @@
 #+nil(fiasco:deftest external-access ()
   (dolist (web *test-webs*)
     (test-webs (list web))))
-
-(fiasco:deftest test-client-server ()
-  (multiple-value-bind (client-stream server-stream) (make-full-pipe)
-    ;; order matters: client needs to write client message so that server can read it.
-    (let ((client (make-instance 'http2/client::vanilla-client-connection :network-stream client-stream))
-          (server (make-instance 'vanilla-server-connection :network-stream server-stream)))
-      (send-headers client :new
-                    (request-headers "GET"  "/" "localhost")
-                           :end-stream t)
-      (process-messages (list client server))
-      (let ((client-stream (car (get-streams client))))
-        (fiasco:is (eq (get-state client-stream) 'closed))
-        (fiasco:is (search "Hello World" (get-body client-stream)))))))

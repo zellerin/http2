@@ -12,46 +12,30 @@
           (,(merge-pathnames "**/*.*" (asdf:system-source-directory "http2")) #p"/tmp/fasl/pre-commit-cache/**/*.*")
           :inherit-configuration :enable-user-cache)))
 (ql:quickload "http2/all")
-(load "tests/client-server-test")
 
 
 (in-package http2)
+
+(fiasco:deftest test-client-server ()
+  (multiple-value-bind (client-stream server-stream) (make-full-pipe)
+    ;; order matters: client needs to write client message so that server can read it.
+    (let ((client (make-instance 'http2/client::vanilla-client-connection :network-stream client-stream))
+          (server (make-instance 'vanilla-server-connection :network-stream server-stream)))
+      (send-headers client :new
+                    (request-headers "GET"  "/" "localhost")
+                           :end-stream t)
+      (process-messages (list client server))
+      (let ((client-stream (car (get-streams client))))
+        (fiasco:is (eq (get-state client-stream) 'closed))
+        (fiasco:is (search "Hello World" (get-body client-stream)))))))
+
 (defvar *server-running* nil)
-(sb-thread:make-thread (lambda ()
-                         (handler-bind ((warning 'muffle-warning))
-                           (http2:create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
-                                                 :announce-open-fn (lambda ()
-                                                                     (setf *server-running* t))))))
-
-(sb-ext:wait-for *server-running* :timeout 5)
-
-(fiasco:deftest test-self-compatible ()
-  (test-webs '(("https://localhost:1230/foo" "Not found" "404")
-               ("https://localhost:1230/ok" "OK" "200"))))
-
-(defun test-curl (url content)
-  (fiasco:is (search content (uiop:run-program `("/usr/bin/curl" ,url "-k") :output :string))))
-
-(fiasco:deftest test-curl-access ()
-  (test-curl "https://localhost:1230/ok" "Redirect was OK"))
-
-(fiasco:deftest test-post ()
-  (fiasco:is (equal "AB" (http2/client:retrieve-url "https://localhost:1230/body" :method "POST" :content #(65 66)))))
-
-(fiasco:deftest test-post-2 ()
-  (fiasco:is (equal "AB"
-                    (http2/client:retrieve-url "https://localhost:1230/body"
-                                               :method "POST"
-                                               :content-fn
-                                               (lambda (out) (write-sequence "AB" out))))))
-
-(fiasco:deftest test-ping ()
-  (flet ((test-ping-returns (&rest pars)
-           (fiasco:is (search "Ping time:"
-                              (with-output-to-string (*standard-output*)
-                                (apply #'http2/client:retrieve-url pars))))))
-    (test-ping-returns "https://localhost:1230/ok" :ping 3)
-    (test-ping-returns "https://localhost:1230/ok" :ping t)))
+(defvar *test-server-thread*
+  (sb-thread:make-thread (lambda ()
+                           (handler-bind ((warning 'muffle-warning))
+                             (http2:create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
+                                                        :announce-open-fn (lambda ()
+                                                                            (setf *server-running* t)))))))
 
 (fiasco::run-package-tests :package '#:http2 )
 

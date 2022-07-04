@@ -323,12 +323,12 @@ passed to the make-instance"
     ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
     ;; which, if blocked by the transmission of a large frame, could affect
     ;; performance.
-    (if (> length (get-max-frame-size connection))
+    (when (> length (get-max-frame-size connection))
         ;; fixme: sometimes connection error.
         (http2-error connection +frame-size-error+
                      "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the
 size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
-type, or is too small to contain mandatory frame data. "))
+type, or is too small to contain mandatory frame data."))
     (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object
             (if (< type +known-frame-types-count+)
@@ -837,7 +837,7 @@ CONTINUATION frame without the END_HEADERS flag set."
     ((map nil #'write-vector headers))
 
     ;; reader
-    ;; we have already checked that HTTP-STREAM is correct in read-frame
+    ;; If we needed continuation frame, we would be in READ-BYTE*.
     ((http2-error connection +protocol-error+
                   "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that

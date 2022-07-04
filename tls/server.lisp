@@ -82,29 +82,28 @@ thread) to start testing it.
 
 If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
 debug is printed."
-  (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
-                                                             :reuse-address t
-                                                             :backlog 200
-                                                             :element-type '(unsigned-byte 8)))
-    (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
-      (funcall announce-open-fn)
-      (loop
-        (wrap-to-tls-and-process-server-stream
-         (usocket:socket-stream
-          (handler-case
-              (usocket:socket-accept socket :element-type '(unsigned-byte 8))
-            ;; ignore condition
-            (usocket:connection-aborted-error ())))
-         key cert :connection-class connection-class)))))
+  (with-simple-restart (kill-server "Kill server")
+    (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
+                                                               :reuse-address t
+                                                               :backlog 200
+                                                               :element-type '(unsigned-byte 8)))
+      (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
+        (funcall announce-open-fn)
+        (loop
+          (with-simple-restart (kill-connection "Kill connection")
+            (wrap-to-tls-and-process-server-stream
+             (usocket:socket-stream
+              (handler-case
+                  (usocket:socket-accept socket :element-type '(unsigned-byte 8))
+                ;; ignore condition
+                (usocket:connection-aborted-error ())))
+             key cert :connection-class connection-class)))))))
 
 (defun create-http-server (port key cert &key
                                             ((:verbose http2::*do-print-log*))
                                             (announce-open-fn (constantly nil))
                                             (connection-class 'vanilla-server-connection))
-  "Open HTTPS/2 server on PORT on localhost.
-
-It accepts new connections.
-establish TLS.
+  "Open HTTP/2 server on PORT on localhost (no TLS).
 
 Callbacks defined as methods for the CONNECTION-CLASS are used to implement
 behaviour of the server.

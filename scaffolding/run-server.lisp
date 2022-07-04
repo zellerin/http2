@@ -16,4 +16,4 @@
 
 (handler-bind ((warning 'muffle-warning))
   (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
-                 :verbose t))
+                 :verbose nil))

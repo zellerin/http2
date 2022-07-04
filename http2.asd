@@ -54,7 +54,8 @@
 
 (defsystem "http2/test"
   :depends-on ("http2" "fiasco" "trivial-gray-streams"
-                       "http2/server" "http2/client")
+                       "http2/server" "http2/client"
+                       "bordeaux-threads")
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2))
   :serial t
@@ -63,7 +64,9 @@
   :components ((:file "pipe")
                (:file "test")
                (:file "tests-hpack")
-               (:file "client-server-test")))
+               (:file "client-server-test")
+               (:file "threaded-tests")
+               (:file "errors")))
 
 (defsystem "http2/all"
   :depends-on (http2 http2/test http2/client http2/server http2/tls))

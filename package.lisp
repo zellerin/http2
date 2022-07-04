@@ -8,6 +8,7 @@
            #:*do-print-log*
            #:*use-huffman-coding-by-default*
 
+           #:tls-connection-to
            #:vanilla-client-connection
            #:vanilla-client-io-connection
            #:vanilla-client-stream
