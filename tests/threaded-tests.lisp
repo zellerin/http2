@@ -15,7 +15,10 @@
   "Kill running background server"
   (bt:interrupt-thread *test-server-thread* #'invoke-restart 'kill-server))
 
-(sb-ext:wait-for *server-running* :timeout 5)
+#+sbcl(sb-ext:wait-for *server-running* :timeout 5)
+#-sbcl (loop for i from 0 to 50
+             until *server-running*
+             do (sleep 0.1))
 
 (fiasco:deftest test-self-compatible ()
   (test-webs '(("https://localhost:1230/foo" "Not found" "404")

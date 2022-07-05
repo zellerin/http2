@@ -48,16 +48,6 @@
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
 
-#+sbcl (define-exact-handler "/exit"
-  (handler (out)
-    (send-headers `((:status "200")))
-    (princ "Goodbye" out)
-    (send-goaway +no-error+ #())
-    (sb-ext:quit)))
-
-#+sbcl (defun sb-threadify (fn &rest args)
-         (sb-thread:make-thread fn :arguments args))
-
 (defun main ()
   (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
                        :verbose nil))

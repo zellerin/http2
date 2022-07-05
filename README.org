@@ -1,5 +1,7 @@
 #+TITLE: http/2 in Common Lisp
 
+[[https://github.com/zellerin/http2/actions/workflows/test.yml/badge.svg]]
+
 This is a (work in progress) implementation of HTTP/2 protocol as described in
 RFC9113 (and RFC7540 before) and RFC7541 (HPACK).
 
