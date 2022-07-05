@@ -11,6 +11,10 @@
                                                       (setf *server-running* t)))))
    :name "HTTP2 server"))
 
+(defun kill-background-server ()
+  "Kill running background server"
+  (bt:interrupt-thread *test-server-thread* #'invoke-restart 'kill-server))
+
 (sb-ext:wait-for *server-running* :timeout 5)
 
 (fiasco:deftest test-self-compatible ()

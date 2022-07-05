@@ -37,6 +37,13 @@ CONTENT-FN (function of one parameter - output binary stream)."
                             :end-stream (null (or content content-fn))
                             :end-stream-callback (constantly t)
                             :connection connection)))
+        (typecase ping
+          (integer
+           (dotimes (i ping)
+             (send-ping connection)))
+          (null)
+          (t (send-ping connection)))
+
         (cond
           (content
            (http2::write-data-frame connection stream
@@ -47,12 +54,6 @@ CONTENT-FN (function of one parameter - output binary stream)."
                                stream
                                :external-format content-encoding))
              (funcall content-fn out))))
-        (typecase ping
-          (integer
-           (dotimes (i ping)
-             (send-ping connection)))
-          (null)
-          (t (send-ping connection)))
         (wait-for-responses)
         (values (http2::get-body stream)
                 (http2::get-status stream)
