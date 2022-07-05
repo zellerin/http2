@@ -66,12 +66,13 @@
    :peer-accepts-push t))
 
 (defclass http2-stream (stream-or-connection)
-  ((stream-id        :accessor get-stream-id        :initarg :stream-id
-                     :type (unsigned-byte 31))
+  ((connection       :accessor get-connection       :initarg :connection)
+   (stream-id        :accessor get-stream-id        :initarg :stream-id
+                     :type           (unsigned-byte 31))
    (state            :accessor get-state            :initarg :state
-                     :type (member idle open closed
-                                   half-closed/local half-closed/remote
-                                   reserved/local reserved/remote))
+                     :type           (member idle open closed
+                                             half-closed/local half-closed/remote
+                                             reserved/local reserved/remote))
    (data             :accessor get-data             :initarg :data)
    (weight           :accessor get-weight           :initarg :weight)
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
@@ -267,7 +268,8 @@ not now.")
                          :stream-id stream-id
                          :state 'open
                          :window-size (get-initial-window-size connection)
-                         :peer-window-size (get-initial-peer-window-size connection))
+                         :peer-window-size (get-initial-peer-window-size connection)
+                         :connection connection)
           (get-streams connection))
     (car (get-streams connection)))
 

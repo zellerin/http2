@@ -35,7 +35,8 @@ CONTENT-FN (function of one parameter - output binary stream)."
                                               (puri:uri-host parsed-url))
                              (mapcar 'http2::encode-header additional-headers))
                             :end-stream (null (or content content-fn))
-                            :end-stream-callback (constantly t))))
+                            :end-stream-callback (constantly t)
+                            :connection connection)))
         (cond
           (content
            (http2::write-data-frame connection stream
@@ -43,9 +44,7 @@ CONTENT-FN (function of one parameter - output binary stream)."
           (content-fn
            (with-open-stream (out
                               (flexi-streams:make-flexi-stream
-                               (make-instance 'binary-output-stream-over-data-frames
-                                              :http-stream stream
-                                              :http-connection connection)
+                               stream
                                :external-format content-encoding))
              (funcall content-fn out))))
         (typecase ping
@@ -73,14 +72,13 @@ Log events to standard output with VERBOSE set."
                         (append
                          (request-headers method path hostname)
                          (mapcar 'http2::encode-header additional-headers))
-                        :end-stream (null content-fn))))
+                        :end-stream (null content-fn)
+                        :connection connection)))
     ;; send body
     (when content-fn
       (with-open-stream (out
                          (flexi-streams:make-flexi-stream
-                          (make-instance 'binary-output-stream-over-data-frames
-                                         :http-stream stream
-                                         :http-connection connection)
+                          stream
                           :external-format content-encoding))
         (funcall content-fn out)))
     (make-instance 'http2::binary-input-stream-over-data-frames
@@ -93,7 +91,7 @@ Log events to standard output with VERBOSE set."
   (with-http2-connection
       (connection
        'vanilla-client-io-connection
-       :network-stream (http2/client::tls-connection-to "localhost" 1230))
+       :network-stream (http2/client::tls-connection-to "localhost" :port 1230))
            (with-open-stream (in (flexi-streams:make-flexi-stream (http2/client::input-stream-from-path connection "/ok" "localhost") :external-format :utf-8))
              (print (read-line in)))
            (with-open-stream (in (flexi-streams:make-flexi-stream (http2/client::input-stream-from-path connection "/ok" "localhost") :external-format :utf-8))

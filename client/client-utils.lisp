@@ -55,6 +55,7 @@ TARGET, using SNI."
 
 (defclass vanilla-client-stream (client-stream ;; basic semantics and pseudoheaders
                                  ;; recieved data are stored in slot BODY
+                                 http2::binary-output-stream-over-data-frames
                                  http2::body-collecting-mixin
                                  ;; headers (not pseudoheaders) are collected in
                                  ;; slot HEADERS

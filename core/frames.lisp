@@ -198,6 +198,7 @@ passed to the make-instance"
                        :stream-id (get-id-to-use connection)
                        :peer-window-size (get-initial-peer-window-size connection)
                        :window-size (get-initial-window-size connection)
+                       :connection connection
                        pars)))
     (incf (get-id-to-use connection) 2)
     (push stream (get-streams connection))

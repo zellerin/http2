@@ -59,6 +59,5 @@
          (sb-thread:make-thread fn :arguments args))
 
 (defun main ()
-  (handler-bind ((warning 'muffle-warning))
-    (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
-                   :verbose nil)))
+  (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
+                       :verbose nil))

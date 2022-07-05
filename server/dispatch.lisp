@@ -32,9 +32,7 @@ request when peer closes the stream."))
 (defmacro handler ((flexi-stream-name &rest flexi-pars) &body body)
   `(lambda (connection stream)
      (with-open-stream (,flexi-stream-name (flexi-streams:make-flexi-stream
-                             (make-instance 'binary-output-stream-over-data-frames
-                                            :http-stream stream
-                                            :http-connection connection)
+                                            stream
                              ,@flexi-pars))
        (flet ((send-headers (&rest args)
                 (apply #'send-headers connection stream args))
@@ -87,8 +85,9 @@ request when peer closes the stream."))
   (:default-initargs :stream-class 'vanilla-server-stream))
 
 (defclass vanilla-server-stream (server-stream
-                                body-collecting-mixin
-                                history-printing-object)
+                                 binary-output-stream-over-data-frames
+                                 body-collecting-mixin
+                                 history-printing-object)
   ())
 
 (defmethod peer-ends-http-stream (connection (stream vanilla-server-stream))
