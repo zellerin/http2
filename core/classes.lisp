@@ -4,8 +4,6 @@
 
 ;;;; Classes
 #|
-                                 stream-or-connection
-                                /                   \
                      http2-stream                   http2-connection--------------\
                      /   /                         /       \                       \
         logging-stream  /     client-http2-connection   server-http2-connection  logging-connection
@@ -15,11 +13,13 @@
              vanilla-client-stream     vanilla-client-connection
 |#
 
-(defclass stream-or-connection ()
+(defclass flow-control-mixin ()
   ((window-size      :accessor get-window-size      :initarg :window-size)
-   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size)))
+   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size))
+  (:documentation
+   "The flow control parameters are used both for streams and connections."))
 
-(defclass http2-connection (stream-or-connection)
+(defclass http2-connection (flow-control-mixin)
   ((network-stream           :accessor get-network-stream           :initarg :network-stream)
    (streams                  :accessor get-streams                  :initarg :streams
                              :documentation "Sequence of HTTP2 streams")
@@ -65,7 +65,7 @@
   (:default-initargs :id-to-use 2
    :peer-accepts-push t))
 
-(defclass http2-stream (stream-or-connection)
+(defclass http2-stream (flow-control-mixin)
   ((connection       :accessor get-connection       :initarg :connection)
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type           (unsigned-byte 31))
@@ -246,14 +246,7 @@ not now.")
                   :end-stream end-stream
                   :end-headers end-headers)))
 
-(defgeneric peer-opens-http-stream (connection stream-id frame-type)
-  (:documentation
-   "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
- return an object representing new stream.")
-  (:method :before ((connection logging-object) stream-id frame-type)
-    (add-log connection `(:new-stream-received :id ,stream-id :type
-                                               ,(frame-type-name (aref *frame-types* frame-type)))))
-  (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
+(defun peer-opens-http-stream-really-open (connection stream-id state)
     (unless (> stream-id (get-last-id-seen connection))
       (http2-error connection +protocol-error+
                    "The identifier of a newly established stream MUST be
@@ -266,32 +259,26 @@ not now.")
     ;; todo: count and check open streams
     (push (make-instance (get-stream-class connection)
                          :stream-id stream-id
-                         :state 'open
+                         :state state
                          :window-size (get-initial-window-size connection)
                          :peer-window-size (get-initial-peer-window-size connection)
                          :connection connection)
           (get-streams connection))
-    (car (get-streams connection)))
+  (car (get-streams connection)))
+
+(defgeneric peer-opens-http-stream (connection stream-id frame-type)
+  (:documentation
+   "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
+ return an object representing new stream.")
+  (:method :before ((connection logging-object) stream-id frame-type)
+    (add-log connection `(:new-stream-received :id ,stream-id :type
+                                               ,(frame-type-name (aref *frame-types* frame-type)))))
+
+  (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
+    (peer-opens-http-stream-really-open connection stream-id 'open))
 
   (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
-      (unless (> stream-id (get-last-id-seen connection))
-        (http2-error connection +protocol-error+
-                     "The identifier of a newly established stream MUST be
-                   numerically greater than all streams that the initiating
-                   endpoint has opened or reserved.  This governs streams that
-                   are opened using a HEADERS frame and streams that are
-                   reserved using PUSH_PROMISE.  An endpoint that receives an
-                   unexpected stream identifier MUST respond with a connection
-                   error (Section 5.4.1) of type PROTOCOL_ERROR."))
-      ;; todo: count and check open streams
-    (push (make-instance (get-stream-class connection)
-                         :stream-id stream-id :state 'idle
-                         :window-size (get-initial-window-size connection)
-                         :peer-window-size (get-initial-peer-window-size connection))
-            (get-streams connection))
-      (car (get-streams connection)))
-  (:method :after ((connection logging-object) stream-id frame-type)
-    (add-log connection `(:new-stream-requested ,stream-id ,frame-type)))
+    (peer-opens-http-stream-really-open connection stream-id 'idle))
 
   (:method :before ((connection client-http2-connection) stream-id frame-type)
     (if (oddp stream-id)
@@ -374,74 +361,86 @@ not now.")
   (:method  (stream exclusive weight stream-dependency)
     (setf (get-weight stream) weight
           (get-depends-on stream)
-          `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency))))
+          `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+
+  (:method :before ((stream logging-object) exclusive weight stream-dependency)
+    (add-log stream `(:new-prio :exclusive ,exclusive
+                                :weight ,weight :dependency ,stream-dependency))))
 
 (defgeneric apply-window-size-increment (object increment)
+
+  (:method :before ((object logging-object) increment)
+    (add-log object `(:window-size-increment ,increment)))
+
   (:method (object increment)
     (when (zerop increment)
       ;; fixme: why?
       (http2-error object +protocol-error+ ""))
-    (setf (get-window-size object) increment)))
+    (incf (get-window-size object) increment)))
 
-(locally (declare (optimize speed (safety 1) (debug 1)))
-  (defgeneric set-peer-setting (connection name value)
-    (:documentation
-     "Process received information about peers setting.
+(defgeneric set-peer-setting (connection name value)
+  (:documentation
+   "Process received information about peers setting.
 
 The setting relates to the CONNECTION. NAME is a keyword symbol (see
 *SETTINGS-ALIST*, subject to possible change to 16bit number in future) and VALUE is
 32bit number.")
-    (:method (connection name value)
-      "Fallback."
-      (declare (type (unsigned-byte 32) value))
-      (warn "Peer settings not used - ~a ~a." name value))
+  (:method (connection name value)
+    "Fallback."
+    (declare (type (unsigned-byte 32) value))
+    (warn "Peer settings not used - ~a ~a." name value))
 
-    (:method :before ((connection logging-object) name value)
-      (declare (type (unsigned-byte 32) value))
-      (add-log connection `(:setting ,name ,value)))
+  (:method :before ((connection logging-object) name value)
+    (declare (type (unsigned-byte 32) value))
+    (add-log connection `(:setting ,name ,value)))
 
-    (:method (connection (name (eql :header-table-size)) value)
-      (declare (type (unsigned-byte 32) value))
-      (let ((context (get-compression-context connection)))
-        (when (> value (the (unsigned-byte 32) (get-dynamic-table-size context)))
-          (update-dynamic-table-size context value)
-          (push value (get-updates-needed context)))))
+  (:method (connection (name (eql :header-table-size)) value)
+    (declare (type (unsigned-byte 32) value))
+    (let ((context (get-compression-context connection)))
+      (when (> value (the (unsigned-byte 32) (get-dynamic-table-size context)))
+        (update-dynamic-table-size context value)
+        (push value (get-updates-needed context)))))
 
-    (:method (connection (name (eql :initial-window-size)) value)
-      (declare (type (unsigned-byte 32) value))
-      (setf (get-initial-peer-window-size connection) value))
+  (:method (connection (name (eql :initial-window-size)) value)
+    (declare (type (unsigned-byte 32) value))
+    (setf (get-initial-peer-window-size connection) value))
 
-    (:method (connection (name (eql :max-frame-size)) value)
-      ;; do something
-      )
+  (:method (connection (name (eql :max-frame-size)) value)
+    ;; do something
+    )
 
-    (:method (connection (name (eql :max-header-list-size)) value)
-      ;; do something
-      )
+  (:method (connection (name (eql :max-header-list-size)) value)
+    ;; do something
+    )
 
-    (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
-      (declare (type (unsigned-byte 32) value))
-      (unless (= value 0)
-        (http2-error connection +protocol-error+ "Server must have ENABLE-PUSH 0.")))
+  (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
+    (declare (type (unsigned-byte 32) value))
+    (unless (= value 0)
+      (http2-error connection +protocol-error+ "Server must have ENABLE-PUSH 0.")))
 
-    (:method ((connection server-http2-connection) (name (eql :enable-push)) value)
-      (declare (type (unsigned-byte 32) value))
-      (if (> value 1)
-          (http2-error connection  +protocol-error+ "Client must have ENABLE-PUSH 0 or 1.")
-          (setf (get-peer-accepts-push connection) (plusp value))))
+  (:method ((connection server-http2-connection) (name (eql :enable-push)) value)
+    (declare (type (unsigned-byte 32) value))
+    (if (> value 1)
+        (http2-error connection  +protocol-error+ "Client must have ENABLE-PUSH 0 or 1.")
+        (setf (get-peer-accepts-push connection) (plusp value))))
 
-    (:method (connection (name (eql :max-concurrent-streams)) value)
-      ;; do something
-      )))
+  (:method (connection (name (eql :max-concurrent-streams)) value)
+    ;; do something
+    ))
 
-(defmethod peer-expects-settings-ack (connection)
-  (write-settings-frame connection connection nil :ack t))
+(defgeneric peer-expects-settings-ack (connection)
+  (:method (connection)
+    (write-settings-frame connection connection nil :ack t))
 
-(defmethod peer-acks-settings (connection)
-  ())
+  (:method :before ((connection logging-object))
+    (add-log connection '(:settings-ack-needed))))
 
-(defmethod peer-acks-settings ((connection logging-object))
-  (add-log connection '(:settings-acked)))
+
+(defgeneric peer-acks-settings (connection)
+  (:method (connection))
+
+  (:method ((connection logging-object))
+    (add-log connection '(:settings-acked))))
 
 
 (defun dynamic-table-entry-size (name value)
@@ -467,27 +466,6 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (print-unreadable-object (o out :type t :identity nil)
     (format out "~a #~d" (get-state o)
             (get-stream-id o))))
-
-(defun change-state (stream state-map other-case-error)
-  "Change state from STREAM based on STATE-MAP. If original state not found in STATE-MAP and OTHER-CASE-ERROR is set, raise that (HTTP2) error."
-  (cerror "I am not used" "OK")
-  (let* ((old-state (get-state stream))
-         (new-state (second (find old-state state-map :test #'member :key #'car))))
-    (cond
-      ((eq new-state old-state))
-      ((eq new-state :keep))
-      (new-state (setf (get-state stream) new-state))
-      (other-case-error (http2-error stream other-case-error "Bad state transition")))
-    new-state))
-
-(defmethod open-http-stream (connection (stream http2-stream))
-  "This method handles state transitions involved in receiving HEADERS-FRAME.
-
-idle: Sending or receiving a HEADERS frame causes the stream to become \"open\"."
-  (change-state stream
-                '(((idle) open)
-                  ((open half-closed/local) :keep))
-                'protocol-error))
 
 (defgeneric peer-ends-http-stream (connection stream)
   (:documentation
@@ -654,22 +632,23 @@ PAYLOAD).")
 extensions..")
 
 
-(defvar *do-print-log* nil
+(defvar *do-print-log* '(:window-size-increment)
   "Set to true value to log to stderr.")
 
 (defgeneric add-log (object log-pars)
   (:method ((object history-keeping-object) log-pars)
     (push log-pars (get-reversed-history object)))
+
   (:method ((object history-printing-object) log-pars)
-    (when *do-print-log*
-      (let ((*print-length* 10))
+    (when (or (eq *do-print-log* t)
+              (member (car log-pars)  *do-print-log*))
+      (let ((*print-length* 10)
+            (*print-base* 16))
         (format t "~&~s: ~{~s~^ ~}~%" object log-pars)))))
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))
 
-(defmethod apply-stream-priority ((stream logging-object) exclusive weight stream-dependency)
-  (add-log stream `(:new-prio :exclusive ,exclusive :weight ,weight :dependency ,stream-dependency)))
 
 (defmethod initialize-instance :after ((connection server-http2-connection) &key &allow-other-keys)
   (let ((preface-buffer (make-array (length +client-preface-start+))))
@@ -697,9 +676,6 @@ extensions..")
   (write-sequence +client-preface-start+ (get-network-stream connection))
   (write-settings-frame connection connection (get-settings connection)))
 
-(defmethod peer-expects-settings-ack :before ((connection logging-object))
-  (add-log connection '(:settings-ack-needed)))
-
 (defmethod do-pong :before ((connection logging-object) data)
   (add-log connection `(:pong ,data)))
 
@@ -709,9 +685,6 @@ extensions..")
 
 (defmethod do-goaway :around ((connection logging-object) error-code last-stream-id debug-data)
   (call-next-method))
-
-(defmethod apply-window-size-increment :before ((object logging-object) increment)
-  (add-log object `(:window-size-increment ,increment)))
 
 ;;;; network comm simplifications
 (defmethod close ((connection http2-connection) &key &allow-other-keys)

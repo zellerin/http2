@@ -19,7 +19,7 @@
 (defclass binary-output-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
   ((output-buffer   :accessor get-output-buffer)
    (send-threshold  :accessor get-send-threshold  :initarg :send-threshold))
-  (:default-initargs :to-write 0 :to-store 0 :send-threshold 4096)
+  (:default-initargs :to-write 0 :to-store 0)
   (:documentation
    "Binary stream that accepts new octets to the output-buffer, until it is big
 enough to send the data as a data frame (or forced to by close of force-output)."))
@@ -150,6 +150,8 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
                 (prog1 (aref buffer index)
                    (when (= (incf index) (length (caar data)))
                      (pop-frame data)
+                     (add-log connection `(:window-size-increment ,index))
+                     (add-log stream `(:window-size-increment ,index))
                      (write-window-update-frame connection connection index)
                      (write-window-update-frame connection stream index)
                      (setf index 0))))))))

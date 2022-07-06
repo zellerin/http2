@@ -19,3 +19,10 @@
   (test-bad-headers '((:path "/") ("foo" "bar")
                       (:scheme "https")
                       (:authority "localhost"))))
+
+(fiasco:deftest uppercase-headers ()
+  (test-bad-headers '((:method "GET")
+                      (:path "/")
+                      (:scheme "https")
+                      (:authority "localhost")
+                      ("FOO" "bar"))))
