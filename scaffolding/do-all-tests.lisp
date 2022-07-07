@@ -7,10 +7,10 @@
 (ql:quickload "cl+ssl")
 (ql:quickload "puri")
 #+sbcl (declaim (optimize sb-cover:store-coverage-data))
-(print (asdf:initialize-output-translations
-        `(:output-translations
-          (,(merge-pathnames "**/*.*" (asdf:system-source-directory "http2")) #p"/tmp/fasl/pre-commit-cache/**/*.*")
-          :inherit-configuration :enable-user-cache)))
+(asdf:initialize-output-translations
+         `(:output-translations
+           (,(merge-pathnames "**/*.*" (asdf:system-source-directory "http2")) #p"/tmp/fasl/pre-commit-cache/**/*.*")
+           :inherit-configuration :enable-user-cache))
 (ql:quickload "http2/all")
 
 

@@ -625,7 +625,7 @@ PAYLOAD).")
 extensions..")
 
 
-(defvar *do-print-log* '(:window-size-increment)
+(defvar *do-print-log* nil
   "Set to true value to log to stderr.")
 
 (defgeneric add-log (object log-pars)

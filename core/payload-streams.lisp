@@ -19,7 +19,7 @@
 (defclass binary-output-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
   ((output-buffer   :accessor get-output-buffer)
    (send-threshold  :accessor get-send-threshold  :initarg :send-threshold))
-  (:default-initargs :to-write 0 :to-store 0)
+  (:default-initargs :to-write 0 :to-store 0 :send-threshold 16000)
   (:documentation
    "Binary stream that accepts new octets to the output-buffer, until it is big
 enough to send the data as a data frame (or forced to by close of force-output)."))
