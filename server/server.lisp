@@ -14,13 +14,6 @@
                                                :content-type "text/plain"
                                                :additional-headers '(("refresh" "3; url=/"))))
 
-(defvar *intro-page*
-  "<h1>Hello World</h1>
-<p>This server is for testing http2 protocol</p>
-<p><a href='/redir'>Redirect test</a>
-<form action='/body' method='post'><input type='submit' name='xxx' value='POST query test'></form")
-
-(require 'cl-who)
 (define-exact-handler "/"
     (handler (out :external-format :utf-8)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))

@@ -109,10 +109,12 @@ communication happen. Check that in the end, logs on sender and receiver are as
 expected."
   (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
     (with-sender-receiver (:init-state init-state)
-      (apply send-fn sender
+      (apply send-fn
              (cond
                ((numberp stream)
-                (make-instance 'http2-stream :stream-id 1))
+                (make-instance 'http2-stream :stream-id stream
+                                             :connection sender
+                                             :network-stream (get-network-stream sender)))
                ((eq stream :connection) sender)
                (t (error "Stream parameter must be stream id number or :connection")))
              send-pars)

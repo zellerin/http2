@@ -36,7 +36,10 @@
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
    (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size)
    (max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
-   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))
+   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size)
+   (stream-id                :accessor get-stream-id                :initarg :stream-id
+                             :initform 0
+                             :allocation :class))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -67,6 +70,7 @@
 
 (defclass http2-stream (flow-control-mixin)
   ((connection       :accessor get-connection       :initarg :connection)
+   (network-stream   :accessor get-network-stream   :initarg :network-stream)
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type           (unsigned-byte 31))
    (state            :accessor get-state            :initarg :state
@@ -212,34 +216,33 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
-(defgeneric send-headers (connection stream headers &key end-stream end-headers
-                                                      padded priority &allow-other-keys)
+(defgeneric send-headers (stream-or-connection
+                          headers &key end-stream end-headers
+                                    padded priority &allow-other-keys)
   (:documentation
-   "Send headers to the connection and stream. Stream is either an existing
-instance of a stream, or a symbol :new. Stream is returned.
+   "Send headers to the connection or stream. Stream is either an existing instance
+of a stream, or a connection; in this case a new stream is created on it. In both
+cases, the stream is returned.")
 
-In future should ensure splitting too long headers to continuations, but does
-not now.")
-
-  (:method (connection (stream http2-stream) headers &key end-stream (end-headers t)
+  (:method ((stream http2-stream) headers &key end-stream (end-headers t)
                                                       padded priority)
-    (when (get-updates-needed (get-compression-context connection))
-      (warn "FIXME: we should send dynamical update."))
-    (write-headers-frame connection stream headers
-                         :padded padded
-                         :priority priority
-                         :end-stream end-stream
-                         :end-headers end-headers)
+    (with-slots (connection) stream
+      (when (get-updates-needed (get-compression-context connection))
+        (warn "FIXME: we should send dynamical update."))
+      (write-headers-frame stream headers
+                           :padded padded
+                           :priority priority
+                           :end-stream end-stream
+                           :end-headers end-headers))
     stream)
 
-  (:method :before (connection (stream logging-object) headers &rest raw-stream-args)
+  (:method :before ((stream logging-object) headers &rest raw-stream-args)
     (add-log stream `(:sending-headers ,headers ,raw-stream-args)))
 
-  (:method (connection (stream (eql :new)) headers &rest stream-args
+  (:method ((connection http2-connection) headers &rest stream-args
             &key end-stream (end-headers t)
               padding priority)
-    (send-headers connection
-                  (create-new-local-stream connection `(:state open ,@stream-args))
+    (send-headers (create-new-local-stream connection `(:state open ,@stream-args))
                   headers
                   :padding padding
                   :priority priority
@@ -262,7 +265,8 @@ not now.")
                          :state state
                          :window-size (get-initial-window-size connection)
                          :peer-window-size (get-initial-peer-window-size connection)
-                         :connection connection)
+                         :connection connection
+                         :network-stream (get-network-stream connection))
           (get-streams connection))
   (car (get-streams connection)))
 
@@ -296,9 +300,9 @@ not now.")
                                 :frame-type ,(frame-type-name (aref *frame-types* frame-type))))
       stream)))
 
-(defgeneric peer-sends-push-promise (continuation stream)
+(defgeneric peer-sends-push-promise (stream)
   ;; this is not actually called (yet) and may need more parameters
-  (:method (continuation stream) (error "Push promises not supported.")))
+  (:method (stream) (error "Push promises not supported.")))
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method (stream error-code)
@@ -309,7 +313,6 @@ not now.")
                                 :debug-data nil)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
-
 
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
@@ -322,40 +325,32 @@ not now.")
 
 #+nil (defgeneric peer-pushes-promise)
 
-(defgeneric send-stream-error (connection stream error-code note)
-  (:method (connection (stream http2-stream) error-code note)
-    (write-rst-stream-frame connection stream error-code)
-    (force-output (get-network-stream connection))
-    (warn "Stream error: rst frame sent locally - ~s" note)
-    (setf (get-state stream) 'closed)))
+(defgeneric send-stream-error (stream error-code note)
+  (:method ((stream http2-stream) error-code note)
+    (with-slots (connection) stream
+      (write-rst-stream-frame stream error-code)
+      (force-output (get-network-stream connection))
+      (warn "Stream error: rst frame sent locally - ~s" note)
+      (setf (get-state stream) 'closed))))
 
 ;;;; Other callbacks
-(defgeneric apply-data-frame (connection stream payload)
+(defgeneric apply-data-frame (stream payload)
   (:documentation "Data frame is received.")
 
-  (:method (connection stream payload)
+  (:method (stream payload)
     (warn "No payload action defined."))
 
-  (:method (connection (stream body-collecting-mixin) data)
+  (:method ((stream body-collecting-mixin) data)
     (setf (get-body stream)
           (concatenate 'string (get-body stream)
                        (map 'string 'code-char  data)))
-    (write-window-update-frame connection connection (length data))
-    (write-window-update-frame connection stream (length data)))
+    (with-slots (connection) stream
+      (write-window-update-frame connection (length data))
+      (write-window-update-frame stream (length data))))
 
-  (:method :before ((connection logging-object) (stream logging-object)
-                    payload)
-    (add-log stream `(:payload ,payload)))
+  (:method :before ((stream logging-object) payload)
+    (add-log stream `(:payload ,payload))))
 
-#+nil  (:method :after (connection (stream http2-stream) payload)
-    "DATA frames are subject to flow control and can only be sent when a
-   stream is in the \"open\" or \"half-closed (remote)\" state.  The entire
-   DATA frame payload is included in flow control, including the Pad
-   Length and Padding fields if present.  If a DATA frame is received
-   whose stream is not in \"open\" or \"half-closed (local)\" state, the
-   recipient MUST respond with a stream error (Section 5.4.2) of type
-   STREAM_CLOSED."
-    (change-state stream '(((open half-closed/local) :keep)) 'stream-closed)))
 
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
   (:method  (stream exclusive weight stream-dependency)
@@ -430,7 +425,7 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
 
 (defgeneric peer-expects-settings-ack (connection)
   (:method (connection)
-    (write-settings-frame connection connection nil :ack t))
+    (write-settings-frame connection nil :ack t))
 
   (:method :before ((connection logging-object))
     (add-log connection '(:settings-ack-needed))))
@@ -460,23 +455,21 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (:method append ((connection client-http2-connection))
     `((:enable-push . 0))))
 
-(defmethod get-stream-id ((conn http2-connection)) 0)
-
 (defmethod print-object ((o http2-stream) out)
   (print-unreadable-object (o out :type t :identity nil)
     (format out "~a #~d" (get-state o)
             (get-stream-id o))))
 
-(defgeneric peer-ends-http-stream (connection stream)
+(defgeneric peer-ends-http-stream (stream)
   (:documentation
    "Do relevant state changes when closing http stream (as part of received HEADERS or
 PAYLOAD).")
-  (:method :after (connection (stream http2-stream))
+  (:method :after ((stream http2-stream))
     (setf (get-state stream)
           (ecase (get-state stream)
             ((open) 'half-closed/remote)
             ((half-closed/local) 'closed))))
-  (:method :after (connection (stream logging-object))
+  (:method :after ((stream logging-object))
     (add-log stream '(:closed-remotely))))
 
 (defmacro check-place-empty-and-set-it (new-value accessor)
@@ -486,7 +479,7 @@ PAYLOAD).")
    mandatory pseudo-header fields is malformed (Section 8.1.2.6)."
   ;; fixme: use place expanders
   `(if (,accessor stream)
-       (send-stream-error connection stream  +protocol-error+
+       (send-stream-error stream  +protocol-error+
                           "Duplicated header")
        (setf (,accessor stream) ,new-value)))
 
@@ -498,7 +491,7 @@ PAYLOAD).")
               ((or string symbol) name)
               ((vector (unsigned-byte 8)) (decode-huffman name)))))
       (when (and (stringp name) (some #'upper-case-p name))
-        (send-stream-error connection stream  +protocol-error+
+        (send-stream-error stream  +protocol-error+
                            "A request or response containing uppercase header field names MUST be treated as malformed. (...) Malformed requests or responses that are detected MUST be
    treated as a stream error of type PROTOCOL_ERROR. "))
       (call-next-method connection stream
@@ -512,7 +505,7 @@ PAYLOAD).")
 
   (:method (connection (stream server-stream) (name symbol) value)
     (when (get-seen-text-header stream)
-      (send-stream-error connection stream  +protocol-error+
+      (send-stream-error stream  +protocol-error+
                          "Pseudo header follows text header."))
     (case name
       (:method
@@ -524,18 +517,18 @@ PAYLOAD).")
       (:path
        (check-place-empty-and-set-it value get-path))
       (t
-       (send-stream-error connection stream  +protocol-error+
+       (send-stream-error stream  +protocol-error+
                           "Incorrect pseudo header on response"))))
 
   (:method (connection (stream client-stream) (name symbol) value)
     (when (get-seen-text-header stream)
-      (send-stream-error connection stream  +protocol-error+
+      (send-stream-error stream  +protocol-error+
                          "Pseudo header follows text header."))
     (case name
       (:status
           (setf (get-status stream) value))
       (t
-       (send-stream-error connection stream  +protocol-error+
+       (send-stream-error stream  +protocol-error+
                           "Incorrect pseudo header on request"))))
 
   (:method :after (connection (stream log-headers-mixin) name value)
@@ -554,7 +547,7 @@ PAYLOAD).")
    "Send a ping request.")
   (:method (connection &optional (payload 0))
     (declare ((unsigned-byte 64) payload))
-    (write-ping-frame connection connection payload))
+    (write-ping-frame connection payload))
   (:method ((connection timeshift-pinging-connection) &optional payload)
     (declare (ignore payload))
     (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
@@ -568,7 +561,7 @@ PAYLOAD).")
   (:method (connection (stream client-stream))
     ;; Headers sanity check
     (unless (get-status stream)
-      (send-stream-error connection stream  +protocol-error+
+      (send-stream-error stream  +protocol-error+
                          ":status pseudo-header field MUST be included in all responses"))
     ;; next header section may contain another :status
     (setf (get-seen-text-header stream) nil))
@@ -577,14 +570,14 @@ PAYLOAD).")
     ;; Headers sanity check
     (unless (or (equal (get-method stream) "CONNECT")
              (and (get-method stream) (get-scheme stream) (get-path stream)))
-      (send-stream-error connection stream  +protocol-error+
+      (send-stream-error stream  +protocol-error+
                          "All HTTP/2 requests MUST include exactly one valid value for the
    :method, :scheme, and :path pseudo-header fields, unless it is
    a CONNECT request"))))
 
 (defgeneric do-ping (connection data)
   (:method (connection data)
-    (write-ping-frame connection connection data :ack t))
+    (write-ping-frame connection data :ack t))
   (:method :before ((connection logging-object) data)
     (add-log connection `(:ping ,data))))
 
@@ -606,7 +599,7 @@ PAYLOAD).")
 
 (defmethod http2-error (connection error-code debug-code &rest args)
   (let ((formatted (apply #'format nil debug-code args)))
-    (write-goaway-frame connection connection
+    (write-goaway-frame connection
                         0 ; fixme: last processed stream
                         error-code
                         (map 'vector 'char-code formatted) )
@@ -655,7 +648,7 @@ extensions..")
     (read-sequence preface-buffer (get-network-stream connection))
     (unless (equalp preface-buffer +client-preface-start+)
       (warn "Client preface mismatch: got ~a" preface-buffer)))
-  (write-settings-frame connection connection (get-settings connection)))
+  (write-settings-frame connection (get-settings connection)))
 
 ;; 3.5.  HTTP/2 Connection Preface
 (defvar +client-preface-start+
@@ -674,7 +667,7 @@ extensions..")
    empty."
 
   (write-sequence +client-preface-start+ (get-network-stream connection))
-  (write-settings-frame connection connection (get-settings connection)))
+  (write-settings-frame connection (get-settings connection)))
 
 (defmethod do-pong :before ((connection logging-object) data)
   (add-log connection `(:pong ,data)))

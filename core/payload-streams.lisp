@@ -49,17 +49,17 @@ enough to send the data as a data frame (or forced to by close of force-output).
             ;; this assumes that the client will not shrink the window too much.
             do
                (read-frame connection))
-      (write-data-frame connection stream output-buffer)
+      (write-data-frame stream output-buffer)
       (setf (fill-pointer output-buffer) 0))))
 
 (defmethod close ((stream binary-output-stream-over-data-frames) &key &allow-other-keys)
   (with-slots (output-buffer connection) stream
-    (write-data-frame connection stream output-buffer :end-stream t)
+    (write-data-frame stream output-buffer :end-stream t)
     (force-output (get-network-stream connection))))
 
 (defmethod trivial-gray-streams:stream-force-output ((stream binary-output-stream-over-data-frames))
   (with-slots (output-buffer connection) stream
-    (write-data-frame connection stream output-buffer :end-stream nil)
+    (write-data-frame stream output-buffer :end-stream nil)
     (force-output (get-network-stream connection))))
 
 ;; TODO: finish-output could wait for window updates arriving. Except afaics
@@ -73,7 +73,7 @@ enough to send the data as a data frame (or forced to by close of force-output).
     (flet ((send-data (size)
              "Send data in OUTPUT-BUFFER and SIZE data from SEQUENCE starting at START in one
               data frame; mark them as sent."
-             (write-data-frame connection stream
+             (write-data-frame stream
                                (if (zerop (length output-buffer))
                                    (make-array size
                                                :displaced-to sequence
@@ -134,7 +134,7 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
   (:default-initargs
    :data (cons nil nil)))
 
-(defmethod apply-data-frame (connection (stream data-frames-collecting-mixin) frame-data)
+(defmethod apply-data-frame ((stream data-frames-collecting-mixin) frame-data)
   (push-frame (get-data stream) frame-data))
 
 (defmethod trivial-gray-streams:stream-read-byte ((stream binary-input-stream-over-data-frames))
@@ -152,6 +152,6 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
                      (pop-frame data)
                      (add-log connection `(:window-size-increment ,index))
                      (add-log stream `(:window-size-increment ,index))
-                     (write-window-update-frame connection connection index)
-                     (write-window-update-frame connection stream index)
+                     (write-window-update-frame connection index)
+                     (write-window-update-frame stream index)
                      (setf index 0))))))))

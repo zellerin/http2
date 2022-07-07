@@ -35,9 +35,9 @@ request when peer closes the stream."))
                                             stream
                              ,@flexi-pars))
        (flet ((send-headers (&rest args)
-                (apply #'send-headers connection stream args))
+                (apply #'send-headers stream args))
               (send-goaway (code debug-data)
-                (http2::write-goaway-frame connection connection
+                (http2::write-goaway-frame connection
                                            0 code debug-data)
                 (force-output (get-network-stream connection))))
          (declare (ignorable #'send-goaway))
@@ -90,25 +90,26 @@ request when peer closes the stream."))
                                  history-printing-object)
   ())
 
-(defmethod peer-ends-http-stream (connection (stream vanilla-server-stream))
+(defmethod peer-ends-http-stream ((stream vanilla-server-stream))
   "Send some random payloads, or shut down the server."
   (let ((handler
-          (or
-           (cdr (assoc (get-path stream) *exact-handlers*
-                          :test (lambda (prefix path)
-                                  (let ((mismatch (mismatch prefix path)))
-                                    (or (null mismatch)
-                                        (and (eql mismatch (position #\? path))
-                                             (eql mismatch (length path))))))))
-           (cdr (assoc (get-path stream) *prefix-handlers*
-                          :test (lambda (prefix path)
-                                  (let ((mismatch (mismatch prefix path)))
-                                    (or (null mismatch) (equal mismatch (length path))))))))))
-    (if handler (funcall handler connection stream)
-     (progn
-       (write-headers-frame connection stream `((:status "404") ("content-type" "text/html")) :end-headers t)
-       (write-data-frame connection stream (map 'vector 'char-code "<h1>Not found</h1>")
-                         :end-stream t)))))
+            (or
+             (cdr (assoc (get-path stream) *exact-handlers*
+                         :test (lambda (prefix path)
+                                 (let ((mismatch (mismatch prefix path)))
+                                   (or (null mismatch)
+                                       (and (eql mismatch (position #\? path))
+                                            (eql mismatch (length path))))))))
+             (cdr (assoc (get-path stream) *prefix-handlers*
+                         :test (lambda (prefix path)
+                                 (let ((mismatch (mismatch prefix path)))
+                                   (or (null mismatch) (equal mismatch (length path))))))))))
+    (with-slots (connection) stream
+      (if handler (funcall handler connection stream)
+          (progn
+            (write-headers-frame stream `((:status "404") ("content-type" "text/html")) :end-headers t)
+            (write-data-frame stream (map 'vector 'char-code "<h1>Not found</h1>")
+                              :end-stream t))))))
 
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection))
   (let ((connection (make-instance connection-class
