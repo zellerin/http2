@@ -19,7 +19,7 @@
 (defclass binary-output-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
   ((output-buffer   :accessor get-output-buffer)
    (send-threshold  :accessor get-send-threshold  :initarg :send-threshold))
-  (:default-initargs :to-write 0 :to-store 0 :send-threshold 16000)
+  (:default-initargs :to-write 0 :to-store 0)
   (:documentation
    "Binary stream that accepts new octets to the output-buffer, until it is big
 enough to send the data as a data frame (or forced to by close of force-output)."))
@@ -30,8 +30,10 @@ enough to send the data as a data frame (or forced to by close of force-output).
   (setf (get-output-buffer stream)
         (make-array window-size :element-type '(unsigned-byte 8)
                                 :fill-pointer 0 :adjustable nil)
-        (get-send-threshold stream) (or send-threshold
-                                        (floor window-size 3)))) ; first heuristics
+        (get-send-threshold stream)
+        (or send-threshold
+            (min (floor window-size 3)
+                 (floor (get-max-peer-frame-size connection) 1.1))))) ; first heuristics
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream binary-output-stream-over-data-frames) byte)
   (with-slots (output-buffer connection) stream

@@ -401,8 +401,11 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
     (setf (get-initial-peer-window-size connection) value))
 
   (:method (connection (name (eql :max-frame-size)) value)
-    ;; do something
-    )
+    (if (>= 16777215 value 16384)
+        (setf (get-max-peer-frame-size connection) value)
+        (http2-error +protocol-error+
+                     "Frame size MUST be between the initial value 16384 and the maximum allowed frame
+size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
 
   (:method (connection (name (eql :max-header-list-size)) value)
     ;; do something
