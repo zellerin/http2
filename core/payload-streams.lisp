@@ -17,8 +17,7 @@
   '(unsigned-byte 8))
 
 (defclass binary-output-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
-  ((output-buffer   :accessor get-output-buffer)
-   (send-threshold  :accessor get-send-threshold  :initarg :send-threshold))
+  ((output-buffer   :accessor get-output-buffer))
   (:default-initargs :to-write 0 :to-store 0)
   (:documentation
    "Binary stream that accepts new octets to the output-buffer, until it is big
@@ -26,14 +25,10 @@ enough to send the data as a data frame (or forced to by close of force-output).
 
 (defmethod initialize-instance :after ((stream binary-output-stream-over-data-frames)
                                        &key connection
-                                         (window-size (get-initial-peer-window-size connection)) send-threshold  &allow-other-keys)
+                                         (window-size (get-initial-peer-window-size connection))  &allow-other-keys)
   (setf (get-output-buffer stream)
         (make-array window-size :element-type '(unsigned-byte 8)
-                                :fill-pointer 0 :adjustable nil)
-        (get-send-threshold stream)
-        (or send-threshold
-            (min (floor window-size 3)
-                 (floor (get-max-peer-frame-size connection) 1.1))))) ; first heuristics
+                                :fill-pointer 0 :adjustable nil)))
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream binary-output-stream-over-data-frames) byte)
   (with-slots (output-buffer connection) stream
@@ -75,6 +70,7 @@ enough to send the data as a data frame (or forced to by close of force-output).
     (flet ((send-data (size)
              "Send data in OUTPUT-BUFFER and SIZE data from SEQUENCE starting at START in one
               data frame; mark them as sent."
+             (print `(:writing ,size + ,(length output-buffer) octets))
              (write-data-frame stream
                                (if (zerop (length output-buffer))
                                    (make-array size
@@ -88,23 +84,25 @@ enough to send the data as a data frame (or forced to by close of force-output).
                                                              :element-type '(unsigned-byte 8)))))
              (setf (fill-pointer output-buffer) 0)
              (incf start size)))
-
+      ;; Situations:
+      ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
+      ;; - We do not have enough data (full frame) yet - we wait for more data
+      ;; - We have more than max-peer-frame-size, but window is too small -> we read a frame
       (let ((total-length (- (+ (or end (length sequence))
                                 (length (get-output-buffer stream)))
                              start)))
         (loop
           for allowed-window = (min (get-peer-window-size connection)
-                                            (get-peer-window-size stream))
-          while (> total-length allowed-window)
-          do (send-data (- allowed-window (length output-buffer)))
-             (decf total-length allowed-window)
-             (read-frame connection))
-        (if (> total-length send-threshold)
-            ;; we send it and go on
-            (send-data (length sequence))
-            ;; just copy data to the output-buffer
-            (loop for idx from start to (1- end)
-                  do (vector-push (aref sequence idx) output-buffer)))))))
+                                    (get-peer-window-size stream))
+          and frame-size = (get-max-peer-frame-size connection)
+          while (and (>= total-length frame-size))
+          do (cond ((>= allowed-window frame-size)
+                    (send-data (- frame-size (length output-buffer)))
+                    (decf total-length frame-size))
+                   (t
+                    (read-frame connection))))
+        (loop for idx from start to (1- end)
+              do (vector-push (aref sequence idx) output-buffer))))))
 
 (defclass binary-input-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((index           :accessor get-index           :initarg :index))
