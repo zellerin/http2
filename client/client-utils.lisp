@@ -44,7 +44,7 @@ TARGET, using SNI."
          ,@body))))
 
 (defun terminate-locally (connection &optional (code +no-error+))
-  (write-goaway-frame connection connection 0 code #())
+  (write-goaway-frame connection 0 code #())
   (setf (http2::get-finished connection) t))
 
 (defclass vanilla-client-connection (client-http2-connection http2::history-printing-object
@@ -88,9 +88,10 @@ TARGET, using SNI."
                          the stream. If result is true, terminate connection"))
   (:default-initargs :end-stream-callback (constantly nil)))
 
-(defmethod peer-ends-http-stream ((connection vanilla-client-connection) stream)
-  (when (funcall (get-end-stream-callback stream) stream)
-    (terminate-locally connection)))
+(defmethod peer-ends-http-stream ((stream vanilla-client-stream))
+  (with-slots (connection) stream
+    (when (funcall (get-end-stream-callback stream) stream)
+      (terminate-locally connection))))
 
 (defmethod initialize-instance :after ((connection vanilla-client-stream) &key &allow-other-keys)
   "Empty method to allow ignorable keys overflown from send-headers")

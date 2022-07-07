@@ -7,7 +7,7 @@
                         'vanilla-client-io-connection
                         :network-stream (tls-connection-to "localhost" :port 1230))
                      (loop
-                       with stream = (send-headers connection :new headers)
+                       with stream = (send-headers connection headers)
                        do
                           ;; if it does not signal eventually we lose.
                           (read-frame connection)))))
@@ -19,3 +19,10 @@
   (test-bad-headers '((:path "/") ("foo" "bar")
                       (:scheme "https")
                       (:authority "localhost"))))
+
+(fiasco:deftest uppercase-headers ()
+  (test-bad-headers '((:method "GET")
+                      (:path "/")
+                      (:scheme "https")
+                      (:authority "localhost")
+                      ("FOO" "bar"))))

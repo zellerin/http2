@@ -14,13 +14,6 @@
                                                :content-type "text/plain"
                                                :additional-headers '(("refresh" "3; url=/"))))
 
-(defvar *intro-page*
-  "<h1>Hello World</h1>
-<p>This server is for testing http2 protocol</p>
-<p><a href='/redir'>Redirect test</a>
-<form action='/body' method='post'><input type='submit' name='xxx' value='POST query test'></form")
-
-(require 'cl-who)
 (define-exact-handler "/"
     (handler (out :external-format :utf-8)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
@@ -47,16 +40,6 @@
       (send-headers `((:status "200") ("content-type" "text/plain")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
-
-#+sbcl (define-exact-handler "/exit"
-  (handler (out)
-    (send-headers `((:status "200")))
-    (princ "Goodbye" out)
-    (send-goaway +no-error+ #())
-    (sb-ext:quit)))
-
-#+sbcl (defun sb-threadify (fn &rest args)
-         (sb-thread:make-thread fn :arguments args))
 
 (defun main ()
   (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"

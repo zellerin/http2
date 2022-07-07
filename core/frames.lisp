@@ -120,7 +120,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
              (stream-name (gensym "STREAM")))
 
 ;;; Writer
-         `((defun ,writer-name (connection http-stream
+         `((defun ,writer-name (http-connection-or-stream
                                 ,@ (mapcar 'first parameters)
                                 &key ,@(when has-reserved '(reserved))
                                   ,@flags)
@@ -134,13 +134,13 @@ The macro defining FRAME-TYPE-NAME :foo defines
                                              (second par)
                                              )
                                         ,(first par))))
-             (let ((,stream-name (get-network-stream connection)))
+             (let ((,stream-name (get-network-stream http-connection-or-stream)))
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
                       (write-vector (vector) (write-sequence vector ,stream-name)))
                  (declare (ignorable #'write-vector #'write-bytes #'write-vector))
                  (write-frame-header ,stream-name ,type-code
                                      (+ ,@(flags-to-code flags))
-                                     (get-stream-id http-stream)
+                                     (get-stream-id http-connection-or-stream)
                                      :length (+ ,length
                                                 ,@(when (find 'padded flags)
                                                     `((if padded (1+ (length padded)) 0)))))
@@ -152,8 +152,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
                      '((when padded (write-vector padded))))
                  ,@(when (find 'end-stream flags)
                      '((when end-stream
-                         (setf (get-state http-stream)
-                               (if (eql (get-state http-stream) 'open) 'half-closed/local 'closed))))))))
+                         (setf (get-state http-connection-or-stream)
+                               (if (eql (get-state http-connection-or-stream) 'open) 'half-closed/local 'closed))))))))
 
            (defun ,reader-name (connection http-stream length flags)
              ,documentation
@@ -184,7 +184,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; PROTOCOL_ERROR.
                               (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
-                 (when end-stream (peer-ends-http-stream connection http-stream)))
+                 (when end-stream (peer-ends-http-stream http-stream)))
                (read-padding ,stream-name padding-size)))
 
            (setf (aref *frame-types* ,type-code)
@@ -199,6 +199,7 @@ passed to the make-instance"
                        :peer-window-size (get-initial-peer-window-size connection)
                        :window-size (get-initial-window-size connection)
                        :connection connection
+                       :network-stream (get-network-stream connection)
                        pars)))
     (incf (get-id-to-use connection) 2)
     (push stream (get-streams connection))
@@ -388,7 +389,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
         (loop while (plusp length)
               do (decf length (read-vector data))
-                 (apply-data-frame connection http-stream data)))))
+                 (apply-data-frame http-stream data)))))
 
 (define-frame-type 1 :headers-frame
     "

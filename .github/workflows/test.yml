@@ -1,0 +1,42 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "master" branch
+  push:
+    branches: [ "master", "testing" ]
+  pull_request:
+    branches: [ "master", "testing" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  testlisps:
+     name: ${{ matrix.lisp }} on ${{ matrix.os }}
+     strategy:
+       matrix:
+         lisp: [ sbcl-bin ]
+         os: [ ubuntu-latest ]
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@v2
+       - name: install roswell
+         shell: bash
+         env:
+          LISP: ${{ matrix.lisp }}
+         run: curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
+       - name: run lisp
+         continue-on-error: true
+         shell: bash
+         run: |
+           ros -e '(format t "~a:~a on ~a~%...~%~%" (lisp-implementation-type) (lisp-implementation-version) (machine-type))'
+           ros -e '(format t " fixnum bits:~a~%" (integer-length most-positive-fixnum))'
+           ros -e "(ql:quickload 'trivial-features)" -e '(format t "features = ~s~%" *features*)'
+       - name: load code and run tests
+         shell: bash
+         run: |
+           openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt
+           ros -e '(handler-bind (#+asdf3.2(asdf:bad-SYSTEM-NAME (function MUFFLE-WARNING))) (handler-case (ql:quickload :http2/all) (error (a) (format t "caught error ~s~%~a~%" a a) (uiop:quit 123))))' -e '(asdf:oos :test-op :http2)' -e '(uiop:quit (length (fiasco::failures-of fiasco:*last-test-result*)))'

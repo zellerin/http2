@@ -28,18 +28,23 @@ CONTENT-FN (function of one parameter - output binary stream)."
                            :port (or (puri:uri-port parsed-url) 443))
       (let ((stream
               (send-headers connection
-                            :new
                             (append
                              (request-headers method
                                               (or (puri:uri-path parsed-url) "/")
                                               (puri:uri-host parsed-url))
                              (mapcar 'http2::encode-header additional-headers))
                             :end-stream (null (or content content-fn))
-                            :end-stream-callback (constantly t)
-                            :connection connection)))
+                            :end-stream-callback (constantly t))))
+        (typecase ping
+          (integer
+           (dotimes (i ping)
+             (send-ping connection)))
+          (null)
+          (t (send-ping connection)))
+
         (cond
           (content
-           (http2::write-data-frame connection stream
+           (http2::write-data-frame stream
                                     content :end-stream t))
           (content-fn
            (with-open-stream (out
@@ -47,12 +52,6 @@ CONTENT-FN (function of one parameter - output binary stream)."
                                stream
                                :external-format content-encoding))
              (funcall content-fn out))))
-        (typecase ping
-          (integer
-           (dotimes (i ping)
-             (send-ping connection)))
-          (null)
-          (t (send-ping connection)))
         (wait-for-responses)
         (values (http2::get-body stream)
                 (http2::get-status stream)
@@ -68,12 +67,10 @@ CONTENT-FN (function of one parameter - output binary stream)."
 Log events to standard output with VERBOSE set."
   (let ((stream
           (send-headers connection
-                        :new
                         (append
                          (request-headers method path hostname)
                          (mapcar 'http2::encode-header additional-headers))
-                        :end-stream (null content-fn)
-                        :connection connection)))
+                        :end-stream (null content-fn))))
     ;; send body
     (when content-fn
       (with-open-stream (out
