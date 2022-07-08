@@ -36,8 +36,8 @@ enough to send the data as a data frame (or forced to by close of force-output).
         (vector-push byte output-buffer)
         (warn "Not enough space in buffer: ~d<~d"
                (fill-pointer output-buffer) (array-dimension output-buffer 0)))
-    (when (> (min (fill-pointer output-buffer))
-             (get-send-threshold stream))
+    (when (>= (min (fill-pointer output-buffer))
+              (get-max-peer-frame-size connection))
       (loop while (<  (min (get-peer-window-size stream)
                            (get-peer-window-size connection))
                       (length output-buffer))
@@ -57,7 +57,8 @@ enough to send the data as a data frame (or forced to by close of force-output).
 (defmethod trivial-gray-streams:stream-force-output ((stream binary-output-stream-over-data-frames))
   (with-slots (output-buffer connection) stream
     (write-data-frame stream output-buffer :end-stream nil)
-    (force-output (get-network-stream connection))))
+    (force-output (get-network-stream connection))
+    (setf (fill-pointer output-buffer) 0)))
 
 ;; TODO: finish-output could wait for window updates arriving. Except afaics
 ;; noone forces the other side to keep window size unchanged over time...
