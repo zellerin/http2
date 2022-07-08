@@ -31,6 +31,7 @@ enough to send the data as a data frame (or forced to by close of force-output).
                                 :fill-pointer 0 :adjustable nil)))
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream binary-output-stream-over-data-frames) byte)
+  ;; this is actually untested and was written some time ago, so might be buggy.
   (with-slots (output-buffer connection) stream
     (if (< (fill-pointer output-buffer) (array-dimension output-buffer 0))
         (vector-push byte output-buffer)
@@ -51,6 +52,9 @@ enough to send the data as a data frame (or forced to by close of force-output).
 
 (defmethod close ((stream binary-output-stream-over-data-frames) &key &allow-other-keys)
   (with-slots (output-buffer connection) stream
+    ;; FIXME: here we know (aside of intervening setting changes) that the
+    ;; output buffer is smaller than max-frame-size, but it still might be
+    ;; larger than the window.
     (write-data-frame stream output-buffer :end-stream t)
     (force-output (get-network-stream connection))))
 
@@ -58,50 +62,55 @@ enough to send the data as a data frame (or forced to by close of force-output).
   (with-slots (output-buffer connection) stream
     (write-data-frame stream output-buffer :end-stream nil)
     (force-output (get-network-stream connection))))
-
 ;; TODO: finish-output could wait for window updates arriving. Except afaics
 ;; noone forces the other side to keep window size unchanged over time...
+
+
+(defun send-data (stream sequence start size)
+  "Send data in OUTPUT-BUFFER and SIZE data from SEQUENCE starting at START in
+  one data frame; mark them as sent.
+
+Return new START."
+  (with-slots (output-buffer) stream
+    (write-data-frame stream
+                      (if (zerop (length output-buffer))
+                          (make-array size
+                                      :displaced-to sequence
+                                      :displaced-index-offset start
+                                      :element-type '(unsigned-byte 8))
+                          (list output-buffer
+                                (make-array size
+                                            :displaced-to sequence
+                                            :displaced-index-offset start
+                                            :element-type '(unsigned-byte 8))))))
+  (incf start size))
 
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream binary-output-stream-over-data-frames) sequence start end &key)
   ;; this is here for profiling at the moment. Implementing better version of
   ;; this would be beneficial for performance if it is used.
   (with-slots (connection output-buffer send-threshold) stream
-    (flet ((send-data (size)
-             "Send data in OUTPUT-BUFFER and SIZE data from SEQUENCE starting at START in one
-              data frame; mark them as sent."
-             (write-data-frame stream
-                               (if (zerop (length output-buffer))
-                                   (make-array size
-                                               :displaced-to sequence
-                                               :displaced-index-offset start
-                                               :element-type '(unsigned-byte 8))
-                                   (list output-buffer
-                                                 (make-array size
-                                                             :displaced-to sequence
-                                                             :displaced-index-offset start
-                                                             :element-type '(unsigned-byte 8)))))
-             (setf (fill-pointer output-buffer) 0)
-             (incf start size)))
-      ;; Situations:
-      ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
-      ;; - We do not have enough data (full frame) yet - we wait for more data
-      ;; - We have more than max-peer-frame-size, but window is too small -> we read a frame
-      (let ((total-length (- (+ (or end (length sequence))
-                                (length (get-output-buffer stream)))
-                             start)))
-        (loop
-          for allowed-window = (min (get-peer-window-size connection)
-                                    (get-peer-window-size stream))
-          and frame-size = (get-max-peer-frame-size connection)
-          while (and (>= total-length frame-size))
-          do (cond ((>= allowed-window frame-size)
-                    (send-data (- frame-size (length output-buffer)))
-                    (decf total-length frame-size))
-                   (t
-                    (read-frame connection))))
-        (loop for idx from start to (1- end)
-              do (vector-push (aref sequence idx) output-buffer))))))
+    ;; Situations:
+    ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
+    ;; - We do not have enough data (full frame) yet - we wait for more data
+    ;; - We have more than max-peer-frame-size, but window is too small -> we read a frame
+
+    (let ((total-length (- (+ (or end (length sequence))
+                              (length (get-output-buffer stream)))
+                           start)))
+      (loop
+        for allowed-window = (min (get-peer-window-size connection)
+                                  (get-peer-window-size stream))
+        and frame-size = (get-max-peer-frame-size connection)
+        while (and (>= total-length frame-size))
+        do (cond ((>= allowed-window frame-size)
+                  (setf start
+                        (send-data stream sequence start (- frame-size (length output-buffer))))
+                  (decf total-length frame-size))
+                 (t
+                  (read-frame connection))))
+      (loop for idx from start to (1- end)
+            do (vector-push (aref sequence idx) output-buffer)))))
 
 (defclass binary-input-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((index           :accessor get-index           :initarg :index))
