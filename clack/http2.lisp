@@ -33,40 +33,73 @@
         (setf (gethash name request-headers) value))))
 
 (defmethod http2::peer-ends-http-stream ((stream clack-server-stream))
-  (destructuring-bind (status headers body)
-      (print (funcall (get-app (http2::get-connection stream))
-                      (print
-                       (let* ((parsed-uri (puri:parse-uri (http2::get-path stream)))
-                              (server-name-and-port (http2::get-authority stream))
-                              (colon-pos (position #\: server-name-and-port)))
-                         (list
-                          :request-method (http2::get-method stream)
-                          :script-name ""
-                          :path-info (puri:uri-path parsed-uri)
-                          :query-string (puri:uri-query parsed-uri)
-                          :url-scheme (http2::get-scheme stream)
-                          :server-name (subseq server-name-and-port 0 colon-pos)
-                          :server-port (if colon-pos
-                                           (parse-integer
-                                            (subseq server-name-and-port (1+ colon-pos)))
-                                           443)
-                          :server-protocol :http/2
-                          :request-uri (http2::get-path stream)
-                          :raw-body stream
-                          :remote-addr (get-peer-address
-                                        (http2::get-connection stream))
-                          :remote-port (get-peer-port
-                                        (http2::get-connection stream))
-                          :headers (get-request-headers stream))))))
-    (send-headers stream (cons (list :status (format nil "~d" status))
-                               (loop for (key value) on headers by 'cddr
-                                     collect (list (string-downcase (symbol-name key))
-                                               value))))
-    (etypecase body
-      (cons ; list of streams
-       (with-open-stream (out (flexi-streams:make-flexi-stream stream))
-         (dolist (string body)
-           (princ string out)))))))
+  (let ((response
+          (funcall (get-app (http2::get-connection stream))
+                   (let* ((parsed-uri (puri:parse-uri (http2::get-path stream)))
+                          (server-name-and-port (http2::get-authority stream))
+                          (colon-pos (position #\: server-name-and-port)))
+                     (list
+                      :request-method (http2::get-method stream)
+                      :script-name ""
+                      :path-info (puri:uri-path parsed-uri)
+                      :query-string (puri:uri-query parsed-uri)
+                      :url-scheme (http2::get-scheme stream)
+                      :server-name (subseq server-name-and-port 0 colon-pos)
+                      :server-port (if colon-pos
+                                       (parse-integer
+                                        (subseq server-name-and-port (1+ colon-pos)))
+                                       443)
+                      :server-protocol :http/2
+                      :request-uri (http2::get-path stream)
+                      :raw-body stream
+                      :remote-addr (get-peer-address
+                                    (http2::get-connection stream))
+                      :remote-port (get-peer-port
+                                    (http2::get-connection stream))
+                      :headers (get-request-headers stream))))))
+    (if (consp response)
+        (destructuring-bind (status headers body) response
+          (send-headers stream (cons (list :status (format nil "~d" status))
+                                     (loop for (key value) on headers by 'cddr
+                                           collect (list (string-downcase (symbol-name key))
+                                                         value))))
+          (etypecase body
+            (cons ; list of streams
+             (with-open-stream (out (flexi-streams:make-flexi-stream stream))
+               (dolist (string body)
+                 (princ string out))))
+            (vector
+             (write-sequence body stream))
+            (pathname
+             (let ((buffer (make-array 4096 :element-type '(unsigned-byte 8))))
+               (with-open-file (in body :element-type '(unsigned-byte 8))
+                 (loop for len = (read-sequence buffer in)
+                       while (plusp len)
+                       do
+                          (write-sequence buffer stream :end len))
+                 (close stream))))))
+        (funcall response (http2-responder stream)))))
+
+;; this API looks a bit crazy, lambdas in lambdas...
+(defun http2-responder (stream)
+  "Responder for a stream"
+  (lambda (status-and-headers)
+    (destructuring-bind (status headers) status-and-headers
+        (send-headers stream (cons (list :status (format nil "~d" status))
+                                   (loop for (key value) on headers by 'cddr
+                                         collect (list (string-downcase (symbol-name key))
+                                                       value)))))
+    (lambda (body &key (start 0) (end (length body)) (close nil))
+      (etypecase body
+        (string
+         (write-sequence
+          (flex:string-to-octets body
+                                 :start start :end end
+                                 :external-format :utf-8)
+          stream))
+        (vector (write-sequence body stream :start start :end end))
+        (null))
+      (when close (close stream)))))
 
 (defun run (*app* &key debug port ssl-key-file ssl-cert-file fd)
   (when fd (error "cannot listen on FD"))
