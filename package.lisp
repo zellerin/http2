@@ -45,6 +45,7 @@
            #:peer-expects-settings-ack
            #:peer-acks-settings
 
+           #:make-transport-stream
            #:binary-output-stream-over-data-frames
            ;; Server
            #:create-https-server
@@ -60,4 +61,13 @@
            #:process-server-stream
            #:get-body
 
-           #:+no-error+))
+           #:+no-error+)
+  (:documentation "HTTP2 API on several levels.
+
+First, it has some high level interface to facilitate making HTTP2 client and
+server with some vanilla behaviour. The communication is done mostly by writing to and reading from (Lisp) streams and sending/parsing/receiving headers.
+
+Then, there is an object oriented interface that allows to customize details on
+how the client or server acts in some situations. This allows things such as sending pushes on the server side.
+
+Then there is a low level frame oriented interface to read and write frames."))

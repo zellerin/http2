@@ -18,7 +18,9 @@
   (test-a-frame from-closed #'write-data-frame '(#(1 2 3 4 5))
                   :init-state 'closed
                   :expected-log-stream '((:payload #(1 2 3 4 5)))
-                  :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 5 :ERROR-CODE +NO-ERROR+)))
+                  :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 0
+                                                   :ERROR-CODE +STREAM-CLOSED+))
+                  :expected-sender-error 'go-away)
 
   (test-a-frame padded #'write-data-frame '(#(1 2 3 4 5)
                                             :padded #(0 1 2 3  6 7))
@@ -93,8 +95,6 @@
                   :stream :connection
                   :expected-log-sender '((:settings-ACKed)))
 
-  #+nil(test-a-frame 'write-push-promise-frame )
-
   (test-a-frame nil #'write-ping-frame '(#x42)
                   :expected-log-connection '((:ping #x42))
                   :expected-log-sender '((:pong #x42))
@@ -102,23 +102,22 @@
 
   (test-a-frame undefined-code #'write-goaway-frame `(#x42 #xec0de #(1 2 3 4 5))
                   :expected-log-connection
-                  '((:go-away :last-stream-id 966878 :error-code
-                     undefined-error-code-42))
+                  '((:go-away :last-stream-id #x42 :error-code
+                     undefined-error-code-ec0de))
                   :stream :connection
                   :expected-receiver-error 'go-away)
 
-  (test-a-frame no-error #'write-goaway-frame `(,+no-error+ #xec0de #(1 2 3 4 5))
+  (test-a-frame no-error #'write-goaway-frame `(#x42 ,+no-error+ #(1 2 3 4 5))
                   :expected-log-connection
-                  '((:go-away :last-stream-id 966878
-                              :error-code +no-error+
-                     ))
+                  '((:go-away :last-stream-id #x42
+                              :error-code +no-error+))
                   :stream :connection)
 
   (test-a-frame stream #'write-window-update-frame '(#x40000)
                   :expected-log-stream
-                  '((:window-size-increment #x40000)))
+                  '((:window-size-increment #xffff + #x40000)))
 
   (test-a-frame connection #'write-window-update-frame '(#x40000)
                   :stream :connection
                   :expected-log-connection
-                  '((:window-size-increment #x40000))))
+                  '((:window-size-increment #xffff + #x40000))))

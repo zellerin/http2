@@ -35,7 +35,6 @@
 
 |#
 
-
 
 ;;;; Frame definitions - boilerplate
 
@@ -48,7 +47,7 @@
   "Description of a frame type"
   name receive-fn documentation)
 
-(defconstant +known-frame-types-count+ 10
+(defconstant +known-frame-types-count+ 11
   "Number of frame types we know.")
 
 (defvar *frame-types* (make-array +known-frame-types-count+)
@@ -136,14 +135,21 @@ The macro defining FRAME-TYPE-NAME :foo defines
                                         ,(first par))))
              (let ((,stream-name (get-network-stream http-connection-or-stream)))
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
-                      (write-vector (vector) (write-sequence vector ,stream-name)))
-                 (declare (ignorable #'write-vector #'write-bytes #'write-vector))
-                 (write-frame-header ,stream-name ,type-code
+                      (write-vector (vector) (write-sequence vector ,stream-name))
+                      (write-31 (value)
+                        ,(if has-reserved
+                             `(write-31-bits ,stream-name value reserved)
+                             `(error "write-31 is not allowed here"))))
+                 (declare (ignorable #'write-vector #'write-bytes #'write-vector
+                                     #'write-31))
+                 (write-frame-header ,stream-name
+                                     (+ ,length
+                                        ,@(when (find 'padded flags)
+                                            `((if padded (1+ (length padded)) 0))))
+                                     ,type-code
                                      (+ ,@(flags-to-code flags))
-                                     (get-stream-id http-connection-or-stream)
-                                     :length (+ ,length
-                                                ,@(when (find 'padded flags)
-                                                    `((if padded (1+ (length padded)) 0)))))
+                                     http-connection-or-stream
+                                     nil)
                  ,@(when (find 'padded flags)
                      `((when padded
                          (write-bytes 1 (length padded)))))
@@ -153,7 +159,8 @@ The macro defining FRAME-TYPE-NAME :foo defines
                  ,@(when (find 'end-stream flags)
                      '((when end-stream
                          (setf (get-state http-connection-or-stream)
-                               (if (eql (get-state http-connection-or-stream) 'open) 'half-closed/local 'closed))))))))
+                               (if (eql (get-state http-connection-or-stream) 'open)
+                                   'half-closed/local 'closed))))))))
 
            (defun ,reader-name (connection http-stream length flags)
              ,documentation
@@ -184,7 +191,11 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; PROTOCOL_ERROR.
                               (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
-                 (when end-stream (peer-ends-http-stream http-stream)))
+                 (when end-stream
+                   (setf (get-state http-stream)
+                         (if (eql (get-state http-stream) 'open)
+                             'half-closed/remote 'closed))
+                   (peer-ends-http-stream http-stream)))
                (read-padding ,stream-name padding-size)))
 
            (setf (aref *frame-types* ,type-code)
@@ -205,10 +216,17 @@ passed to the make-instance"
     (push stream (get-streams connection))
     stream))
 
-(defun write-frame-header (stream type flags http-stream &key (R 0) (length 0))
+(defun write-31-bits (stream value reserved)
+  "Write 31 bits of VALUE to a STREAM. Set first bit if RESERVED is set."
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 31) value))
+  (write-bytes stream 4 (logior value (if reserved #x80000000 0))))
+
+(defun write-frame-header (stream length type flags http-stream R)
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
 
+  #+begin_src artist
     +-----------------------------------------------+
     |                 Length (24)                   |
     +---------------+---------------+---------------+
@@ -218,6 +236,7 @@ passed to the make-instance"
     +=+=============================================================+
     |                   Frame Payload (0...)                      ...
     +---------------------------------------------------------------+
+  #+end_src
 
    Length:  The length of the frame payload expressed as an unsigned
       24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
@@ -227,8 +246,7 @@ passed to the make-instance"
       The 9 octets of the frame header are not included in this value.
 
    Type:  The 8-bit type of the frame.  The frame type determines the
-      format and semantics of the frame.  Implementations MUST ignore
-      and discard any frame that has a type that is unknown.
+      format and semantics of the frame.
 
    Flags:  An 8-bit field reserved for boolean flags specific to the
       frame type.
@@ -245,25 +263,22 @@ passed to the make-instance"
       as an unsigned 31-bit integer.  The value 0x0 is reserved for
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
-  (declare ((unsigned-byte 24) length)
-           ((unsigned-byte 8) type flags)
-           ((unsigned-byte 31) http-stream)
-           ((member 0 128) R))
-  (write-byte (ldb (byte 8 16) length) stream)
-  (write-byte (ldb (byte 8 8) length) stream)
-  (write-byte (ldb (byte 8 0) length) stream)
-  (write-byte type stream)
-  (write-byte flags stream)
-  (write-byte (+ R (ldb (byte 8 23) http-stream)) stream)
-  (write-byte (ldb (byte 8 16) http-stream) stream)
-  (write-byte (ldb (byte 8 8) http-stream) stream)
-  (write-byte (ldb (byte 8 0) http-stream) stream))
+  (let ((http-stream-id (get-stream-id http-stream)))
+    (declare (type (unsigned-byte 24) length)
+             (type (unsigned-byte 8) type flags)
+             (type (unsigned-byte 31) http-stream-id)
+             (optimize speed))
+    (write-bytes stream 3 length)
+    (write-byte type stream)
+    (write-byte flags stream)
+    (write-31-bits stream http-stream-id R)))
 
 
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
 
+  #+begin_src artist
     +-----------------------------------------------+
     |                 Length (24)                   |
     +---------------+---------------+---------------+
@@ -273,6 +288,7 @@ passed to the make-instance"
     +=+=============================================================+
     |                   Frame Payload (0...)                      ...
     +---------------------------------------------------------------+
+  #+end_src
 
    Length:  The length of the frame payload expressed as an unsigned
       24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
@@ -345,8 +361,7 @@ arrangement or negotiation."
                                    (handle-undefined-frame type flags length)
                                    (let ((stream (get-network-stream connection)))
                                      (dotimes (i length) (read-byte stream))))))))
-      (values
-       (cond (frame-type-object
+      (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
                        (if (zerop http-stream) connection
                            (or (find http-stream (get-streams connection)
@@ -354,9 +369,11 @@ arrangement or negotiation."
                                (peer-opens-http-stream connection http-stream type)
                                http-stream))
                        length flags))
-             (t (read-sequence payload stream)
-                (warn "~s" (list :frame  payload http-stream type flags))))
-       (frame-type-name frame-type-object)))))
+            (t (read-sequence payload stream)
+               (warn "~s" (list :frame  payload http-stream type flags))))
+      (values
+       (frame-type-name frame-type-object)
+       http-stream))))
 
 
 
@@ -365,11 +382,13 @@ arrangement or negotiation."
 
 
 ;;;; Definition of individual frame types.
-
 (define-frame-type 0 :data-frame
-" +---------------+-----------------------------------------------+
+    "#+begin_src artist
+
+  +---------------+-----------------------------------------------+
   |                            Data (*)                         ...
   +---------------------------------------------------------------+
+  #+end_src
 
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
@@ -392,7 +411,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
                  (apply-data-frame http-stream data)))))
 
 (define-frame-type 1 :headers-frame
-    "
+    "#+begin_src artist
+
     +-+-------------+-----------------------------------------------+
     |E|                 Stream Dependency? (31)                     |
     +-+-------------+-----------------------------------------------+
@@ -400,6 +420,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     +-+-------------+-----------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
+   #+end_src
 
    The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
@@ -426,8 +447,8 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
     ;; writer
     ((when priority ;; this is obsoleted, but still in place
-       (write-bytes (first priority) 4)
-       (write-bytes (second priority) 1))
+       (write-bytes 4 (first priority))
+       (write-bytes 1 (second priority)))
      (map nil #'write-vector headers))
 
     ;; reader
@@ -464,11 +485,13 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
    of a stream (Section 5.3).
 
+   #+begin_src artist
     +-+-------------------------------------------------------------+
     |E|                  Stream Dependency (31)                     |
     +-+-------------+-----------------------------------------------+
     |   Weight (8)  |
     +-+-------------+
+   #+end_src
 
    The payload of a PRIORITY frame contains the following fields:
 
@@ -508,9 +531,11 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    stream.  RST_STREAM is sent to request cancellation of a stream or to
    indicate that an error condition has occurred.
 
+   #+begin_src artist
     +---------------------------------------------------------------+
     |                        Error Code (32)                        |
     +---------------------------------------------------------------+
+   #+end_src
 
    The RST_STREAM frame contains a single unsigned, 32-bit integer
    identifying the error code (Section 7).  The error code indicates why
@@ -596,19 +621,29 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       header field.
 
       For any given request, a lower limit than what is advertised MAY
-      be enforced.  The initial value of this setting is unlimited.")))
+      be enforced.  The initial value of this setting is unlimited.")
+
+    (:enable-connect-protocol 8
+     "See RFC8441. Upon receipt of SETTINGS_ENABLE_CONNECT_PROTOCOL with a value of
+   1, a client MAY use the Extended CONNECT as defined in this document when
+   creating new streams.  Receipt of this parameter by a server does not have
+   any impact.")
+    (:no-rfc5740-priorities 9 "See RFC9218.")
+    (:tls-reneg-permitted #x10 "MS-HTTP2E"))
+  "See https://www.iana.org/assignments/http2-parameters/http2-parameters.xhtml")
 
 (defun find-setting-code (name)
   (or (second (assoc name *settings-alist*))
       (error "No setting named ~a" name)))
 
 (define-frame-type 4 :settings-frame
-    "
+    "#+begin_src artist
     +-------------------------------+
     |       Identifier (16)         |
     +-------------------------------+-------------------------------+
     |                        Value (32)                             |
     +---------------------------------------------------------------+
+   #+end_src
 
    The SETTINGS frame (type=0x4) conveys configuration parameters that
    affect how endpoints communicate, such as preferences and constraints
@@ -648,10 +683,10 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
 
 (defun find-setting-by-id (id)
   (or (car (find id *settings-alist* :key 'second))
-      :unknown))
+      (format nil "ID#~d" id)))
 
 (defun write-ack-setting-frame (stream)
-  "Write (for now empty) settings frame.
+  "Write ACK settings frame.
 
    ACK (0x1):  When set, bit 0 indicates that this frame acknowledges
       receipt and application of the peer's SETTINGS frame.  When this
@@ -660,7 +695,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
       field value other than 0 MUST be treated as a connection error
       (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
       see Section 6.5.3 (\"Settings Synchronization\")."
-  (write-frame-header stream +settings-frame+ 1 0 :length 0))
+  (write-frame-header stream 0 +settings-frame+ 1 0 nil))
 
 
 (define-frame-type 5 :push-promise-frame
@@ -672,11 +707,13 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    provide additional context for the stream.  Section 8.2 contains a
    thorough description of the use of PUSH_PROMISE frames.
 
+   #+begin_src artist
     +-+-------------+-----------------------------------------------+
     |R|                  Promised Stream ID (31)                    |
     +-+-----------------------------+-------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
+   #+end_src
 
    The PUSH_PROMISE frame payload has the following fields:
 
@@ -717,7 +754,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :bad-state-error protocol-error
      :has-reserved t)
     ;;writer
-    ((write-bytes 4 (logior promised-stream-id (if reserved #x80000000 0)))
+    ((write-31 promised-stream-id)
      (map nil #'write-vector headers))
     ;; reader
     ((error "Reading promise N/A")))
@@ -729,11 +766,13 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
    idle connection is still functional.  PING frames can be sent from
    any endpoint.
 
+   #+begin_src artist
     +---------------------------------------------------------------+
     |                                                               |
     |                      Opaque Data (64)                         |
     |                                                               |
     +---------------------------------------------------------------+
+   #+end_src
 
                       Figure 12: PING Payload Format
 
@@ -765,7 +804,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
             (do-ping connection data)))))
 
 (define-frame-type 7 :goaway-frame
-    "
+    "#+begin_src artist
     +-+-------------------------------------------------------------+
     |R|                  Last-Stream-ID (31)                        |
     +-+-------------------------------------------------------------+
@@ -773,6 +812,7 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
     +---------------------------------------------------------------+
     |                  Additional Debug Data (*)                    |
     +---------------------------------------------------------------+
+   #+end_src
 
    The GOAWAY frame (type=0x7) is used to initiate shutdown of a
    connection or to signal serious error conditions.  GOAWAY allows an
@@ -786,29 +826,30 @@ connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
      :must-not-have-stream t
      :has-reserved t)
 
-    ((write-bytes 4 (logior last-stream-id (if reserved #x80000000 0)))
+    ((write-31 last-stream-id)
      (write-bytes 4 error-code)
      (write-vector debug-data))
 
     ;; reader
     ((unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
-     (do-goaway connection (get-error-name (read-bytes 4))
-       (read-bytes 4)
-       (let ((data (make-array (- length 8))))
-         (read-vector data)
-         data))))
+      (let ((last-id (read-bytes 4))
+            (error-code (read-bytes 4))
+            (data (make-array (- length 8))))
+        (read-vector data)
+        (do-goaway connection (get-error-name error-code) last-id data))))
 
 (define-frame-type 8 :window-update-frame
-    "
+    "#+begin_src artist
     +-+-------------------------------------------------------------+
     |R|              Window Size Increment (31)                     |
     +-+-------------------------------------------------------------+
+  #+end_src
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
     ((window-size-increment 31))
     (:length 4
      :has-reserved t)
-    ((write-bytes 4 (logior window-size-increment (if reserved #x80000000 0))))
+    ((write-31 window-size-increment))
 
     (;;reader
      (unless (zerop flags)
@@ -824,10 +865,12 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
   (decf (get-window-size stream) length))
 
 (define-frame-type 9 :continuation-frame
-    "
+    "#+begin_src artist
+
     +---------------------------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
+#+end_src
 
 The CONTINUATION frame (type=0x9) is used to continue a sequence of header block
 fragments (Section 4.3).  Any number of CONTINUATION frames can be sent, as long
@@ -865,3 +908,46 @@ CONTINUATION frame without the END_HEADERS flag set."
                          stream-identifier))
                 (set-when-no-bytes-left-fn http2-stream-id (plusp (logand flags #x4)))
                 (setf *bytes-left* length))))))
+
+(define-frame-type 10 :altsvc-frame
+    "See RFC 7838.  The ALTSVC HTTP/2 frame advertises the availability of an
+   alternative service to an HTTP/2 client.
+
+    #+begin_src artist
+    +-------------------------------+-------------------------------+
+    |         Origin-Len (16)       | Origin? (*)                 ...
+    +-------------------------------+-------------------------------+
+    |                   Alt-Svc-Field-Value (*)                   ...
+    +---------------------------------------------------------------+
+   #+end_src"
+    ((origin (or null string))
+     (alt-svc-field-value string))
+    (:length (+ 2 (length origin) (length alt-svc-field-value)))
+
+    ((write-bytes 2 (length origin))
+     (when origin (write-vector (map '(vector unsigned-byte 8)
+                                     'char-code origin)))
+     (write-vector (map '(vector unsigned-byte 8)
+                        'char-code alt-svc-field-value)))
+
+    ;; reader
+    ((unless (zerop flags) (warn "Flags set for altsvc frame: ~d" flags))
+      (let* ((origin-len (read-bytes 2))
+             (origin (when (plusp origin-len)
+                       (make-array origin-len :element-type '(unsigned-byte 8))))
+             (alt-svc-field-value (make-array (- length 2 origin-len)
+                                              :element-type '(unsigned-byte 8))))
+        (when (plusp origin-len)
+          (read-vector origin))
+        (read-vector alt-svc-field-value)
+        (cond
+          ((and (eq connection http-stream)
+                (plusp origin-len))
+           (handle-alt-svc connection origin alt-svc-field-value))
+          ((plusp origin-len)
+           "An ALTSVC frame on a stream other than stream 0 containing non-empty \"Origin\"
+   information is invalid and MUST be ignored.")
+          ((eq connection http-stream)
+           "An ALTSVC frame on stream 0 with empty (length 0) \"Origin\" information is
+   invalid and MUST be ignored.")
+          (t (handle-alt-svc http-stream nil alt-svc-field-value))))))

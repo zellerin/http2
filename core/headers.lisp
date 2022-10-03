@@ -264,12 +264,16 @@ Use Huffman when HUFFMAN is true."
   (let ((res (make-array 0 :fill-pointer 0 :adjustable t)))
     (header-writer res name value context huffman)))
 
-(defun request-headers (method path authority &key (scheme "https"))
+(defun request-headers (method path authority &key (scheme "https")
+                                                additional-headers)
   "Encode standard headers that are obligatory."
-  (list (encode-header :method method)
-        (encode-header :scheme scheme)
-        (encode-header :path path)
-        (encode-header :authority authority)))
+  (list* (encode-header :method method)
+         (encode-header :scheme scheme)
+         (encode-header :path (or path "/"))
+         (encode-header :authority authority)
+         (mapcar (lambda (a)
+                   (http2::encode-header (car a) (cdr a)))
+                 additional-headers)))
 
 (defun get-integer-from-octet (stream initial-octet bit-size)
   "Decode an integer from starting OCTET and additional octets in STREAM

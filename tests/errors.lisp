@@ -4,8 +4,8 @@
   (fiasco:signals http-stream-error
       (with-http2-connection
                        (connection
-                        'vanilla-client-io-connection
-                        :network-stream (tls-connection-to "localhost" :port 1230))
+                        'vanilla-client-connection
+                        :network-stream (tls-connection-to "localhost" :port *server-port*))
                      (loop
                        with stream = (send-headers connection headers)
                        do

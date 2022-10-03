@@ -72,9 +72,9 @@
   ((connection       :accessor get-connection       :initarg :connection)
    (network-stream   :accessor get-network-stream   :initarg :network-stream)
    (stream-id        :accessor get-stream-id        :initarg :stream-id
-                     :type           (unsigned-byte 31))
+                     :type (unsigned-byte 31))
    (state            :accessor get-state            :initarg :state
-                     :type           (member idle open closed
+                     :type (member idle open closed
                                              half-closed/local half-closed/remote
                                              reserved/local reserved/remote))
    (data             :accessor get-data             :initarg :data)
@@ -94,11 +94,23 @@
   (:documentation
    "Representation of HTTP/2 stream. See RFC7540."))
 
+(defmethod initialize-instance :after ((stream http2-stream) &key connection)
+  (with-slots (peer-window-size window-size) stream
+    (unless  (slot-boundp stream 'peer-window-size)
+      (setf peer-window-size (get-initial-peer-window-size connection)))
+    (unless  (slot-boundp stream 'window-size)
+      (setf window-size (get-initial-window-size connection)))))
+
+
+
 (defclass client-stream (http2-stream)
   ((status :accessor get-status :initarg :status
            :documentation
            "HTTP status code field (see [RFC7231], Section 6)"))
-  (:default-initargs :status nil))
+  (:default-initargs :status nil)
+  (:documentation
+   "HTTP2 stream that checks headers as required for clients (no psedoheader other
+than :status allowed, etc."))
 
 (defclass server-stream (http2-stream)
   ((method    :accessor get-method    :initarg :method
@@ -141,19 +153,28 @@
 ;;;; Q: can one UTF-8 character be split into two frames?
 
 (defclass timeshift-pinging-connection ()
-  ())
+  ()
+  (:documentation
+   "A mixin that implements specific DO-PING and DO-PONG so that the RTT is printed
+after DO-PING is send."))
 
 ;;;; Connection and stream for logging: tracks every callback in (reversed)
 ;;;; history.
 (defclass logging-object ()
-  ())
+  ()
+  (:documentation
+   "Objects with this mixin have ~ADD-LOG~ called in many situations so that the
+communication can be debugged or recorded."))
 
 (defclass history-keeping-object (logging-object)
   ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
   (:default-initargs :reversed-history nil))
 
 (defclass history-printing-object (logging-object)
-  ())
+  ()
+  (:documentation
+   "A ~LOGGING-OBJECT~ that implements ~ADD-LOG~ to print all logs to
+~*TRACE-OUTPUT*~ as soon as it receives them."))
 
 (defclass logging-connection (http2-connection history-keeping-object)
   ())
@@ -225,7 +246,7 @@ of a stream, or a connection; in this case a new stream is created on it. In bot
 cases, the stream is returned.")
 
   (:method ((stream http2-stream) headers &key end-stream (end-headers t)
-                                                      padded priority)
+                                            padded priority)
     (with-slots (connection) stream
       (when (get-updates-needed (get-compression-context connection))
         (warn "FIXME: we should send dynamical update."))
@@ -301,8 +322,10 @@ cases, the stream is returned.")
       stream)))
 
 (defgeneric peer-sends-push-promise (stream)
-  ;; this is not actually called (yet) and may need more parameters
-  (:method (stream) (error "Push promises not supported.")))
+  (:method (stream) (error "Push promises not supported."))
+  (:documentation
+   "This should be called on push promise (FIXME: and maybe it is not, and maybe
+the parameters should be different anyway). By default throws an error."))
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method (stream error-code)
@@ -335,7 +358,9 @@ cases, the stream is returned.")
 
 ;;;; Other callbacks
 (defgeneric apply-data-frame (stream payload)
-  (:documentation "Data frame is received.")
+  (:documentation "Data frame is received by a stream.
+ By default does nothing; there are several mixins that implement reading the
+ data.")
 
   (:method (stream payload)
     (warn "No payload action defined."))
@@ -357,20 +382,25 @@ cases, the stream is returned.")
     (setf (get-weight stream) weight
           (get-depends-on stream)
           `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+  (:documentation
+   "Called when priority frame - or other frame with priority settings set -
+arrives. Does nothing, as priorities are deprecated in RFC9113 anyway.")
 
   (:method :before ((stream logging-object) exclusive weight stream-dependency)
     (add-log stream `(:new-prio :exclusive ,exclusive
                                 :weight ,weight :dependency ,stream-dependency))))
 
 (defgeneric apply-window-size-increment (object increment)
-
+  (:documentation
+   "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
+the strem or connection.")
   (:method :before ((object logging-object) increment)
-    (add-log object `(:window-size-increment ,increment)))
+    (add-log object `(:window-size-increment ,(get-peer-window-size object) + ,increment)))
 
   (:method (object increment)
     (when (zerop increment)
       ;; fixme: why?
-      (http2-error object +protocol-error+ ""))
+      (http2-error object +protocol-error+ "Zero sized window size increment."))
     (incf (get-window-size object) increment)))
 
 (defgeneric set-peer-setting (connection name value)
@@ -427,6 +457,10 @@ size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
     ))
 
 (defgeneric peer-expects-settings-ack (connection)
+  (:documentation
+   "Called when settings-frame without ACK is received, after individual
+SET-PEER-SETTING calls. By default, send ACK frame.")
+
   (:method (connection)
     (write-settings-frame connection nil :ack t))
 
@@ -435,6 +469,8 @@ size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
 
 
 (defgeneric peer-acks-settings (connection)
+  (:documentation
+   "Called when SETTINGS-FRAME with ACK flag is received. By default does nothing.")
   (:method (connection))
 
   (:method ((connection logging-object))
@@ -467,13 +503,9 @@ size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
   (:documentation
    "Do relevant state changes when closing http stream (as part of received HEADERS or
 PAYLOAD).")
-  (:method :after ((stream http2-stream))
-    (setf (get-state stream)
-          (ecase (get-state stream)
-            ((open) 'half-closed/remote)
-            ((half-closed/local) 'closed))))
   (:method :after ((stream logging-object))
-    (add-log stream '(:closed-remotely))))
+    (add-log stream '(:closed-remotely)))
+  (:method (stream)))
 
 (defmacro check-place-empty-and-set-it (new-value accessor)
   "All HTTP/2 requests MUST include exactly one valid value for the
@@ -579,12 +611,19 @@ PAYLOAD).")
    a CONNECT request"))))
 
 (defgeneric do-ping (connection data)
+  (:documentation
+   "Called when ping-frame without ACK is received. By default send ping-frame with
+ACK and same data.")
+
   (:method (connection data)
     (write-ping-frame connection data :ack t))
   (:method :before ((connection logging-object) data)
     (add-log connection `(:ping ,data))))
 
 (defgeneric do-pong (connection data)
+
+  (:documentation
+   "Called when ping-frame with ACK is received. By default warns about unexpected ping response; see also TIMESHIFT-PINGING-CONNECTION mixin.")
   (:method (connection data)
     (warn "The connection ~a did not expect ping response" connection))
   (:method ((connection timeshift-pinging-connection) data)
@@ -617,19 +656,30 @@ PAYLOAD).")
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
 
-(defmethod do-goaway (connection error-code last-stream-id debug-data)
-  (unless (eq error-code '+no-error+)
-    (error 'go-away :last-stream-id last-stream-id
-                    :error-code error-code
-                    :debug-data debug-data)))
 
-(defmethod handle-undefined-frame (type flags length)
-  "Callback that is called when a frame of unknown type is received - see
-extensions..")
+(defgeneric do-goaway (connection error-code last-stream-id debug-data)
+  (:documentation
+   "Called when a go-away frame is received. By default throws GO-AWAY condition if
+error was reported.")
+  (:method :before ((connection logging-object) error-code last-stream-id debug-data)
+    (add-log connection `(:go-away :last-stream-id ,last-stream-id
+                                   :error-code ,error-code)))
+
+  (:method (connection error-code last-stream-id debug-data)
+    (unless (eq error-code '+no-error+)
+      (error 'go-away :last-stream-id last-stream-id
+                      :error-code error-code
+                      :debug-data debug-data))))
+
+(defgeneric handle-undefined-frame (type flags length)
+  (:method (type flags length))
+  (:documentation
+   "Callback that is called when a frame of unknown type is received - see
+extensions."))
 
 
 (defvar *do-print-log* nil
-  "Set to true value to log to stderr.")
+  "Set to true value to log to the *TRACE-OUTPUT*.")
 
 (defgeneric add-log (object log-pars)
   (:method ((object history-keeping-object) log-pars)
@@ -640,7 +690,7 @@ extensions..")
               (member (car log-pars)  *do-print-log*))
       (let ((*print-length* 10)
             (*print-base* 16))
-        (format t "~&~s: ~{~s~^ ~}~%" object log-pars)))))
+        (format *trace-output* "~&~s: ~{~s~^ ~}~%" object log-pars)))))
 
 (defun get-history (object)
   (reverse (get-reversed-history object)))
@@ -675,15 +725,27 @@ extensions..")
 (defmethod do-pong :before ((connection logging-object) data)
   (add-log connection `(:pong ,data)))
 
-(defmethod do-goaway :before ((connection logging-object) error-code last-stream-id debug-data)
-  (add-log connection `(:go-away :last-stream-id ,last-stream-id
-                           :error-code ,error-code)))
-
-(defmethod do-goaway :around ((connection logging-object) error-code last-stream-id debug-data)
-  (call-next-method))
-
 ;;;; network comm simplifications
 (defmethod close ((connection http2-connection) &key &allow-other-keys)
   (close (get-network-stream connection)))
+
+(defgeneric handle-alt-svc (stream origin value)
+  (:documentation
+   "An ALTSVC frame from a server to a client on a stream other than
+   stream 0 indicates that the conveyed alternative service is
+   associated with the origin of that stream.
+
+   An ALTSVC frame from a server to a client on stream 0 indicates that
+   the conveyed alternative service is associated with the origin
+   contained in the Origin field of the frame.  An association with an
+   origin that the client does not consider authoritative for the
+   current connection MUST be ignored.")
+
+  (:method (stream origin value)
+    "Default method ignores alt-svc info."
+    (declare (ignore stream origin value)))
+
+  (:method ((stream logging-object) origin value)
+    (add-log stream `(:alt-svc ,origin ,value))))
 
 

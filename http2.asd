@@ -4,7 +4,7 @@
   :description "HTTP2 protocol implementation"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "0.99"
+  :version "1.0"
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams")
   :components ((:file "package")
@@ -20,7 +20,7 @@
   :description "Glue to wrap HTTP/2 client or server with TLS"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "0.9"
+  :version "1.0"
   :serial t
   :pathname "tls"
   :depends-on ("cl+ssl" "http2")
@@ -33,10 +33,10 @@
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "0.3"
+  :version "0.4"
   :serial t
   :pathname "client"
-  :depends-on ("cl+ssl" "puri" "http2")
+  :depends-on ("cl+ssl" "puri" "http2" "gzip-stream")
   :components ((:file "client-utils")
                (:FILE "client")))
 
@@ -44,7 +44,7 @@
   :description "An example of http/2 server"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "0.3"
+  :version "0.4"
   :serial t
   :pathname "server"
   :depends-on ("puri" "http2/tls" "cl-who")

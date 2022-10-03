@@ -35,6 +35,9 @@ read from the other."
       (prog1 (aref (get-buffer stream) (get-index stream))
         (incf (get-index stream)))))
 
+(defmethod trivial-gray-streams:stream-listen ((stream pipe-end-for-read))
+  (< (get-index stream) (length (get-buffer stream))))
+
 (defmethod trivial-gray-streams:stream-write-byte ((stream pipe-end-for-write) byte)
   (vector-push-extend byte (get-buffer stream)))
 
@@ -48,11 +51,15 @@ read from the other."
                                        (STREAM-ID 1) (STATE 'open))
   "Make a dummy connection class with one stream of id ID in state STATE. Used for
 testing."
-  (make-instance class
-                 :network-stream stream
-                 :streams (when state (list (make-instance 'logging-stream
-                                                           :stream-id stream-id
-                                                           :state STATE)))))
+  (let ((connection (make-instance class
+                         :network-stream stream)))
+    (when state
+      (push (make-instance 'logging-stream
+                           :stream-id stream-id
+                           :state STATE
+                           :connection connection)
+            (get-streams connection)))
+    connection))
 
 (defun process-messages (participants)
   "Let PARTICIPANTS process outstaning messages as long as there are any."
@@ -114,7 +121,8 @@ expected."
                ((numberp stream)
                 (make-instance 'http2-stream :stream-id stream
                                              :connection sender
-                                             :network-stream (get-network-stream sender)))
+                                             :network-stream (get-network-stream sender)
+                                             :window-size (get-initial-peer-window-size sender)))
                ((eq stream :connection) sender)
                (t (error "Stream parameter must be stream id number or :connection")))
              send-pars)

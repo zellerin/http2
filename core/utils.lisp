@@ -37,8 +37,10 @@ setting can have any value between 2^14 (16,384) and 2^24-1
     res))
 
 (defun write-bytes (stream n value)
-  "write VALUE as N octets to  stream"
-  (declare ((integer 1 8) n))
+  "write VALUE as N octets to stream. Maximum length is 64 bits (used by ping)."
+  (declare (type (integer 1 8) n)
+           (optimize speed)
+           (type (unsigned-byte 64) value))
   (dotimes (i n)
     (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
 

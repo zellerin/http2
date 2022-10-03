@@ -11,25 +11,27 @@ parameters following.")
 
 Use TLS KEY and CERT for server identity.
 
-ARGS are passed to PROCESS-SERVER-STREAM that is invoked using *DISPATCH-FN* to
+ARGS are passed to PROCESS-SERVER-STREAM that is invoked using ~*DISPATCH-FN*~ to
 allow threading, pooling etc.
 
 Wrap call to  with an error handler.
 
 Raise error when H2 is not the selected ALPN protocol."
   (unwind-protect
-       (handler-case
-           (let ((tls-stream (cl+ssl:make-ssl-server-stream
-                              raw-stream
-                              :certificate cert
-                              :key key)))
-             (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-                 (apply *dispatch-fn*
-                        #'process-server-stream  tls-stream args)
-                 (error "Someone else would need to handle non-h2 queries (~a)~%"
-                       (cl+ssl:get-selected-alpn-protocol tls-stream))))
-         (error (err)
-           (describe err)))
+    (let ((tls-stream
+            (handler-case
+                (cl+ssl:make-ssl-server-stream
+                 raw-stream
+                 :certificate cert
+                 :key key)
+              (error (err)
+                (describe err)
+                (invoke-restart 'kill-connection)))))
+      (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
+          (apply *dispatch-fn*
+                 #'process-server-stream  tls-stream args)
+          (error "Someone else would need to handle non-h2 queries (~a)~%"
+                 (cl+ssl:get-selected-alpn-protocol tls-stream))))
     (close raw-stream)))
 
 (defun make-http2-tls-context ()
@@ -73,9 +75,6 @@ We should also limit allowed ciphers, but we do not."
 It accepts new connections and uses WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM to
 establish TLS.
 
-callbacks defined as methods for the CONNECTION-CLASS are used to implement
-behaviour of the server.
-
 ANNOUNCE-OPEN-FN is called, when set, to inform caller that the server is up and
 running. This is used for testing, when we need to have the server running (in a
 thread) to start testing it.
@@ -88,7 +87,7 @@ debug is printed."
                                                                :backlog 200
                                                                :element-type '(unsigned-byte 8)))
       (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
-        (funcall announce-open-fn)
+        (funcall announce-open-fn socket)
         (loop
           (with-simple-restart (kill-connection "Kill connection")
             (wrap-to-tls-and-process-server-stream

@@ -31,14 +31,15 @@ enough to send the data as a data frame (or forced to by close of force-output).
                                 :fill-pointer 0 :adjustable nil)))
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream binary-output-stream-over-data-frames) byte)
-  ;; this is actually untested and was written some time ago, so might be buggy.
+  (warn "this is actually untested and was written some time ago, so might be buggy.")
+
   (with-slots (output-buffer connection) stream
     (if (< (fill-pointer output-buffer) (array-dimension output-buffer 0))
         (vector-push byte output-buffer)
         (warn "Not enough space in buffer: ~d<~d"
                (fill-pointer output-buffer) (array-dimension output-buffer 0)))
-    (when (> (min (fill-pointer output-buffer))
-             (get-send-threshold stream))
+    (when (>= (min (fill-pointer output-buffer))
+              (get-max-peer-frame-size connection))
       (loop while (<  (min (get-peer-window-size stream)
                            (get-peer-window-size connection))
                       (length output-buffer))
@@ -55,13 +56,29 @@ enough to send the data as a data frame (or forced to by close of force-output).
     ;; FIXME: here we know (aside of intervening setting changes) that the
     ;; output buffer is smaller than max-frame-size, but it still might be
     ;; larger than the window.
+
+    ;; Should we handle also RST on send?
+    (unless (eq 'closed (get-state stream))
+      (write-data-frame stream output-buffer :end-stream t)
+      (force-output (get-network-stream connection)))))
+
+(defun close-output (stream)
+  (with-slots (output-buffer connection) stream
+    ;; FIXME: here we know (aside of intervening setting changes) that the
+    ;; output buffer is smaller than max-frame-size, but it still might be
+    ;; larger than the window.
+
+    ;; Should we handle also RST on send?
     (write-data-frame stream output-buffer :end-stream t)
     (force-output (get-network-stream connection))))
 
 (defmethod trivial-gray-streams:stream-force-output ((stream binary-output-stream-over-data-frames))
   (with-slots (output-buffer connection) stream
-    (write-data-frame stream output-buffer :end-stream nil)
+    (unless (zerop (length output-buffer))
+      (write-data-frame stream output-buffer :end-stream nil)
+      (setf (fill-pointer output-buffer) 0))
     (force-output (get-network-stream connection))))
+
 ;; TODO: finish-output could wait for window updates arriving. Except afaics
 ;; noone forces the other side to keep window size unchanged over time...
 
@@ -83,12 +100,11 @@ Return new START."
                                             :displaced-to sequence
                                             :displaced-index-offset start
                                             :element-type '(unsigned-byte 8))))))
+  (setf (fill-pointer (get-output-buffer stream)) 0)
   (incf start size))
 
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream binary-output-stream-over-data-frames) sequence start end &key)
-  ;; this is here for profiling at the moment. Implementing better version of
-  ;; this would be beneficial for performance if it is used.
   (with-slots (connection output-buffer send-threshold) stream
     ;; Situations:
     ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
@@ -113,8 +129,11 @@ Return new START."
             do (vector-push (aref sequence idx) output-buffer)))))
 
 (defclass binary-input-stream-over-data-frames (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
-  ((index           :accessor get-index           :initarg :index))
-  (:default-initargs :index 0)
+  ((index           :accessor get-index           :initarg :index)
+   (data       :accessor get-data       :initarg :data
+               :documentation
+               "tlist that of accepted frames and cons of last frame and nil."))
+  (:default-initargs :index 0 :data (cons nil nil))
   (:documentation
    "Binary stream that reads data from the http stream.
 
@@ -134,32 +153,38 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
 (defun pop-frame (data)
   (pop (car data)))
 
-(defclass data-frames-collecting-mixin (binary-input-stream-over-data-frames)
-  ((data       :accessor get-data       :initarg :data
-               ;; cons of list of accepted frames and cons of last frame and nil.
-               ;; forgot name, use accessors above.
-               ))
-  (:default-initargs
-   :data (cons nil nil)))
-
-(defmethod apply-data-frame ((stream data-frames-collecting-mixin) frame-data)
+(defmethod apply-data-frame ((stream binary-input-stream-over-data-frames) frame-data)
   (push-frame (get-data stream) frame-data))
 
+(defmethod trivial-gray-streams:stream-listen ((stream binary-input-stream-over-data-frames))
+  (force-output (get-network-stream stream))
+  (with-slots (connection index data to-store to-provide state) stream
+     (or (caar data)
+         ;; we assume we would not get just part of the frame.
+         (loop while (listen (get-network-stream connection))
+               do (read-frame connection)
+               when (member state '(closed half-closed/remote))
+                 do (return nil)
+               when (caar data) do (return t)))))
+
 (defmethod trivial-gray-streams:stream-read-byte ((stream binary-input-stream-over-data-frames))
+  (force-output (get-network-stream stream))
   (with-slots (connection index data to-store to-provide state) stream
     (loop for buffer = (caar data)
-          until (or buffer (eq state 'closed))
+          until (or buffer (member state '(closed half-closed/remote)))
           do
              ;; read-frame -> push frame to the data or close the buffer
-             (read-frame connection)
+             (if (listen (get-network-stream connection))
+                 (read-frame connection)
+                 (sleep 0.1))
           finally
              (return
-               (if (and (null buffer) (eq state 'closed)) :eof
-                (prog1 (aref buffer index)
-                   (when (= (incf index) (length (caar data)))
-                     (pop-frame data)
-                     (add-log connection `(:window-size-increment ,index))
-                     (add-log stream `(:window-size-increment ,index))
-                     (write-window-update-frame connection index)
-                     (write-window-update-frame stream index)
-                     (setf index 0))))))))
+               (if (and (null buffer) (member state '(closed half-closed/remote))) :eof
+                           (prog1 (aref buffer index)
+                             (when (= (incf index) (length (caar data)))
+                               (pop-frame data)
+                               (add-log connection `(:window-size-increment ,index))
+                               (add-log stream `(:window-size-increment ,index))
+                               (write-window-update-frame connection index)
+                               (write-window-update-frame stream index)
+                               (setf index 0))))))))

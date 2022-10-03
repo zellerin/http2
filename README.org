@@ -8,21 +8,28 @@ RFC9113 (and RFC7540 before) and RFC7541 (HPACK).
 The core part of the library is implementing writing http2 frames, reading them,
 and reacting on read frames. What to do with the frames is managed by classes
 ~CONNECTION~ and ~HTTP2-STREAM~ that are supposed to be extended by application to
-do something reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]] for an
-example.
+do something reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]
+for an example.
 
-** Status and quickstart
+** Status and quick start
+In quicklisp.
+
 Almost all parts standards implemented, see below for exceptions.
 
-The library definitely allow to implement a client or server, and a simple ones are attached to it as examples.
+The library definitely allows to implement a client or server, and a simple ones
+are attached to it as examples.
 
 *** Client
 
-The bundled client requests remote page and returns values of body (converted to string), result status, and response headers.
+The bundled client requests remote page and returns values of body (converted to
+string), result status, and response headers.
 
-Improvements to allow for cookie management, decoding to proper charset, .. are out of scope of this library, as they would probably be better taken over from some existing http1 library or incorporated there.
+Improvements to allow for cookie management, ... are out of scope of this
+library, as they would probably be better taken over from some existing http/1.x
+library or incorporated there.
 
-Improvements to provide stream for reading the output, to query several resources on one server, and to receive pushes are considered for future, as they are http2 specific.
+Improvements to query several resources on one server, and to receive pushes are
+considered for future, as they are http2 specific.
 
 #+begin_src lisp
   (ql:quickload 'http2/client)
@@ -63,9 +70,12 @@ Then point your browser (not eww nor drakma, of course - must support http2) to 
   Hello World
 #+end_src
 
-Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers if you do not want to see their data), and maybe add a method to ADD-HEADER to pay attention to what other headers than URL the client sends.
+Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers
+if you do not want to see their data), and maybe add a method to ADD-HEADER to
+pay attention to what other headers than URL the client sends.
 
-For simple cases, handlers can be defined to send data as text or binary streams, see sample server. Splitting the payload based on window size is done.
+For simple cases, handlers can be defined to send data as text or binary
+streams, see sample server. Splitting the payload based on window size is done.
 
 ** Missing pieces
 - No handling of priorities is implemented. This is OK, as these are only
@@ -74,6 +84,10 @@ For simple cases, handlers can be defined to send data as text or binary streams
   by default (settings)
 - Option to encode headers to /Literal Header Field Never Indexed/ format is not
   implemented. This is simple to do, but interface would need to be though out.
+- The algorithm to split data being sent out to windows and frames can be
+  confused sometimes
+- The MAX-HEADER-LIST-SIZE limit is not enforced.
+- Some checks on behaviour of the peer are not enforced
 
 ** Implementation details
 
@@ -101,9 +115,7 @@ Additioanlly, fiasco is used for testing.
 Licensed by MIT license.
 
 Some comments are taken over from the RFCs above and copyrighted by RFC
-contributors. I read the copyright licenses for RFC that this is allowed. Big
-chunks of RFC text mean usually something is not implemented and are slowly
-converted to code.
+contributors. I read the copyright licenses for RFC that this is allowed.
 
 ** Related software
 There is an Akamai code on https://github.com/akamai/cl-http2-protocol that
@@ -111,3 +123,5 @@ supported bigger parts of the drafted HTTP/2 protocol in 2014; apparently hard
 to run now, used NPN instead of ALPN. It might be reasonable to pilfer some
 pieces and ideas (especially interface level) from that one, but I have not done
 so (yet).
+
+#  LocalWords:  HPACK
