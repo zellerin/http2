@@ -34,9 +34,9 @@ REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
 
 (eval-when (:compile-toplevel :load-toplevel)
   (defun define-some-handler (target prefix fn)
-    `(progn
-       (setf ,target (remove ,prefix ,target :key 'car :test 'equal))
-       (push (cons ,prefix ,fn) ,target))))
+    `(setf ,target
+           (acons ,prefix ,fn
+                  (remove ,prefix ,target :key 'car :test 'equal)))))
 
 (defmacro handler ((flexi-stream-name &rest flexi-pars) &body body)
   "Runs BODY in a context with
@@ -72,7 +72,7 @@ server defined in future) if the path of the stream starts with PREFIX."
   "Define function to run when peer closes http stream on CONNECTION (or any
 server defined in future) if the path of the stream is PATH."
   (define-some-handler (if connection
-                           `(get-prefix-handlers connection) '*exact-handlers*)
+                           `(get-exact-handlers connection) '*exact-handlers*)
     path fn))
 
 (defvar *prefix-handlers*
