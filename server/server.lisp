@@ -54,3 +54,28 @@
       (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
+
+(defclass no-handler-connection (vanilla-server-connection)
+  ()
+  (:default-initargs :exact-handlers nil :prefix-handlers nil)
+  (:documentation
+   "A variant of the vanilla-server-connection without any default handlers."))
+
+(defun create-one-shot-server (handler port)
+  "Open server on PORT that handles just one request and returns value from HANDLER.
+
+The original use case is server for oauth2 authentication redirect, there might
+be other ones."
+  (let ((*dispatch-fn*
+          (lambda (p-s-s stream &key &allow-other-keys)
+            (declare (ignore p-s-s))
+            (let ((connection (make-instance 'no-handler-connection
+                                             :network-stream stream)))
+              (define-exact-handler "/"
+                  (lambda (conn http-stream)
+                    (let ((value (funcall handler conn http-stream)))
+                      (write-goaway-frame connection 0 +no-error+ #())
+                      (invoke-restart 'http2::kill-server value)))
+                connection)
+              (process-server-stream stream :connection connection)))))
+    (create-https-server port "/tmp/server.key" "/tmp/server.crt")))

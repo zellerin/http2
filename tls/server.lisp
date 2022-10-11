@@ -81,7 +81,7 @@ thread) to start testing it.
 
 If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
 debug is printed."
-  (with-simple-restart (kill-server "Kill server")
+  (restart-case
     (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
                                                                :reuse-address t
                                                                :backlog 200
@@ -96,7 +96,10 @@ debug is printed."
                   (usocket:socket-accept socket :element-type '(unsigned-byte 8))
                 ;; ignore condition
                 (usocket:connection-aborted-error ())))
-             key cert :connection-class connection-class)))))))
+             key cert :connection-class connection-class)))))
+    (kill-server (&optional value)
+      :report "Kill server"
+      value)))
 
 (defun create-http-server (port key cert &key
                                             ((:verbose http2::*do-print-log*))

@@ -125,10 +125,11 @@ prints activities, and reads full body from client if clients sends one."))
 
 (defmethod peer-ends-http-stream ((stream vanilla-server-stream))
   "Send some random payloads, or shut down the server."
-  (let ((handler
+  (let* ((connection (get-connection stream))
+         (handler
             (or
              (cdr (assoc (get-path stream)
-                         (or (get-exact-handlers (get-connection stream))
+                         (or (get-exact-handlers connection)
                              *exact-handlers*)
                          :test (lambda (prefix path)
                                  (let ((mismatch (mismatch prefix path)))
@@ -136,7 +137,7 @@ prints activities, and reads full body from client if clients sends one."))
                                        (and (eql mismatch (position #\? path))
                                             (eql mismatch (length path))))))))
              (cdr (assoc (get-path stream)
-                         (or (get-prefix-handlers (get-connection stream))
+                         (or (get-prefix-handlers connection)
                              *prefix-handlers*)
                          :test (lambda (prefix path)
                                  (let ((mismatch (mismatch prefix path)))
@@ -148,14 +149,16 @@ prints activities, and reads full body from client if clients sends one."))
             (with-open-stream (out (flexi-streams:make-flexi-stream stream))
               (format out  "<h1>Not found</h1>")))))))
 
-(defun process-server-stream (stream &key (connection-class 'vanilla-server-connection))
+(defun process-server-stream (stream &key (connection-class 'vanilla-server-connection)
+                                       connection)
   "Make a HTTP2 connection of CONNECTION-CLASS on the underlying STREAM (that is a
 stream in Common Lisp sense, so either network stream or even standard io) and
 read frames from it until END-OF-FILE (client closed the underlying stream - or
 maybe we do) or GO-AWAY (client closes connection - or maybe we do) is
 signalled."
-  (let ((connection (make-instance connection-class
-                                   :network-stream stream)))
+  (let ((connection (or connection
+                        (make-instance connection-class
+                                       :network-stream stream))))
     (with-simple-restart (close-connection "Close current connection")
       (handler-case
           (loop (read-frame connection))

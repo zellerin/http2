@@ -60,6 +60,7 @@
            #:send-goaway
            #:process-server-stream
            #:get-body
+           #:kill-server #:kill-connection
 
            #:+no-error+)
   (:documentation "HTTP2 API on several levels.
