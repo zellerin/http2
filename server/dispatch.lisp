@@ -127,13 +127,17 @@ prints activities, and reads full body from client if clients sends one."))
   "Send some random payloads, or shut down the server."
   (let ((handler
             (or
-             (cdr (assoc (get-path stream) *exact-handlers*
+             (cdr (assoc (get-path stream)
+                         (or (get-exact-handlers (get-connection stream))
+                             *exact-handlers*)
                          :test (lambda (prefix path)
                                  (let ((mismatch (mismatch prefix path)))
                                    (or (null mismatch)
                                        (and (eql mismatch (position #\? path))
                                             (eql mismatch (length path))))))))
-             (cdr (assoc (get-path stream) *prefix-handlers*
+             (cdr (assoc (get-path stream)
+                         (or (get-prefix-handlers (get-connection stream))
+                             *prefix-handlers*)
                          :test (lambda (prefix path)
                                  (let ((mismatch (mismatch prefix path)))
                                    (or (null mismatch) (equal mismatch (length path))))))))))
