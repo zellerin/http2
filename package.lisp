@@ -62,7 +62,22 @@
            #:get-body
            #:kill-server #:kill-connection
 
-           #:+no-error+)
+           #:+no-error+
+
+           #:DO-PONG
+           #:WRITE-DATA-FRAME #:WRITE-ALTSVC-FRAME
+           #:WRITE-PING-FRAME #:WRITE-PRIORITY-FRAME
+           #:CREATE-ONE-SHOT-SERVER #:DISPATCHER-MIXIN
+           #:READ-FRAME #:WRITE-FRAME-HEADER
+           #:CLIENT-HTTP2-CONNECTION #:WRITE-HEADERS-FRAME
+           #:WRITE-SETTINGS-FRAME
+           #:WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM
+           #:WRITE-PUSH-PROMISE-FRAME
+           #:WRITE-RST-STREAM-FRAME #:HISTORY-PRINTING-OBJECT
+           #:CLIENT-STREAM #:TIMESHIFT-PINGING-CONNECTION
+           #:WRITE-GOAWAY-FRAME #:WRITE-ACK-SETTING-FRAME
+           #:HANDLE-UNDEFINED-FRAME #:WRITE-WINDOW-UPDATE-FRAME
+           #:DO-GOAWAY #:WRITE-CONTINUATION-FRAME)
   (:documentation "HTTP2 API on several levels.
 
 First, it has some high level interface to facilitate making HTTP2 client and
