@@ -31,8 +31,6 @@ enough to send the data as a data frame (or forced to by close of force-output).
                                 :fill-pointer 0 :adjustable nil)))
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream binary-output-stream-over-data-frames) byte)
-  (warn "this is actually untested and was written some time ago, so might be buggy.")
-
   (with-slots (output-buffer connection) stream
     (if (< (fill-pointer output-buffer) (array-dimension output-buffer 0))
         (vector-push byte output-buffer)
