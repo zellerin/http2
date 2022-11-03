@@ -1,5 +1,13 @@
 (in-package http2)
 
+(defun threaded-dispatch (fn &rest pars)
+  "When used as *dispatch-fn* callback, open new thread for a connection and handle it there.
+
+Technically, apply FN-AND-PARS in a new thread."
+  (bt:make-thread (lambda () (apply fn pars))
+                  :name "HTTP/2 connection handler")
+  t) ; stream should be kept open here
+
 (defvar *dispatch-fn* #'threaded-dispatch
   "How to call process-server-stream. Default is THREADED-DISPATCH.
 
