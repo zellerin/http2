@@ -1,11 +1,13 @@
 (in-package http2)
 
-(defun threaded-dispatch (fn &rest pars)
+(defun threaded-dispatch (fn tls-stream &rest pars)
   "When used as *dispatch-fn* callback, open a new thread for a connection and
 handle it there.
 
 Technically, apply FN-AND-PARS in a new thread."
-  (bt:make-thread (lambda () (apply fn pars))
+  (bt:make-thread (lambda ()
+                    (apply fn tls-stream pars)
+                    (close tls-stream))
                   :name "HTTP/2 connection handler")
   t) ; stream should be kept open here
 
