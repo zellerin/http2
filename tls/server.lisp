@@ -1,7 +1,8 @@
 (in-package http2)
 
 (defun threaded-dispatch (fn &rest pars)
-  "When used as *dispatch-fn* callback, open new thread for a connection and handle it there.
+  "When used as *dispatch-fn* callback, open a new thread for a connection and
+handle it there.
 
 Technically, apply FN-AND-PARS in a new thread."
   (bt:make-thread (lambda () (apply fn pars))
@@ -13,6 +14,16 @@ Technically, apply FN-AND-PARS in a new thread."
 
 The function is called with PROCESS-SERVER-STREAM as the first parameter and its
 parameters following.")
+
+(define-condition not-http2-stream (serious-condition)
+  ((tls-stream :accessor get-tls-stream :initarg :tls-stream)
+   (alpn       :accessor get-alpn       :initarg :alpn))
+  (:documentation
+   "Signalled to decline handling of TLS stream as HTTP2 stream due to different ALPN.")
+  (:report (lambda (condition stream)
+             (format stream "The TLS stream ~A is not a HTTP2 stream (ALPN ~s)"
+                     (get-tls-stream condition)
+                     (get-alpn condition)))))
 
 (defun wrap-to-tls-and-process-server-stream (raw-stream key cert &rest args)
   "Establish TLS connection over RAW-STREAM, and run PROCESS-SERVER-STREAM over it.
@@ -35,13 +46,14 @@ Raise error when H2 is not the selected ALPN protocol."
                       :key key)
                    (error (err)
                      (describe err)
-                     (invoke-restart 'kill-connection)))))
+                     (abort)))))
            (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
                (setf keep-stream-open
                      (apply *dispatch-fn*
                             #'process-server-stream  tls-stream args))
-               (error "Someone else would need to handle non-h2 queries (~a)~%"
-                      (cl+ssl:get-selected-alpn-protocol tls-stream))))
+               (error 'not-http2-stream
+                      :tls-stream tls-stream
+                      :alpn (cl+ssl:get-selected-alpn-protocol tls-stream))))
       (unless keep-stream-open (close raw-stream)))))
 
 (defun make-http2-tls-context ()
@@ -99,7 +111,7 @@ debug is printed."
       (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
         (funcall announce-open-fn socket)
         (loop
-          (with-simple-restart (kill-connection "Kill connection")
+          (with-simple-restart (abort "Kill connection on ~s" socket)
             (wrap-to-tls-and-process-server-stream
              (usocket:socket-stream
               (handler-case
