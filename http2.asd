@@ -23,7 +23,7 @@
   :version "1.0"
   :serial t
   :pathname "tls"
-  :depends-on ("cl+ssl" "http2")
+  :depends-on ("cl+ssl" "http2" "bordeaux-threads")
   :components ((:file "server")
                (:file "cl+ssl"))
   ;:in-order-to ((test-op (test-op "http2/test")))
@@ -47,7 +47,8 @@
   :version "0.4"
   :serial t
   :pathname "server"
-  :depends-on ("puri" "http2/tls" "cl-who")
+  :depends-on ("puri" "http2/tls" "cl-who"
+                      "parenscript")
   :components ((:file "dispatch")
                (:file "server"))
   :entry-point "http2/server::main")

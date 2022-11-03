@@ -1,7 +1,7 @@
 (in-package http2)
 
-(defvar *dispatch-fn* #'funcall
-  "How to call process-server-stream. Default is funcall.
+(defvar *dispatch-fn* #'threaded-dispatch
+  "How to call process-server-stream. Default is THREADED-DISPATCH.
 
 The function is called with PROCESS-SERVER-STREAM as the first parameter and its
 parameters following.")
@@ -17,22 +17,24 @@ allow threading, pooling etc.
 Wrap call to  with an error handler.
 
 Raise error when H2 is not the selected ALPN protocol."
-  (unwind-protect
-    (let ((tls-stream
-            (handler-case
-                (cl+ssl:make-ssl-server-stream
-                 raw-stream
-                 :certificate cert
-                 :key key)
-              (error (err)
-                (describe err)
-                (invoke-restart 'kill-connection)))))
-      (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-          (apply *dispatch-fn*
-                 #'process-server-stream  tls-stream args)
-          (error "Someone else would need to handle non-h2 queries (~a)~%"
-                 (cl+ssl:get-selected-alpn-protocol tls-stream))))
-    (close raw-stream)))
+  (let ((keep-stream-open))
+    (unwind-protect
+         (let ((tls-stream
+                 (handler-case
+                     (cl+ssl:make-ssl-server-stream
+                      raw-stream
+                      :certificate cert
+                      :key key)
+                   (error (err)
+                     (describe err)
+                     (invoke-restart 'kill-connection)))))
+           (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
+               (setf keep-stream-open
+                     (apply *dispatch-fn*
+                            #'process-server-stream  tls-stream args))
+               (error "Someone else would need to handle non-h2 queries (~a)~%"
+                      (cl+ssl:get-selected-alpn-protocol tls-stream))))
+      (unless keep-stream-open (close raw-stream)))))
 
 (defun make-http2-tls-context ()
   "Make TLS context suitable for http2.
