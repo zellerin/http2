@@ -14,6 +14,9 @@
   (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
   (terpri))
 
-(handler-bind ((warning 'muffle-warning))
+(handler-bind ((warning 'muffle-warning)
+               (error (lambda (e)
+                        (describe e)
+                        (invoke-restart 'kill-server))))
   (create-https-server 1230 "/tmp/server.key" "/tmp/server.crt"
                  :verbose nil))
