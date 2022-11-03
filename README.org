@@ -12,9 +12,9 @@ do something reasonable with headers and payload; see [[./client/client.lisp][cl
 for an example.
 
 ** Status and quick start
-In quicklisp.
+In quicklisp. Tested primarily on sbcl, occasionally on ecl.
 
-Almost all parts standards implemented, see below for exceptions.
+Almost all parts of the listed standards implemented, see below for exceptions.
 
 The library definitely allows to implement a client or server, and a simple ones
 are attached to it as examples.
@@ -57,17 +57,21 @@ considered for future, as they are http2 specific.
 #+end_src
 
 *** Server
-Example https server (that signals h2 support with ALPN) is implemented; TLS key and certificate is needed ([[./scaffolding/run-server.lisp][test script]] generates it when missing). It handles requests one by one by default; this is trivial to improve in several ways (thread for request, workers, polling...) with customizing ~*dispatch-fn*~  but out of scope of this project.
+[[file:server/server.lisp][Example https server]] (that indicates h2 support with ALPN) is provided ; TLS key
+and certificate is needed ([[./scaffolding/run-server.lisp][test script]] generates a pair when missing). It
+handles connections one by thread by default; this is trivial to improve in
+several ways (workers, polling...) with customizing ~*dispatch-fn*~ but for now
+out of scope of this project.
 
 #+begin_src lisp
   (ql:quickload 'http2/server)
   (http2::create-server 1234 "key.pem" "cert.pem")
 #+end_src
 
-Then point your browser (not eww nor drakma, of course - must support http2) to https://localhost:1234 or
+Then point your browser (not eww nor drakma, of course - must support http2) to
+https://localhost:1234 or
 #+begin_src sh
-  [zellerin@winter http2]$ curl http://localhost:1234/
-  Hello World
+  curl -k http://localhost:1234/
 #+end_src
 
 Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers
@@ -91,11 +95,7 @@ streams, see sample server. Splitting the payload based on window size is done.
 
 ** Implementation details
 
-- [[./core/frames.lisp]] implements frame reading and writing. It is intended to be
-  correct and fast, in this order. Read frames call callbacks that are supposed
-  to be generic functions for extensibility.
-- [[./core/classes.lisp]] defines class hierarchy for vanilla connections and streams,
-  and the generic methods for callbacks for these classes.
+See [[file:HACKING.org][HACKING.org]] for the details.
 
 ** Dependencies
 
@@ -103,7 +103,7 @@ streams, see sample server. Splitting the payload based on window size is done.
 
 The core library used trivial-gray-streams to implement streams over data frames.
 
-Client and server require usocket and cl+ssl to talk over TLS.
+Client and server require usocket and cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
 
 Client uses puri to manipulate URLs.
 

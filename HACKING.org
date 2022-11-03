@@ -6,10 +6,14 @@ It mostly duplicates the docstrings in code (in fact, it is build upon them), bu
 #+BEGIN: lisp-fns-doc :section http2::@client :package http2
 To faciliate client creation, create a socket (typically TLS one), connection
 of class ~VANILLA-CLIENT-CONNECTION~ over that socket, and spawn
-~VANILLA-CLIENT-STREAM~s from the connection by calling ~SEND-HEADERS~. This
-cover most of the desired functionality. VANILLA-CLIENT-STREAM represents a
-HTTP2 stream, but also acts as a Lisp binary input/output stream; turning this
-to a character stream is a task for flexi-streams; MAKE-TRANSPORT-STREAM can sometimes do it automatically based on headers.
+~VANILLA-CLIENT-STREAM~ or several from the connection by calling
+~SEND-HEADERS~. This covers most of the desired
+functionality.
+
+VANILLA-CLIENT-STREAM represents a HTTP2 stream, but also acts as a Lisp binary
+input/output stream. Turning this to a character stream is a task for
+flexi-streams; MAKE-TRANSPORT-STREAM can sometimes do it automatically based on
+headers.
 
 - =SEND-HEADERS= (function)
    Send headers to the connection or stream. Stream is either an existing instance
@@ -48,7 +52,7 @@ to a character stream is a task for flexi-streams; MAKE-TRANSPORT-STREAM can som
    Objects with this mixin have ~ADD-LOG~ called in many situations so that the
    communication can be debugged or recorded.
 
-- =MAKE-TRANSPORT-STREA]M= (function)
+- =MAKE-TRANSPORT-STREAM= (function)
    Make a transport stream from RAW-STREAM.
 
    Guess encoding and need to gunzip from headers:
@@ -154,9 +158,6 @@ The [[./server/server.lisp][sample server]] uses only functions described below.
    Kill server and close its underlying network stream. Bound in
    CREATE-HTTPS-SERVER.
 
-- =KILL-CONNECTION= (restart)
-   Kill processed connection. Bound in CREATE-HTTPS-SERVER.
-
 
 #+END:
 ** Publishing server
@@ -195,10 +196,20 @@ The defined server needs to be published; the only widely use option is over TLS
    Lambda list: ~RAW-STREAM~ ~KEY~ ~CERT~ ~&REST~ ~ARGS~
 
 - =*DISPATCH-FN*= (variable)
-   How to call process-server-stream. Default is funcall.
+   How to call process-server-stream. Default is THREADED-DISPATCH.
 
    The function is called with PROCESS-SERVER-STREAM as the first parameter and its
    parameters following.
+
+- =THREADED-DISPATCH= (function)
+   When used as *dispatch-fn* callback, open new thread for a connection and handle it there.
+
+   This is not the most efficient way to run things, but still better than the
+   one-connection-at-time version.
+
+   Technically, apply FN-AND-PARS in a new thread.
+
+   Lambda list: ~FN~ ~&REST~ ~PARS~
 
 - =CREATE-ONE-SHOT-SERVER= (function)
    Open server on PORT that handles just one request and returns value from HANDLER.

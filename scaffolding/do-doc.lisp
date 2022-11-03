@@ -96,13 +96,12 @@ when relevant stream or connection has logging-object as superclass."
   (send-text-handler)
   (kill-server restart
                "Kill server and close its underlying network stream. Bound in
-CREATE-HTTPS-SERVER.")
-  (kill-connection restart
-                   "Kill processed connection. Bound in CREATE-HTTPS-SERVER."))
+CREATE-HTTPS-SERVER."))
 
 (cz.zellerin.doc:define-section @tls-server
   ""
   (create-https-server)
   (wrap-to-tls-and-process-server-stream)
   (*dispatch-fn* variable)
+  (threaded-dispatch)
   (create-one-shot-server))
