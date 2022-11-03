@@ -3,6 +3,7 @@
 set -e
 # Clone so that we work on the staged version
 rm -rf to-test
+git worktree prune
 git worktree add to-test
 git diff --cached |patch -p1 -d to-test
 
