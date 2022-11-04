@@ -37,6 +37,44 @@
         (dotimes (i 100000)
           (cl-who:htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
 
+(define-exact-handler "/es-test"
+    (handler (out)
+      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
+                      ("refresh" "30; url=/")))
+      (cl-who:with-html-output (out out :prologue "<!DOCTYPE html>")
+        (:html
+         (:body
+          "Waiting for event"
+          (:p :id "events")
+          (:script :type "text/javascript"
+                   (cl-who:str
+                    (parenscript:ps
+                      (let ((source (ps:new (-event-source "/event-stream"))))
+                        (setf (ps:@ source onmessage)
+                              (lambda (event)
+                                (ps:incf (ps:@ document (get-element-by-id "events") inner-h-t-m-l)
+                                         (ps:@ event data))
+                                (values)) )
+                        (values)))
+
+                    #+nil"
+ var source = new EventSource(\"/event-stream\");
+ source.onmessage = function (event) {
+      document.getElementById(\"events\").innerHTML +=
+           `<div>[${event.lastEventId}] ${event.data}</div>`;
+};")))))))
+
+(define-exact-handler "/event-stream"
+    (handler (out :external-format '(:utf-8 :eol-style :crlf))
+      (send-headers `((:status "200") ("content-type" "text/event-stream")))
+      (dotimes (i 10)
+        (sleep 1)
+        (format out "id: ~d~%" i)
+        (multiple-value-bind (sec min hr day #+nil (month year))
+            (decode-universal-time (get-universal-time))
+          (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr min sec))
+        (force-output out))))
+
 (define-exact-handler "/longerslow"
     (handler (out)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
