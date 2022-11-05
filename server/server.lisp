@@ -52,28 +52,23 @@
                       (let ((source (ps:new (-event-source "/event-stream"))))
                         (setf (ps:@ source onmessage)
                               (lambda (event)
-                                (ps:incf (ps:@ document (get-element-by-id "events") inner-h-t-m-l)
+                                (ps:setf (ps:@ ((ps:@ document get-element-by-id) "events") inner-h-t-m-l)
                                          (ps:@ event data))
                                 (values)) )
-                        (values)))
-
-                    #+nil"
- var source = new EventSource(\"/event-stream\");
- source.onmessage = function (event) {
-      document.getElementById(\"events\").innerHTML +=
-           `<div>[${event.lastEventId}] ${event.data}</div>`;
-};")))))))
+                        (values))))))))))
 
 (define-exact-handler "/event-stream"
     (handler (out :external-format '(:utf-8 :eol-style :crlf))
       (send-headers `((:status "200") ("content-type" "text/event-stream")))
-      (dotimes (i 10)
-        (sleep 1)
-        (format out "id: ~d~%" i)
-        (multiple-value-bind (sec min hr day #+nil (month year))
-            (decode-universal-time (get-universal-time))
-          (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr min sec))
-        (force-output out))))
+      (handler-case
+          (loop for i from 1
+                do
+                   (sleep 1)
+                   (format out "id: ~d~%" i)
+                   (multiple-value-bind (sec min hr day #+nil (month year))
+                       (decode-universal-time (get-universal-time))
+                     (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr min sec))
+                   (force-output out)))))
 
 (define-exact-handler "/longerslow"
     (handler (out)
@@ -92,6 +87,75 @@
       (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
+
+(define-exact-handler "/test"
+    (handler (out)
+      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
+      (cl-who:with-html-output (out)
+        (:h1 "Automated test page")
+        (:table
+         (:tr (:th "Test") (:th "Status"))
+         (dolist (test '("404" "Body passing" "Long" "Slow print"
+                         "Event stream"))
+           (cl-who:htm (:tr (:td (cl-who:str test)) (:td :id test "TODO")))))
+        (:script
+         (cl-who:str (ps:ps
+                       (defun set-result (test result)
+                         (setf (ps:@ ((ps:@ document get-element-by-id) test)
+                                     inner-h-t-m-l)
+                               result))
+
+                       (defun test-request (name check-fn method page &optional body)
+                         (let ((req (ps:new *X-M-L-Http-Request)))
+                           ((ps:@ req add-event-listener)
+                            "load"
+                            (lambda ()
+                              (set-result name
+                                          (let ((res (funcall check-fn this)))
+                                            (if res  (+ "BAD: " res)  "PASS")))))
+                           ((ps:@ req add-event-listener)
+                            "error"
+                            (lambda () (set-result name "ERROR")))
+                           ((ps:@ req open) method page)
+                           ((ps:@ req send) body)))
+
+                       (test-request "404"
+                                     (lambda (reply)
+                                       (unless (= 404 (ps:@ reply status))
+                                         (ps:@ reply status)))
+                        "GET" "/no-such-page")
+
+                       (test-request "Body passing"
+                        (lambda (reply)
+                          (unless
+                              (and
+                               (= 200 (ps:@ reply status))
+                               (= "SAMPLE BODY" (ps:@ reply response-text)))
+                            (+ (ps:@ reply status)
+                               " "  (ps:@ reply response-text))))
+                        "POST" "/body"  "SAMPLE BODY")
+
+                       (test-request "Long"
+                        (lambda (reply)
+                          (unless (and
+                               (= 200 (ps:@ reply status))
+                               (= 2588913 (length (ps:@ reply response-text))))
+                            (+ "BAD: code " (ps:@ reply status)
+                               " length "  (length (ps:@ reply response-text)))))
+                        "GET" "/long")
+
+                       (let ((source (ps:new (-event-source "/event-stream"))))
+                         (setf (ps:@ source onmessage)
+                               (lambda (event)
+                                 (ps:setf (ps:@ ((ps:@ document get-element-by-id) "Event stream") inner-h-t-m-l)
+                                          (ps:@ event data))
+                                 (when (= "5"
+                                          (ps:@ event last-event-id))
+                                   ((ps:@ source close))
+                                   (set-result "Event stream" "PASS"))
+                                 (values)))
+                         (values))
+                       ))))))
 
 (defclass no-handler-connection (vanilla-server-connection)
   ()
