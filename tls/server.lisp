@@ -6,6 +6,7 @@ handle it there.
 
 Technically, apply FN-AND-PARS in a new thread."
   (bt:make-thread (lambda ()
+                    (logger "Dispatching thread for ~s~%" tls-stream)
                     (apply fn tls-stream pars)
                     (close tls-stream))
                   :name "HTTP/2 connection handler")
