@@ -55,10 +55,25 @@ The SEND-GOAWAY sends go away frame to the client to close connection."
        (flet ((send-headers (&rest args)
                 (apply #'send-headers stream args))
               (send-goaway (code debug-data)
-                (http2::write-goaway-frame connection
+                (write-goaway-frame connection
                                            0 code debug-data)
                 (force-output (get-network-stream connection))))
          (declare (ignorable #'send-goaway))
+         ,@body))))
+
+(defmacro scheduling-handler ((flexi-stream-name &rest flexi-pars) &body body)
+  `(lambda (connection stream)
+     (let ((,flexi-stream-name (flexi-streams:make-flexi-stream
+                                            stream
+                             ,@flexi-pars)))
+       (flet ((send-headers (&rest args)
+                (apply #'send-headers stream args))
+              (send-goaway (code debug-data)
+                (write-goaway-frame connection 0 code debug-data)
+                (force-output (get-network-stream connection)))
+              (schedule (delay action)
+                (schedule-task (get-scheduler connection) delay action)))
+         (declare (ignorable #'send-goaway #'schedule))
          ,@body))))
 
 (defmacro define-prefix-handler (prefix fn &optional connection)
@@ -104,15 +119,42 @@ optionally provided CONTENT wit CONTENT-TYPE."
     (when content
       (princ content  out))))
 
+(defclass threaded-server-mixin ()
+  ((scheduler :accessor get-scheduler :initarg :scheduler)
+   (lock      :accessor get-lock      :initarg :lock))
+  (:default-initargs
+   :scheduler (make-instance 'scheduler
+                             :name "Scheduler for connection")
+   :lock (bt:make-lock))
+  (:documentation
+   "Server with that holds a lock in actions that write to the output network
+stream, and provides a second thread for scheduled activities (e.g., periodical
+events)."))
+
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
-                                    dispatcher-mixin
-                                    history-printing-object)
+                                     dispatcher-mixin
+                                     history-printing-object
+                                     threaded-server-mixin)
   ()
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation
    "A server connection that spawns streams of VANILLA-SERVER-STREAM type when a
 new stream is requested, and optionally prints activities."))
+
+(defclass vanilla-server-connection (server-http2-connection
+                                     dispatcher-mixin
+                                     history-printing-object)
+  ((scheduler :accessor get-scheduler :initarg :scheduler)
+   (lock      :accessor get-lock      :initarg :lock))
+  (:default-initargs :stream-class 'vanilla-server-stream
+                     :scheduler (make-instance 'scheduler
+                                               :name "Scheduler for connection")
+                     :lock (bt:make-lock))
+  (:documentation
+   "A server connection that spawns streams of VANILLA-SERVER-STREAM type when a
+new stream is requested, allows scheduled or other asynchronous writes, and
+optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream
                                  binary-output-stream-over-data-frames
@@ -149,6 +191,19 @@ prints activities, and reads full body from client if clients sends one."))
             (with-open-stream (out (flexi-streams:make-flexi-stream stream))
               (format out  "<h1>Not found</h1>")))))))
 
+(defmethod new-frame-ready ((c threaded-server-mixin))
+  "Make sure that lock for writing the stream is held while processing input
+frame (and its calbacks)."
+  (bt:acquire-lock (get-lock c)))
+
+(defgeneric do-frame (connection)
+  (:method (connection) (read-frame connection))
+  (:method ((connection threaded-server-mixin))
+    (unwind-protect (read-frame connection)
+      (bt:release-lock (get-lock connection))))
+  (:documentation
+   "Read and process one frame, safely."))
+
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection)
                                        connection)
   "Make a HTTP2 connection of CONNECTION-CLASS on the underlying STREAM (that is a
@@ -160,7 +215,12 @@ signalled."
                         (make-instance connection-class
                                        :network-stream stream))))
     (with-simple-restart (close-connection "Close current connection")
-      (handler-case
-          (loop (read-frame connection))
-        (end-of-file () nil)
-        (go-away ())))))
+      (unwind-protect
+           (handler-case
+               (loop (do-frame connection))
+             (end-of-file () nil)
+             (go-away ())
+             (http-stream-error (e)
+               (logger "Stream ~s closed, ~a" connection
+                       (aref *error-codes* (get-error-code e)))))
+        (terminate-scheduler-thread (get-scheduler connection))))))

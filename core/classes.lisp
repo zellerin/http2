@@ -357,6 +357,9 @@ the parameters should be different anyway). By default throws an error."))
       (setf (get-state stream) 'closed))))
 
 ;;;; Other callbacks
+(defgeneric new-frame-ready (connection)
+  (:method (connection) nil))
+
 (defgeneric apply-data-frame (stream payload)
   (:documentation "Data frame is received by a stream.
  By default does nothing; there are several mixins that implement reading the

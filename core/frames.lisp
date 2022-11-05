@@ -341,6 +341,7 @@ passed to the make-instance"
     ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
     ;; which, if blocked by the transmission of a large frame, could affect
     ;; performance.
+    (new-frame-ready connection)
     (when (> length (get-max-frame-size connection))
         ;; fixme: sometimes connection error.
         (http2-error connection +frame-size-error+

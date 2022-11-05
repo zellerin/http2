@@ -58,17 +58,22 @@
                         (values))))))))))
 
 (define-exact-handler "/event-stream"
-    (handler (out :external-format '(:utf-8 :eol-style :crlf))
+    (http2::scheduling-handler (out :external-format '(:utf-8 :eol-style :crlf))
       (send-headers `((:status "200") ("content-type" "text/event-stream")))
-      (handler-case
-          (loop for i from 1
-                do
-                   (sleep 1)
-                   (format out "id: ~d~%" i)
-                   (multiple-value-bind (sec min hr day #+nil (month year))
-                       (decode-universal-time (get-universal-time))
-                     (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr min sec))
-                   (force-output out)))))
+      (let ((i 0))
+        (labels ((send-event-and-plan-next ()
+                   (ignore-errors
+                    ;; unless the stream is closed
+                    (bt:with-lock-held ((http2::get-lock connection))
+                      (format out "id: ~d~%" (incf i))
+                      (multiple-value-bind (sec min hr day)
+                          (decode-universal-time (get-universal-time))
+                        (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr
+                                min sec))
+                      (force-output out)
+                      (http2::schedule-task (http2::get-scheduler connection) 1000000
+                                            #'send-event-and-plan-next)))))
+          (send-event-and-plan-next)))))
 
 (define-exact-handler "/longerslow"
     (handler (out)

@@ -50,6 +50,7 @@
   :depends-on ("puri" "http2/tls" "cl-who"
                       "parenscript")
   :components ((:file "dispatch")
+               (:file "scheduler")
                (:file "server"))
   :entry-point "http2/server::main")
 
