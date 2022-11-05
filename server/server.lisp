@@ -58,20 +58,20 @@
                         (values))))))))))
 
 (define-exact-handler "/event-stream"
-    (http2::scheduling-handler (out :external-format '(:utf-8 :eol-style :crlf))
+    (scheduling-handler (out :external-format '(:utf-8 :eol-style :crlf))
       (send-headers `((:status "200") ("content-type" "text/event-stream")))
       (let ((i 0))
         (labels ((send-event-and-plan-next ()
                    (ignore-errors
                     ;; unless the stream is closed
-                    (bt:with-lock-held ((http2::get-lock connection))
+                    (bt:with-lock-held ((get-lock connection))
                       (format out "id: ~d~%" (incf i))
                       (multiple-value-bind (sec min hr day)
                           (decode-universal-time (get-universal-time))
                         (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr
                                 min sec))
                       (force-output out)
-                      (http2::schedule-task (http2::get-scheduler connection) 1000000
+                      (schedule-task (get-scheduler connection) 1000000
                                             #'send-event-and-plan-next)))))
           (send-event-and-plan-next)))))
 
@@ -140,7 +140,8 @@
                           "error"
                           (lambda () (set-result "1000 events" "ERROR")))
                          ((@ req open) "GET" "/")
-                         ((@ req send))))))))
+                         ((@ req send)))))))
+  "Tests to be executed in the browser on /test page. Each item is test name, test description and test code in Parenscript.")
 
 
 (define-exact-handler "/test"
@@ -201,7 +202,7 @@ be other ones."
                   (lambda (conn http-stream)
                     (let ((value (funcall handler conn http-stream)))
                       (write-goaway-frame connection 0 +no-error+ #())
-                      (invoke-restart 'http2::kill-server value)))
+                      (invoke-restart 'kill-server value)))
                 connection)
               (process-server-stream stream :connection connection)))))
     (create-https-server port "/tmp/server.key" "/tmp/server.crt")))

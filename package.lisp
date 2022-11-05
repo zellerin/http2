@@ -53,6 +53,9 @@
            #:define-prefix-handler
            #:define-exact-handler
            #:handler
+           #:scheduling-handler
+           #:schedule-task
+           #:get-lock #:get-scheduler
            #:redirect-handler
            #:send-text-handler
            #:send-text

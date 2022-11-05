@@ -1,4 +1,4 @@
-This file describes in more detail of client and server implementation, and then selected internal interfaces.
+qThis file describes in more detail of client and server implementation, and then selected internal interfaces.
 
 It mostly duplicates the docstrings in code (in fact, it is build upon them), but some value should be in the selection and ordering of the content.
 
@@ -102,7 +102,8 @@ The [[./server/server.lisp][sample server]] uses only functions described below.
 
 - =VANILLA-SERVER-CONNECTION= (class)
    A server connection that spawns streams of VANILLA-SERVER-STREAM type when a
-   new stream is requested, and optionally prints activities.
+   new stream is requested, allows scheduled or other asynchronous writes, and
+   optionally prints activities.
 
      Superclasses: (SERVER-HTTP2-CONNECTION DISPATCHER-MIXIN
                     HISTORY-PRINTING-OBJECT)
@@ -139,6 +140,14 @@ The [[./server/server.lisp][sample server]] uses only functions described below.
 
    Lambda list: ~(FLEXI-STREAM-NAME &REST FLEXI-PARS)~ ~&BODY~ ~BODY~
 
+- =SCHEDULING-HANDLER= (macro)
+   Version of HANDLER that is to be used for scheduled (or otherwise processed in
+   another thread) responses:
+   - It does not close the output stream on exit
+   - It makes accessible in BODY function SCHEDULE that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage.
+
+   Lambda list: ~(FLEXI-STREAM-NAME &REST FLEXI-PARS)~ ~&BODY~ ~BODY~
+
 - =REDIRECT-HANDLER= (function)
    A handler that emits redirect response with http status being CODE, and
    optionally provided CONTENT wit CONTENT-TYPE.
@@ -165,7 +174,7 @@ The defined server needs to be published; the only widely use option is over TLS
 #+BEGIN: lisp-fns-doc :section http2::@tls-server :package http2
 
 - =CREATE-HTTPS-SERVER= (function)
-   Open TLS wrapped HTTPS(/2) server on PORT on localhost.
+   Open TLS wrapped HTTPS(/2) server on PORT on HOST (localhost by default).
 
    It accepts new connections and uses WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM to
    establish TLS.
@@ -180,6 +189,7 @@ The defined server needs to be published; the only widely use option is over TLS
    Lambda list: ~PORT~ ~KEY~ ~CERT~ ~&KEY~ ~((:VERBOSE *DO-PRINT-LOG*))~
                 ~(ANNOUNCE-OPEN-FN (CONSTANTLY NIL))~
                 ~(CONNECTION-CLASS 'VANILLA-SERVER-CONNECTION)~
+                ~(HOST "127.0.0.1")~
 
 - =WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM= (function)
    Establish TLS connection over RAW-STREAM, and run PROCESS-SERVER-STREAM over it.
@@ -202,14 +212,12 @@ The defined server needs to be published; the only widely use option is over TLS
    parameters following.
 
 - =THREADED-DISPATCH= (function)
-   When used as *dispatch-fn* callback, open new thread for a connection and handle it there.
-
-   This is not the most efficient way to run things, but still better than the
-   one-connection-at-time version.
+   When used as *dispatch-fn* callback, open a new thread for a connection and
+   handle it there.
 
    Technically, apply FN-AND-PARS in a new thread.
 
-   Lambda list: ~FN~ ~&REST~ ~PARS~
+   Lambda list: ~FN~ ~TLS-STREAM~ ~&REST~ ~PARS~
 
 - =CREATE-ONE-SHOT-SERVER= (function)
    Open server on PORT that handles just one request and returns value from HANDLER.

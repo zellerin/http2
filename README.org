@@ -74,12 +74,8 @@ https://localhost:1234 or
   curl -k http://localhost:1234/
 #+end_src
 
-Customize PEER-ENDS-HTTP-STREAM to send something else (or process-end-headers
-if you do not want to see their data), and maybe add a method to ADD-HEADER to
-pay attention to what other headers than URL the client sends.
-
-For simple cases, handlers can be defined to send data as text or binary
-streams, see sample server. Splitting the payload based on window size is done.
+Then define handlers for your paths or prefixes, see the example server for a
+starting point and API documentation for more details.
 
 ** Missing pieces
 - No handling of priorities is implemented. This is OK, as these are only
@@ -99,17 +95,17 @@ See [[file:HACKING.org][HACKING.org]] for the details.
 
 ** Dependencies
 
-(to be reviewed)
-
 The core library used trivial-gray-streams to implement streams over data frames.
 
 Client and server require usocket and cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
 
 Client uses puri to manipulate URLs.
 
-Server also uses cffi directly to [[file:tls/cl+ssl.lisp][check and confirm alpn]]. The sample server uses cl-who to create html; this is an arbitrary choice and your server can use anything else.
+Server also uses cffi directly to [[file:tls/cl+ssl.lisp][check and confirm alpn]]. The sample server uses
+parenscript and cl-who to create html; this is an arbitrary choice and your
+server can use anything else.
 
-Additioanlly, fiasco is used for testing.
+Additionally, fiasco is used for testing (and Javascript for browser-side testing).
 
 ** License
 Licensed by MIT license.

@@ -66,13 +66,6 @@ Practically, it means:
 - ALPN callback that selects h2 if present,
 - Do not request client certificates
 - Do not allow ssl compression adn renegotiation.
-
-``A deployment of HTTP/2 over TLS 1.2 MUST disable compression.  TLS compression
-can lead to the exposure of information that would not otherwise be revealed
-[RFC3749].  Generic compression is unnecessary since HTTP/2 provides compression
-features that are more aware of context and therefore likely to be more
-appropriate for use for performance, security, or other reasons.''
-
 We should also limit allowed ciphers, but we do not."
   (let ((context
           (cl+ssl:make-context

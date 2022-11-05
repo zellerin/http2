@@ -62,6 +62,10 @@ The SEND-GOAWAY sends go away frame to the client to close connection."
          ,@body))))
 
 (defmacro scheduling-handler ((flexi-stream-name &rest flexi-pars) &body body)
+  "Version of HANDLER that is to be used for scheduled (or otherwise processed in
+another thread) responses:
+- It does not close the output stream on exit
+- It makes accessible in BODY function SCHEDULE that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage. "
   `(lambda (connection stream)
      (let ((,flexi-stream-name (flexi-streams:make-flexi-stream
                                             stream
