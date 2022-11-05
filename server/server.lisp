@@ -4,7 +4,7 @@
 ;;;; server, and actually bind it to a TLS socket.
 
 (defpackage :http2/server
-  (:use :cl :http2))
+  (:use :cl :http2 :cl-who :ps))
 
 (in-package :http2/server)
 
@@ -17,13 +17,13 @@
 (define-exact-handler "/"
     (handler (out :external-format :utf-8)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
-      (cl-who:with-html-output (out)
+      (with-html-output (out)
         (:h1 "Hello World")
         (:p "This server is for testing http2 protocol implementation")
         (:ul
          (:li (:a :href "/redir" "Redirect test")) " "
          (:li (:a :href "/long" "Long page test")) " "
-         (:li (:a :href "/longerslow" "Slowly printing page") " (test with curl -N)"))
+         (:li (:a :href "/test" "A test page") ""))
         (:form :action "/body" :method "post"
                (:input :type :submit :name "xxx" :value "POST query test"))
         (:p "UTF8 test: Příliš žluťoučký kůň... 😎"))))
@@ -32,28 +32,28 @@
     (handler (out)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
-      (cl-who:with-html-output (out)
+      (with-html-output (out)
         (:h1 "Test long body")
         (dotimes (i 100000)
-          (cl-who:htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
+          (htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
 
 (define-exact-handler "/es-test"
     (handler (out)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
-      (cl-who:with-html-output (out out :prologue "<!DOCTYPE html>")
+      (with-html-output (out out :prologue "<!DOCTYPE html>")
         (:html
          (:body
           "Waiting for event"
           (:p :id "events")
           (:script :type "text/javascript"
-                   (cl-who:str
+                   (str
                     (parenscript:ps
-                      (let ((source (ps:new (-event-source "/event-stream"))))
-                        (setf (ps:@ source onmessage)
+                      (let ((source (new (-event-source "/event-stream"))))
+                        (setf (@ source onmessage)
                               (lambda (event)
-                                (ps:setf (ps:@ ((ps:@ document get-element-by-id) "events") inner-h-t-m-l)
-                                         (ps:@ event data))
+                                (setf (@ ((@ document get-element-by-id) "events") inner-h-t-m-l)
+                                      (@ event data))
                                 (values)) )
                         (values))))))))))
 
@@ -75,92 +75,111 @@
                                             #'send-event-and-plan-next)))))
           (send-event-and-plan-next)))))
 
-(define-exact-handler "/longerslow"
-    (handler (out)
-      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
-                      ("refresh" "30; url=/")))
-      (cl-who:with-html-output (out)
-        (:h1 "Test longer body")
-        (dotimes (i 10)
-          (cl-who:htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))
-          (terpri out)
-          (force-output out)
-          (sleep 1)))))
-
 (define-exact-handler "/body"
     (handler (out)
       (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
 
+(defparameter *tests*
+  `(("404" "Test that the response of not-found is 404"
+           (test-request "404"
+                         (lambda (reply)
+                           (unless (= 404 (@ reply status))
+                             (@ reply status)))
+                         "GET" "/no-such-page"))
+    ("Body passing" "Test that body is available to the server."
+                    (test-request "Body passing"
+                                  (lambda (reply)
+                                    (unless
+                                        (and
+                                         (= 200 (@ reply status))
+                                         (= "SAMPLE BODY" (@ reply response-text)))
+                                      (+ (@ reply status)
+                                         " "  (@ reply response-text))))
+                                  "POST" "/body"  "SAMPLE BODY"))
+    ("Long" "Test that long responses are handled well (streams over http streams."
+            (test-request "Long"
+                          (lambda (reply)
+                            (unless (and
+                                     (= 200 (@ reply status))
+                                     (= 2588913 (length (@ reply response-text))))
+                              (+ "BAD: code " (@ reply status)
+                                 " length "  (length (@ reply response-text)))))
+                          "GET" "/long"))
+    ("Event stream" "Test event streams - scheduler and locking"
+                    (let ((source (new (-event-source "/event-stream"))))
+                      (setf (@ source onmessage)
+                            (lambda (event)
+                              (setf (@ ((@ document get-element-by-id) "Event stream") inner-h-t-m-l)
+                                    (@ event data))
+                              (when (= "5"
+                                       (@ event last-event-id))
+                                ((@ source close))
+                                (set-result "Event stream" "PASS"))
+                              (values)))
+                      (values)))
+    ("1000 events" "Test sending 1000 parallel requests"
+                   (let ((res 0))
+                     (dotimes (i 1000)
+                       (let ((req (new *X-M-L-Http-Request)))
+                         ((@ req add-event-listener)
+                          "load"
+                          (lambda ()
+                            (incf res)
+                            (when (= res 1000)
+                              (set-result "1000 events"
+                                          "PASS"))
+                            (when (> res 1000)
+                              (set-result "1000 events"
+                                          "FAIL (too much)"))
+                            (when (< res 1000)
+                              (set-result "1000 events"
+                                          res))))
+                         ((@ req add-event-listener)
+                          "error"
+                          (lambda () (set-result "1000 events" "ERROR")))
+                         ((@ req open) "GET" "/")
+                         ((@ req send))))))))
+
+
 (define-exact-handler "/test"
     (handler (out)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
-      (cl-who:with-html-output (out)
+      (with-html-output (out out :prologue "<!DOCTYPE html>")
+        (:body :onload "doTests()")
         (:h1 "Automated test page")
+        (:p "Run several tests of the server over Javascript.")
         (:table
-         (:tr (:th "Test") (:th "Status"))
-         (dolist (test '("404" "Body passing" "Long" "Slow print"
-                         "Event stream"))
-           (cl-who:htm (:tr (:td (cl-who:str test)) (:td :id test "TODO")))))
+         (:tr (:th "Test") (:th "----- Status -----") (:th "Comment"))
+         (dolist (test *tests*)
+           (htm (:tr (:td (str (car test)))
+                     (:td :id (car test) "TODO")
+                     (:td (str (second test)))))))
         (:script
-         (cl-who:str (ps:ps
-                       (defun set-result (test result)
-                         (setf (ps:@ ((ps:@ document get-element-by-id) test)
-                                     inner-h-t-m-l)
-                               result))
+         (str (ps
+                (defun set-result (test result)
+                  (setf (@ ((@ document get-element-by-id) test)
+                           inner-h-t-m-l)
+                        result))
 
-                       (defun test-request (name check-fn method page &optional body)
-                         (let ((req (ps:new *X-M-L-Http-Request)))
-                           ((ps:@ req add-event-listener)
-                            "load"
-                            (lambda ()
-                              (set-result name
-                                          (let ((res (funcall check-fn this)))
-                                            (if res  (+ "BAD: " res)  "PASS")))))
-                           ((ps:@ req add-event-listener)
-                            "error"
-                            (lambda () (set-result name "ERROR")))
-                           ((ps:@ req open) method page)
-                           ((ps:@ req send) body)))
-
-                       (test-request "404"
-                                     (lambda (reply)
-                                       (unless (= 404 (ps:@ reply status))
-                                         (ps:@ reply status)))
-                        "GET" "/no-such-page")
-
-                       (test-request "Body passing"
-                        (lambda (reply)
-                          (unless
-                              (and
-                               (= 200 (ps:@ reply status))
-                               (= "SAMPLE BODY" (ps:@ reply response-text)))
-                            (+ (ps:@ reply status)
-                               " "  (ps:@ reply response-text))))
-                        "POST" "/body"  "SAMPLE BODY")
-
-                       (test-request "Long"
-                        (lambda (reply)
-                          (unless (and
-                               (= 200 (ps:@ reply status))
-                               (= 2588913 (length (ps:@ reply response-text))))
-                            (+ "BAD: code " (ps:@ reply status)
-                               " length "  (length (ps:@ reply response-text)))))
-                        "GET" "/long")
-
-                       (let ((source (ps:new (-event-source "/event-stream"))))
-                         (setf (ps:@ source onmessage)
-                               (lambda (event)
-                                 (ps:setf (ps:@ ((ps:@ document get-element-by-id) "Event stream") inner-h-t-m-l)
-                                          (ps:@ event data))
-                                 (when (= "5"
-                                          (ps:@ event last-event-id))
-                                   ((ps:@ source close))
-                                   (set-result "Event stream" "PASS"))
-                                 (values)))
-                         (values))
-                       ))))))
+                (defun test-request (name check-fn method page &optional body)
+                  (let ((req (new *X-M-L-Http-Request)))
+                    ((@ req add-event-listener)
+                     "load"
+                     (lambda ()
+                       (set-result name
+                                   (let ((res (funcall check-fn this)))
+                                     (if res  (+ "BAD: " res)  "PASS")))))
+                    ((@ req add-event-listener)
+                     "error"
+                     (lambda () (set-result name "ERROR")))
+                    ((@ req open) method page)
+                    ((@ req send) body)))))
+         (str
+          (ps*
+           `(defun do-tests ()
+              ,@(mapcar 'third *tests*))))))))
 
 (defclass no-handler-connection (vanilla-server-connection)
   ()
