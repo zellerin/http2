@@ -94,8 +94,9 @@ We should also limit allowed ciphers, but we do not."
 (defun create-https-server (port key cert &key
                                             ((:verbose http2::*do-print-log*))
                                             (announce-open-fn (constantly nil))
-                                            (connection-class 'vanilla-server-connection))
-  "Open TLS wrapped HTTPS(/2) server on PORT on localhost.
+                                            (connection-class 'vanilla-server-connection)
+                                            (host "127.0.0.1"))
+  "Open TLS wrapped HTTPS(/2) server on PORT on HOST (localhost by default).
 
 It accepts new connections and uses WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM to
 establish TLS.
@@ -107,7 +108,7 @@ thread) to start testing it.
 If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
 debug is printed."
   (restart-case
-    (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
+    (usocket:with-server-socket (socket (usocket:socket-listen host port
                                                                :reuse-address t
                                                                :backlog 200
                                                                :element-type '(unsigned-byte 8)))
