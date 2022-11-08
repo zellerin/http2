@@ -33,7 +33,7 @@ parameters following.")
 
 Use TLS KEY and CERT for server identity.
 
-ARGS are passed to PROCESS-SERVER-STREAM that is invoked using ~*DISPATCH-FN*~ to
+ARGS are passed to PROCESS-SERVER-STREAM that is invoked using *DISPATCH-FN* to
 allow threading, pooling etc.
 
 Wrap call to  with an error handler.

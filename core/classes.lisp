@@ -163,7 +163,7 @@ after DO-PING is send."))
 (defclass logging-object ()
   ()
   (:documentation
-   "Objects with this mixin have ~ADD-LOG~ called in many situations so that the
+   "Objects with this mixin have ADD-LOG called in many situations so that the
 communication can be debugged or recorded."))
 
 (defclass history-keeping-object (logging-object)
@@ -173,8 +173,8 @@ communication can be debugged or recorded."))
 (defclass history-printing-object (logging-object)
   ()
   (:documentation
-   "A ~LOGGING-OBJECT~ that implements ~ADD-LOG~ to print all logs to
-~*TRACE-OUTPUT*~ as soon as it receives them."))
+   "A LOGGING-OBJECT that implements ADD-LOG to print all logs to
+*TRACE-OUTPUT* as soon as it receives them."))
 
 (defclass logging-connection (http2-connection history-keeping-object)
   ())

@@ -68,6 +68,9 @@
    "via"
    "www-authenticate"))
 
+(defconstant +last-static-header-index+ 61)
+(defconstant +last-static-header-pair+ 17)
+
 (defclass hpack-context ()
   ((dynamic-table                :accessor get-dynamic-table                :initarg :dynamic-table)
    (bytes-left-in-table          :accessor get-bytes-left-in-table
@@ -87,24 +90,33 @@
 
   (:documentation
    "Dynamic tables implementation: they are stored in an adjustable array, with
-   [0] element storing first element initially, and (s+k)th element after k
+   [0] element storing first element initially (indexed by s+1), and (s+k)th element after k
    insertions.
 
-   After deletion of D elements, element s+k is stored on index D, element s+1 on index
+   After deletion of D elements, element s+k is stored on index D, element s+1
+   on index
 
      <----------  Index Address Space ---------->
-     <-- Static  Table -->  <-- Dynamic Table -->
-     +---+-----------+---+  +---+-----------+---+
-     | 1 |    ...    | s |  |s+1|    ...    |s+k|
-     +---+-----------+---+  +---+-----------+---+
+     <-- Static  Table -->  <--   Dynamic Table -->
+     +---+-----------+---+  +-----+-----------+-----+
+     | 1 |    ...    | s |  |s+1+D|    ...    |s+k+D| ...deleted...
+     +---+-----------+---+  +-----+-----------+-----+
+                               k                D                 0
+                            <----- table aref index -------------->
                             ^                   |
                             |                   V
                      Insertion Point      Dropping Point"))
 
+(declaim
+ (ftype (function (vector fixnum) fixnum) vector-index-to-hpack-index)
+ (ftype (function (hpack-context fixnum) (or cons string))  dynamic-table-value))
+
+(deftype context-table-element ()
+  '(or cons string))
 
 (defun vector-index-to-hpack-index (table idx)
   "Convert between hpack index and index in the vector. This works both ways."
-  (- (+ 61 (length table)) idx))
+  (- (+ +last-static-header-index+ (length table)) idx))
 
 (defun dynamic-table-value (context idx)
   "Header on position IDX in the dynamic table in CONTEXT.
@@ -131,7 +143,7 @@ This is factored out to be used in testing."
   "Find header PAIR in static table and, if CONNECTION is not null, in its dynamic
 table. Return the index, or NIL if not found."
   ;; 17 is last pair in static table
-  (find-in-tables context pair #'equalp #'identity 17))
+  (find-in-tables context pair #'equalp #'identity +last-static-header-pair+))
 
 (defun find-header-in-tables (context name)
   "Find header NAME in static table and, if CONNECTION is not null, in its dynamic
@@ -140,7 +152,7 @@ table. Return the index, or NIL if not found."
                   (lambda (a) (if (consp a) (car a) a))
                   nil))
 
-(defun header-size (header)
+(defun compute-header-size (header)
   "Size of the header for dynamic cache purposes: 32 octets plus header and name
 sizes, including leading : at special header names."
   (let* ((name (first header))
@@ -157,7 +169,7 @@ sizes, including leading : at special header names."
          (loop with table = (get-dynamic-table context)
                with bytes-left = new-size
                for idx from (1- (length table)) downto (get-deleted-items context)
-               for this-header-size = (header-size (aref table idx))
+               for this-header-size = (compute-header-size (aref table idx))
                if (>= bytes-left this-header-size)
                  do (decf bytes-left this-header-size)
                else
@@ -173,14 +185,14 @@ sizes, including leading : at special header names."
   "Add dynamic header to a table. Return the header."
   (vector-push-extend header (get-dynamic-table context))
   (decf (get-bytes-left-in-table context)
-        (header-size header))
+        (compute-header-size header))
   ;; flush out records till we fit the space.
   (loop with table = (get-dynamic-table context)
         while (minusp (get-bytes-left-in-table context))
         for to-evict =  (aref table (get-deleted-items context))
         do
            (incf (get-bytes-left-in-table context)
-                 (header-size to-evict))
+                 (compute-header-size to-evict))
            (setf (aref table (get-deleted-items context)) nil)
            (incf (get-deleted-items context)))
   header)

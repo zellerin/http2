@@ -404,8 +404,9 @@ arrangement or negotiation."
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
-        (http2-error connection 'protocol-error "If the length of the padding is the length of the frame payload or greater, the recipient MUST treat this as a
-connection error (Section 5.4.1) of type PROTOCOL_ERROR"))
+        (http2-error connection 'protocol-error "If the length of the padding is the length of the frame payload or greater, the
+recipient MUST treat this as a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR"))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
         (loop while (plusp length)
               do (decf length (read-vector data))
