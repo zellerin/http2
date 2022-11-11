@@ -3,10 +3,10 @@
 ;;;; Create a specific server. Use dispatch handlers to define behaviour of the
 ;;;; server, and actually bind it to a TLS socket.
 
-(defpackage :http2/server
+(defpackage :http2/server-example
   (:use :cl :http2 :cl-who :ps))
 
-(in-package :http2/server)
+(in-package :http2/server-example)
 
 (define-prefix-handler "/re" (redirect-handler "/ok"))
 
@@ -80,6 +80,10 @@
       (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
+
+(defmethod http2::add-header (connection (stream http2::server-stream) name value)
+  (handler-bind ((warning #'muffle-warning))
+    (call-next-method)))
 
 (defparameter *tests*
   `(("404" "Test that the response of not-found is 404"
@@ -206,3 +210,19 @@ be other ones."
                 connection)
               (process-server-stream stream :connection connection)))))
     (create-https-server port "/tmp/server.key" "/tmp/server.crt")))
+
+(defun run-demo-server (&key (key "/tmp/server.key")
+                          (certificate "/tmp/server.crt")
+                          (port 1230))
+  (unless (and (probe-file key)
+               (probe-file certificate))
+    (format t "~%Generating temporary certificates")
+    (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
+    (terpri))
+
+  (handler-bind ((warning 'muffle-warning)
+                 (error (lambda (e)
+                          (describe e)
+                          (invoke-restart 'kill-server))))
+    (create-https-server port "/tmp/server.key" "/tmp/server.crt"
+                         :verbose nil)))

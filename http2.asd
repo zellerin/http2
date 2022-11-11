@@ -47,12 +47,24 @@
   :version "0.4"
   :serial t
   :pathname "server"
+  :depends-on ("puri" "http2/tls")
+  :components ((:file "dispatch")
+               (:file "scheduler")))
+
+(defsystem "http2/server/example"
+  :description "An example of http/2 server."
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :license  "MIT"
+  :version "0.4"
+  :serial t
+  :pathname "server"
   :depends-on ("puri" "http2/tls" "cl-who"
-                      "parenscript")
+                      "parenscript"
+                      "http2/server")
   :components ((:file "dispatch")
                (:file "scheduler")
                (:file "server"))
-  :entry-point "http2/server::main")
+  :entry-point "http2/server-example::run-demo-server")
 
 (defsystem "http2/test"
   :depends-on ("http2" "fiasco" "trivial-gray-streams"
