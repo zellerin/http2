@@ -170,7 +170,7 @@ sizes, including leading : at special header names."
                     (return)))))
 
 (defmethod add-dynamic-header (context header)
-  "Add dynamic header to a table."
+  "Add dynamic header to a table. Return the header."
   (vector-push-extend header (get-dynamic-table context))
   (decf (get-bytes-left-in-table context)
         (header-size header))
@@ -182,7 +182,8 @@ sizes, including leading : at special header names."
            (incf (get-bytes-left-in-table context)
                  (header-size to-evict))
            (setf (aref table (get-deleted-items context)) nil)
-           (incf (get-deleted-items context))))
+           (incf (get-deleted-items context)))
+  header)
 
 (defvar *use-huffman-coding-by-default* :maybe
   "Is set, the headers are by default huffman-encoded. Special value :maybe means
@@ -334,6 +335,7 @@ as defined in RFC7541 sect. 5.1."
               do  (setf (aref res i) (code-char (read-byte* stream)))
               finally (return res)))))
 
+
 (defun read-from-tables (index context)
   "Read item on INDEX in static table or dynamic table in CONNECTION."
   (cond ((zerop index)
@@ -342,59 +344,43 @@ as defined in RFC7541 sect. 5.1."
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
 
+(defun read-literal-header-indexed-name (stream octet0 context use-bits)
+  "See Fig. 6 and Fig. 8 - Name of header is in tables, value is literal.
+
+Use USE-BITS from the OCTET0 for name index"
+  (let ((table-match (read-from-tables
+                      (get-integer-from-octet stream octet0 use-bits)
+                      context)))
+    (list (if (consp table-match) (car table-match) table-match)
+                        (read-string-from-stream stream))))
+
+(defun read-literal-header-field-new-name (stream)
+  "See 6.2.1 fig. 7, and 6.2.2. fig. 9 -
+Neither name of the header nor value is in table, so read both as literals."
+  (list (read-string-from-stream stream) (read-string-from-stream stream)))
+
 (defun read-http-header (connection)
   "Read header field from stream. Decrement *bytes-left* as needed."
   (let* ((stream (get-network-stream connection))
          (octet0 (read-byte* stream))
          (context (get-decompression-context connection)))
     (cond
-      ((plusp (ldb (byte 1 7) octet0))
-       (return-from read-http-header
-         ;; 6.1 - indexed header
-         (read-from-tables (get-integer-from-octet stream octet0 7)
-                           context)))
-      ((zerop (ldb (byte 6 0) octet0)) ; 0, 0x40
-       ;; 6.2.1 - literal header, new name, with indexing
-       (let* ((header (read-string-from-stream stream))
-              (value (read-string-from-stream stream))
-              (result (list header value)))
-         (when (plusp octet0)
-           (add-dynamic-header context result))
-         (return-from read-http-header result)))
-      ((plusp (ldb (byte 1 6) octet0))
-       ;; 6.2.1
-       (let ((table-match (read-from-tables
-                           (get-integer-from-octet stream octet0 6)
-                           context)))
-         (let ((res (list (if (consp table-match) (car table-match) table-match)
-                          (read-string-from-stream stream))))
-           (add-dynamic-header context res)
-           res)))
-      ((zerop (ldb (byte 4 4) octet0))
-       (let ((table-match (read-from-tables
-                           (get-integer-from-octet stream octet0 4)
-                           context)))
-         (list (if (consp table-match) (car table-match) table-match)
-               (read-string-from-stream stream))))
-      ;; dynamic table size update
-      ((= #x10 octet0)
-       ;; Literal Header Field Never Indexed -- New Name
-       (let ((header (read-string-from-stream stream))
-             (value (read-string-from-stream stream)))
-         (return-from read-http-header (list header value))))
-      ((= 1 (ldb (byte 4 4) octet0))
-       ;; Literal Header Field Never Indexed -- Indexed Name
-       (let ((table-match (read-from-tables
-                           (get-integer-from-octet stream octet0 4)
-                           context)))
-         (list (if (consp table-match) (car table-match) table-match)
-               (read-string-from-stream stream)))
-       )
-      (t (let ((dynamic-table-size (get-integer-from-octet stream octet0 5)))
-           ;; fixme: dynamic tables not implemented
-           (update-dynamic-table-size context dynamic-table-size)
-           nil)))))
-
+      ((plusp (ldb (byte 1 7) octet0))  ;; 1xxx xxxx
+       (read-from-tables (get-integer-from-octet stream octet0 7) context))
+      ((= #x40 octet0) ;; 0100 0000 - fig. 7
+       (add-dynamic-header context (read-literal-header-field-new-name stream)))
+      ((plusp (ldb (byte 1 6) octet0)) ;; 01NN NNNN
+       (add-dynamic-header context
+                           (read-literal-header-indexed-name stream octet0 context 6)))
+      ((zerop (logand #xef octet0)) ;; 000x 0000 - fig. 9 and 11
+       (read-literal-header-field-new-name stream))
+      ((zerop (ldb (byte 3 5) octet0))  ;; 000X NNNN
+       (read-literal-header-indexed-name stream octet0 context 4))
+      (t  ; 001x xxxx
+       (update-dynamic-table-size context
+                                  (get-integer-from-octet stream octet0 5))
+       nil))))
+
 
 
 (eval-when (:compile-toplevel :load-toplevel)
