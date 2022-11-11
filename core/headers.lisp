@@ -7,78 +7,35 @@
   (vector
    nil
    :authority
-   '(:method "GET")
-   '(:method "POST")
-   '(:path "/")
-   '(:path "/index.html")
-   '(:scheme "http")
-   '(:scheme "https")
-   '(:status "200")
-   '(:status "204")
-   '(:status "206")
-   '(:status "304")
-   '(:status "400")
-   '(:status "404")
-   '(:status "500")
-   "accept-charset"
-   '("accept-encoding" "gzip, deflate")
-   "accept-language"
-   "accept-ranges"
-   "accept"
-   "access-control-allow-origin"
-   "age"
-   "allow"
-   "authorization"
-   "cache-control"
-   "content-disposition"
-   "content-encoding"
-   "content-language"
-   "content-length"
-   "content-location"
-   "content-range"
-   "content-type"
-   "cookie"
-   "date"
-   "etag"
-   "expect"
-   "expires"
-   "from"
-   "host"
-   "if-match"
-   "if-modified-since"
-   "if-none-match"
-   "if-range"
-   "if-unmodified-since"
-   "last-modified"
-   "link"
-   "location"
-   "max-forwards"
-   "proxy-authenticate"
-   "proxy-authorization"
-   "range"
-   "referer"
-   "refresh"
-   "retry-after"
-   "server"
-   "set-cookie"
-   "strict-transport-security"
-   "transfer-encoding"
-   "user-agent"
-   "vary"
-   "via"
-   "www-authenticate"))
+   '(:method "GET") '(:method "POST") '(:path "/") '(:path "/index.html")
+   '(:scheme "http") '(:scheme "https") '(:status "200") '(:status "204")
+   '(:status "206") '(:status "304") '(:status "400") '(:status "404")
+   '(:status "500") "accept-charset" '("accept-encoding" "gzip, deflate")
+   "accept-language" "accept-ranges" "accept" "access-control-allow-origin"
+   "age" "allow" "authorization" "cache-control" "content-disposition"
+   "content-encoding" "content-language" "content-length" "content-location"
+   "content-range" "content-type" "cookie" "date" "etag" "expect" "expires"
+   "from" "host" "if-match" "if-modified-since" "if-none-match" "if-range"
+   "if-unmodified-since" "last-modified" "link" "location" "max-forwards"
+   "proxy-authenticate" "proxy-authorization" "range" "referer" "refresh"
+   "retry-after" "server" "set-cookie" "strict-transport-security"
+   "transfer-encoding" "user-agent" "vary" "via" "www-authenticate")
+
+  "Static headers table. Each element is either list of header name and value, or
+just header name. The content is defined in the RFC7541, and is supposed to
+start at index 1, so leading nil.")
 
 (defconstant +last-static-header-index+ 61)
 (defconstant +last-static-header-pair+ 17)
 
 (defclass hpack-context ()
-  ((dynamic-table                :accessor get-dynamic-table                :initarg :dynamic-table)
-   (bytes-left-in-table          :accessor get-bytes-left-in-table
-                                 :initarg :dynamic-table-size)
-   (dynamic-table-size :accessor get-dynamic-table-size
-                       :initarg :dynamic-table-size)
-   (updates-needed     :accessor get-updates-needed      :initarg :updates-needed)
-   (deleted-items      :accessor get-deleted-items       :initarg :deleted-items))
+  ((dynamic-table       :accessor get-dynamic-table        :initarg :dynamic-table)
+   (bytes-left-in-table :accessor get-bytes-left-in-table
+                        :initarg :dynamic-table-size)
+   (dynamic-table-size  :accessor get-dynamic-table-size
+                        :initarg :dynamic-table-size)
+   (updates-needed      :accessor get-updates-needed       :initarg :updates-needed)
+   (deleted-items       :accessor get-deleted-items        :initarg :deleted-items))
   (:default-initargs
    :dynamic-table (make-array 0 :fill-pointer 0 :adjustable t)
    ;; When a connection is established, the dynamic table size for the HPACK
@@ -295,16 +252,16 @@ as defined in RFC7541 sect. 5.1."
            (type (unsigned-byte 8) initial-octet))
   (let ((small-res (ldb (byte bit-size 0) initial-octet)))
     (if (= small-res (ldb (byte bit-size 0) -1))
-      (loop
-        with res fixnum = 0
-        for octet of-type (unsigned-byte 8) = (read-byte* stream)
-        for shift from 0 by 7
-        for last-octet = (zerop (ldb (byte 1 7) octet))
-        and octet-value = (ldb (byte 7 0) octet)
-        do (setf (ldb (byte 7 shift) res) octet-value)
-        when last-octet
-          do (return (+ res small-res)))
-      small-res)))
+        (loop
+          with res fixnum = 0
+          for octet of-type (unsigned-byte 8) = (read-byte* stream)
+          for shift from 0 by 7
+          for last-octet = (zerop (ldb (byte 1 7) octet))
+          and octet-value = (ldb (byte 7 0) octet)
+          do (setf (ldb (byte 7 shift) res) octet-value)
+          when last-octet
+            do (return (+ res small-res)))
+        small-res)))
 
 (defun write-integer-to-array (array integer bit-size mask)
   "Write integer to a fillable vector as defined in RFC7541 sect. 5.1."
@@ -319,7 +276,7 @@ as defined in RFC7541 sect. 5.1."
               (vector-push-extend (logior 128 (ldb (byte 7 0) integer)) array)
               (setf integer (floor integer 128))
            finally
-           (vector-push-extend integer array)))))
+              (vector-push-extend integer array)))))
 
 (defun integer-to-array (integer bit-size mask)
   "Represent integer to a vector as defined in RFC7541 sect. 5.1."
@@ -364,7 +321,7 @@ Use USE-BITS from the OCTET0 for name index"
                       (get-integer-from-octet stream octet0 use-bits)
                       context)))
     (list (if (consp table-match) (car table-match) table-match)
-                        (read-string-from-stream stream))))
+          (read-string-from-stream stream))))
 
 (defun read-literal-header-field-new-name (stream)
   "See 6.2.1 fig. 7, and 6.2.2. fig. 9 -
