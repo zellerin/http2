@@ -33,7 +33,7 @@
   "Client TLS stream to HOST on PORT, created using SNI and h2 ALPN protocol."
   (cl+ssl:make-ssl-client-stream
    (usocket:socket-stream
-    (usocket:socket-connect host port))
+    (usocket:socket-connect host port :element-type '(unsigned-byte 8)))
    :verify nil
    :hostname sni
    :alpn-protocols '("h2")))
