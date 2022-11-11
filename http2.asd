@@ -6,7 +6,8 @@
   :license  "MIT"
   :version "1.0"
   :serial t
-  :depends-on ("trivial-gray-streams" "flexi-streams")
+  :depends-on ("trivial-gray-streams" "flexi-streams"
+                                      "anaphora")
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")

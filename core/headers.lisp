@@ -66,7 +66,7 @@ start at index 1, so leading nil.")
 
 (declaim
  (ftype (function (vector fixnum) fixnum) vector-index-to-hpack-index)
- (ftype (function (hpack-context fixnum) (or cons string))  dynamic-table-value))
+ (ftype (function (hpack-context fixnum) (or cons string)) dynamic-table-value))
 
 (deftype context-table-element ()
   '(or cons string))
@@ -177,11 +177,29 @@ huffman encoding."
              initially (write-integer-to-array res
                                                string-size 7 0))))))
 
+(defconstant +literal-header-noindex+ #x0)
+(defconstant +literal-header-index+ #x40)
+(defconstant +literal-header-never-index+ #x10)
+
+(defun write-literal-header-pair (res code name value huffman)
+  (vector-push-extend code res)
+  (flet ((add-string (string)
+           (store-string string res huffman)))
+    (add-string name)
+    (add-string value)))
+
+(defun write-indexed-header-pair (res index)
+  (write-integer-to-array res index 7 #x80))
+
+(defun write-indexed-name (res code index value use-bits huffman)
+  (write-integer-to-array res index use-bits code)
+  (store-string value res huffman))
+
 (defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*))
   "Encode header consisting of NAME and VALUE.
 
-The `never-indexed` format is never generated,
-use a separate function for this (and this function needs to be written).
+The `never-indexed` format is never generated, use a separate function for
+this (and this function needs to be written).
 
 When CONTEXT is provided, use incremental indexing with dynamic table in
 that CONTEXT.
@@ -189,35 +207,21 @@ that CONTEXT.
 Use Huffman when HUFFMAN is true."
   ;; note: ECL reports error in the declaration w/o type
   (declare (type (or null hpack-context) context))
-  (block nil
-    (flet ((add-string (string)
-             (store-string string res huffman)))
-      (let ((pos (find-pair-in-tables context (list name value))))
-        ;; 6.1 Indexed header field
-        (when pos
-          (write-integer-to-array res pos 7 #x80)
-          (return res)))
-      (let ((header-pos (find-header-in-tables context name)))
-        ;; 6.2.1 Literal Header Field with Incremental Indexing
-        ;;  Indexed Name
-        (when header-pos
-          (cond
-            (context
-             (add-dynamic-header context (list name value))
-             (write-integer-to-array res header-pos 6 #x40)) ;w/o indexing
-            (t (write-integer-to-array res header-pos 4 #x0)))
-          (add-string value)
-          (return res)))
-      ;; literal header field with new name
-      (cond
-        (context
-         (add-dynamic-header context (list name value))
-         (vector-push-extend #x40 res))
-        (t
-         (vector-push-extend 0 res)))
-      (add-string name)
-      (add-string value)
-      res)))
+  (anaphora:acond
+    ((find-pair-in-tables context (list name value))
+     (write-indexed-header-pair res anaphora:it))
+    ((find-header-in-tables context name)
+     (cond
+       (context
+        (add-dynamic-header context (list name value))
+        (write-indexed-name res +literal-header-index+ anaphora:it value 4 huffman))
+       (t (write-indexed-name res +literal-header-noindex+ anaphora:it value 4 huffman))))
+    (context
+     (add-dynamic-header context (list name value))
+     (write-literal-header-pair res +literal-header-index+ name value huffman))
+    (t
+     (write-literal-header-pair res +literal-header-noindex+ name value huffman)))
+  res)
 
 (defun encode-header (name value &optional context (huffman *use-huffman-coding-by-default*))
   "Encode header consisting of NAME and VALUE.
@@ -264,7 +268,9 @@ as defined in RFC7541 sect. 5.1."
         small-res)))
 
 (defun write-integer-to-array (array integer bit-size mask)
-  "Write integer to a fillable vector as defined in RFC7541 sect. 5.1."
+  "Write integer to a fillable vector as defined in RFC7541 sect. 5.1.
+
+Return the fillable vector."
   (cond
     ((> (1- (expt 2 bit-size)) integer)
      (vector-push-extend (logior integer mask) array))
@@ -276,7 +282,8 @@ as defined in RFC7541 sect. 5.1."
               (vector-push-extend (logior 128 (ldb (byte 7 0) integer)) array)
               (setf integer (floor integer 128))
            finally
-              (vector-push-extend integer array)))))
+              (vector-push-extend integer array))))
+  array)
 
 (defun integer-to-array (integer bit-size mask)
   "Represent integer to a vector as defined in RFC7541 sect. 5.1."

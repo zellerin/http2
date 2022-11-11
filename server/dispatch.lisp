@@ -191,7 +191,10 @@ prints activities, and reads full body from client if clients sends one."))
     (with-slots (connection) stream
       (if handler (funcall handler connection stream)
           (progn
-            (write-headers-frame stream `((:status "404") ("content-type" "text/html; charset=UTF-8")) :end-headers t)
+            (send-headers stream
+                           `((:status "404")
+                             ("content-type" "text/html; charset=UTF-8"))
+                           :end-headers t)
             (with-open-stream (out (flexi-streams:make-flexi-stream stream))
               (format out  "<h1>Not found</h1>")))))))
 

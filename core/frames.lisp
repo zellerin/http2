@@ -427,15 +427,10 @@ PROTOCOL_ERROR"))
    The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
    be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
-   \"half-closed (remote)\" state.
-"
+   \"half-closed (remote)\" state."
     ((headers list)) ;  &key dependency weight
     (:length
      (progn
-       (setf headers
-             (loop for header in headers
-                   collect (if (vectorp header) header
-                               (encode-header (car header) (second header)))))
        (+ (if priority 5 0)
           (reduce '+ (mapcar 'length headers))))
      :flags (padded end-stream end-headers

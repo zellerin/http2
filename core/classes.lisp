@@ -250,7 +250,11 @@ cases, the stream is returned.")
     (with-slots (connection) stream
       (when (get-updates-needed (get-compression-context connection))
         (warn "FIXME: we should send dynamical update."))
-      (write-headers-frame stream headers
+      (write-headers-frame stream
+                           (loop for header in headers
+                                 collect (if (vectorp header) header
+                                             (encode-header (car header)
+                                                            (second header))))
                            :padded padded
                            :priority priority
                            :end-stream end-stream
