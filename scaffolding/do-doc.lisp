@@ -89,9 +89,10 @@ when relevant stream or connection has logging-object as superclass."
   (dispatcher-mixin class)
   (vanilla-server-connection class)
   (vanilla-server-stream class)
-  (define-exact-handler cz.zellerin.doc:macro)
-  (define-prefix-handler cz.zellerin.doc:macro)
-  (handler cz.zellerin.doc:macro)
+  (define-exact-handler cz.zellerin.doc::macro)
+  (define-prefix-handler cz.zellerin.doc::macro)
+  (handler cz.zellerin.doc::macro)
+  (scheduling-handler cz.zellerin.doc::macro)
   (redirect-handler)
   (send-text-handler)
   (kill-server restart

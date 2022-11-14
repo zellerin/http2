@@ -14,4 +14,4 @@
                    . #+sb-core-compression (:compression t)
                      #-sb-core-compression nil))
 
-(asdf:oos :program-op "http2/server")
+(asdf:oos :program-op "http2/server/example")
