@@ -47,10 +47,24 @@
   "Description of a frame type"
   name receive-fn documentation)
 
-(defconstant +known-frame-types-count+ 11
+(defconstant +known-frame-types-count+ 256
   "Number of frame types we know.")
 
-(defvar *frame-types* (make-array +known-frame-types-count+)
+
+
+(defvar *frame-types*
+  (make-array 256
+              :initial-element
+              (make-frame-type
+               :unknown
+               "Implementations MUST discard frames that have unknown or unsupported types.
+This means that any of these extension points can be safely used by extensions
+without prior arrangement or negotiation."
+               (lambda (connection http-stream length flags)
+                 (declare (ignore http-stream))
+                 (handle-undefined-frame type flags length)
+                 (let ((stream (get-network-stream connection)))
+                   (dotimes (i length) (read-byte stream))))))
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
 (defun read-padding (stream padding-size)
@@ -319,14 +333,12 @@ passed to the make-instance"
   ;; first flush anything we should have send to prevent both sides waiting
   (force-output stream)
   (let* ((length (read-bytes stream 3))
-         (payload (make-array length :element-type '(unsigned-byte 8)))
          (type (read-byte stream))
          (flags (read-byte stream))
          (http-stream+R (read-bytes stream 4))
          (http-stream (ldb (byte 31 0) http-stream+R))
          (R (ldb (byte 1 31) http-stream+R)))
-    (declare ((array (unsigned-byte 8)) payload)
-             ((unsigned-byte 24) length)
+    (declare ((unsigned-byte 24) length)
              ((unsigned-byte 8) type flags)
              ((unsigned-byte 31) http-stream))
 
@@ -350,18 +362,7 @@ size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
 type, or is too small to contain mandatory frame data."))
     (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object
-            (if (< type +known-frame-types-count+)
-                (aref *frame-types* type)
-                (make-frame-type :unknown
-                                 "Implementations MUST discard frames
-that have unknown or unsupported types.  This means that any of these
-extension points can be safely used by extensions without prior
-arrangement or negotiation."
-                                 (lambda (connection http-stream length flags)
-                                   (declare (ignore http-stream))
-                                   (handle-undefined-frame type flags length)
-                                   (let ((stream (get-network-stream connection)))
-                                     (dotimes (i length) (read-byte stream))))))))
+            (aref *frame-types* type)))
       (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
                        (if (zerop http-stream) connection
@@ -369,18 +370,10 @@ arrangement or negotiation."
                                      :key #'get-stream-id)
                                (peer-opens-http-stream connection http-stream type)
                                http-stream))
-                       length flags))
-            (t (read-sequence payload stream)
-               (warn "~s" (list :frame  payload http-stream type flags))))
+                       length flags)))
       (values
        (frame-type-name frame-type-object)
        http-stream))))
-
-
-
-
-
-
 
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame
