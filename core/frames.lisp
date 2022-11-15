@@ -184,11 +184,13 @@ The macro defining FRAME-TYPE-NAME :foo defines
                (declare (ignorable end-headers ack priority))
                (when padding-size (decf length (1+ padding-size)))
                (flet ((read-bytes (n) (read-bytes ,stream-name n))
-                      (read-vector (seq) (read-sequence seq ,stream-name)))
-                 (declare (ignorable #'read-bytes #'read-vector))
+                      (read-vector (seq) (read-sequence seq ,stream-name))
+                      (protocol-error (text)
+                        (http2-error connection 'protocol-error text)))
+                 (declare (ignorable #'read-bytes #'read-vector #'protocol-error))
                  ,@(cond (must-have-stream-in
                           `((when (eq connection http-stream)
-                              (http2-error connection 'protocol-error
+                              (protocol-error
                                            "Frame MUST be associated with a stream. If a
                               frame is received whose stream identifier field is
                               0x0, the recipient MUST respond with a connection
@@ -203,7 +205,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               ;; field is 0x0, the recipient MUST respond with a
                               ;; connection error (Section 5.4.1) of type
                               ;; PROTOCOL_ERROR.
-                              (http2-error connection 'protocol-error "Frame must not be associated with a stream")))))
+                              (protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
                  (when end-stream
                    (setf (get-state http-stream)
@@ -397,7 +399,7 @@ type, or is too small to contain mandatory frame data."))
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
-        (http2-error connection 'protocol-error "If the length of the padding is the length of the frame payload or greater, the
+        (protocol-error "If the length of the padding is the length of the frame payload or greater, the
 recipient MUST treat this as a connection error (Section 5.4.1) of type
 PROTOCOL_ERROR"))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
@@ -422,10 +424,7 @@ PROTOCOL_ERROR"))
    be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state."
     ((headers list)) ;  &key dependency weight
-    (:length
-     (progn
-       (+ (if priority 5 0)
-          (reduce '+ (mapcar 'length headers))))
+    (:length (+ (if priority 5 0) (reduce '+ (mapcar 'length headers)))
      :flags (padded end-stream end-headers
                     ;; PRIORITY: When set, bit 5 indicates that the Exclusive
                     ;; Flag (E), Stream Dependency, and Weight fields are
@@ -446,7 +445,7 @@ PROTOCOL_ERROR"))
        (decf length 5)
        (read-priority-frame connection http-stream 5 0))
       (when (minusp length)
-        (http2-error connection 'protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
+        (protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
       (read-and-add-headers connection http-stream length end-headers)
       (if end-headers
         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
