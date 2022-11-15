@@ -119,6 +119,9 @@ sizes, including leading : at special header names."
        (length (second header)))))
 
 (defun update-dynamic-table-size (context new-size)
+  "Update dynamic table for new size that is smaller than the previous one.
+
+Zero size means evict completely; in this case the new vector can be cleaned"
   (cond ((zerop new-size)
          (setf (fill-pointer (get-dynamic-table context)) new-size)
          (adjust-array (get-dynamic-table context) new-size))
@@ -133,7 +136,7 @@ sizes, including leading : at special header names."
                  do
                     ;; evict earlier
                     (loop for i from (get-deleted-items context) to (1+ idx)
-                          do(setf (aref table idx) nil))
+                          do (setf (aref table idx) nil))
                     (setf (get-deleted-items context) (1+ idx)
                           (get-bytes-left-in-table context) bytes-left)
                     (return)))))
@@ -213,14 +216,19 @@ Use Huffman when HUFFMAN is true."
     ((find-header-in-tables context name)
      (cond
        (context
-        (add-dynamic-header context (list name value))
-        (write-indexed-name res +literal-header-index+ anaphora:it value 4 huffman))
+        (write-indexed-name res +literal-header-index+ anaphora:it value 6 huffman)
+        (add-dynamic-header context (list name value)))
        (t (write-indexed-name res +literal-header-noindex+ anaphora:it value 4 huffman))))
     (context
-     (add-dynamic-header context (list name value))
-     (write-literal-header-pair res +literal-header-index+ name value huffman))
+     (write-literal-header-pair res +literal-header-index+ name value huffman)
+     (add-dynamic-header context (list name value)))
     (t
      (write-literal-header-pair res +literal-header-noindex+ name value huffman)))
+  res)
+
+(defun encode-dynamic-table-update (res new-size)
+  "Encode table update to NEW-SIZE to an adjustable array RES."
+  (write-integer-to-array res new-size 5 #x20)
   res)
 
 (defun encode-header (name value &optional context (huffman *use-huffman-coding-by-default*))

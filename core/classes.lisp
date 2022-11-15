@@ -101,8 +101,6 @@
     (unless  (slot-boundp stream 'window-size)
       (setf window-size (get-initial-window-size connection)))))
 
-
-
 (defclass client-stream (http2-stream)
   ((status :accessor get-status :initarg :status
            :documentation
@@ -237,6 +235,18 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
+(defun compute-update-dynamic-size-codes (updates)
+  (when updates
+    ;; we need to send update to both minimum and then (if different) final
+    ;; size.
+    (let ((min-update (reduce #'min updates))
+          (last-update (car updates))
+          (res (make-array 0 :fill-pointer 0 :adjustable t)))
+      (encode-dynamic-table-update res min-update)
+      (when (< min-update last-update)
+        (encode-dynamic-table-update res last-update))
+      res)))
+
 (defgeneric send-headers (stream-or-connection
                           headers &key end-stream end-headers
                                     padded priority &allow-other-keys)
@@ -248,17 +258,23 @@ cases, the stream is returned.")
   (:method ((stream http2-stream) headers &key end-stream (end-headers t)
                                             padded priority)
     (with-slots (connection) stream
-      (when (get-updates-needed (get-compression-context connection))
-        (warn "FIXME: we should send dynamical update."))
       (write-headers-frame stream
-                           (loop for header in headers
-                                 collect (if (vectorp header) header
+                           (loop
+                             with dynamic-update-codes
+                               = (compute-update-dynamic-size-codes
+                                  (get-updates-needed (get-compression-context connection)))
+                             for header in (if dynamic-update-codes
+                                               (cons dynamic-update-codes headers)
+                                               headers)
+                             collect (if (vectorp header) header
                                              (encode-header (car header)
-                                                            (second header))))
+                                                            (second header)
+                                                            (get-compression-context connection))))
                            :padded padded
                            :priority priority
                            :end-stream end-stream
-                           :end-headers end-headers))
+                           :end-headers end-headers)
+      (setf (get-updates-needed (get-compression-context connection)) nil))
     stream)
 
   (:method :before ((stream logging-object) headers &rest raw-stream-args)
@@ -429,9 +445,9 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (:method (connection (name (eql :header-table-size)) value)
     (declare (type (unsigned-byte 32) value))
     (let ((context (get-compression-context connection)))
-      (when (> value (the (unsigned-byte 32) (get-dynamic-table-size context)))
-        (update-dynamic-table-size context value)
-        (push value (get-updates-needed context)))))
+      (when (< value (the (unsigned-byte 32) (get-dynamic-table-size context)))
+        (update-dynamic-table-size context value))
+      (push value (get-updates-needed context))))
 
   (:method (connection (name (eql :initial-window-size)) value)
     (declare (type (unsigned-byte 32) value))
