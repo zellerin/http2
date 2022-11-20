@@ -38,9 +38,7 @@
 
   ;; string inputs
   (test-a-frame strings #'write-headers-frame
-                  '((("foo" "bar")
-                     (:path "/")
-                     ("baz" "bah"))
+                  '((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104))
                     :end-headers t)
                   :expected-log-stream
                   '((:header "foo" "bar")

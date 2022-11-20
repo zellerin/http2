@@ -235,13 +235,12 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
-(defun compute-update-dynamic-size-codes (updates)
+(defun compute-update-dynamic-size-codes (res updates)
   (when updates
     ;; we need to send update to both minimum and then (if different) final
     ;; size.
     (let ((min-update (reduce #'min updates))
-          (last-update (car updates))
-          (res (make-array 0 :fill-pointer 0 :adjustable t)))
+          (last-update (car updates)))
       (encode-dynamic-table-update res min-update)
       (when (< min-update last-update)
         (encode-dynamic-table-update res last-update))
@@ -259,17 +258,7 @@ cases, the stream is returned.")
                                             padded priority)
     (with-slots (connection) stream
       (write-headers-frame stream
-                           (loop
-                             with dynamic-update-codes
-                               = (compute-update-dynamic-size-codes
-                                  (get-updates-needed (get-compression-context connection)))
-                             for header in (if dynamic-update-codes
-                                               (cons dynamic-update-codes headers)
-                                               headers)
-                             collect (if (vectorp header) header
-                                             (encode-header (car header)
-                                                            (second header)
-                                                            (get-compression-context connection))))
+                           (compile-headers headers connection)
                            :padded padded
                            :priority priority
                            :end-stream end-stream

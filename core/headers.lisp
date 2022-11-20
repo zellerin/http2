@@ -175,10 +175,10 @@ huffman encoding."
                                128)
        (encode-huffman string res))
       (t
-       (loop for char across string
-             do (vector-push-extend (char-code char) res)
-             initially (write-integer-to-array res
-                                               string-size 7 0))))))
+       (loop
+         initially (write-integer-to-array res string-size 7 0)
+         for char across string
+             do (vector-push-extend (char-code char) res))))))
 
 (defconstant +literal-header-noindex+ #x0)
 (defconstant +literal-header-index+ #x40)
@@ -246,16 +246,35 @@ Use Huffman when HUFFMAN is true."
   (let ((res (make-array 0 :fill-pointer 0 :adjustable t)))
     (header-writer res name value context huffman)))
 
+
+(defun compile-headers (headers connection)
+  (loop
+    with res = (make-array 0 :fill-pointer 0 :adjustable t)
+    with context = (when connection (get-compression-context connection))
+    initially (when context
+                (compute-update-dynamic-size-codes
+                 res (get-updates-needed context)))
+    for header in headers
+    do (if (vectorp header)
+           (loop for octet across header
+                 do (vector-push-extend octet res))
+           (header-writer res (car header)
+                          (second header)
+                          context))
+    finally (return (list res))))
+
 (defun request-headers (method path authority &key (scheme "https")
                                                 additional-headers)
   "Encode standard headers that are obligatory."
-  (list* (encode-header :method method)
-         (encode-header :scheme scheme)
-         (encode-header :path (or path "/"))
-         (encode-header :authority authority)
-         (mapcar (lambda (a)
-                   (http2::encode-header (car a) (cdr a)))
-                 additional-headers)))
+  (compile-headers
+   `((:method, method)
+     (:scheme ,scheme)
+     (:path ,(or path "/"))
+     (:authority ,authority)
+     ,@(mapcar (lambda (a)
+                 (list (car a) (cdr a)))
+               additional-headers))
+   nil))
 
 (defun get-integer-from-octet (stream initial-octet bit-size)
   "Decode an integer from starting OCTET and additional octets in STREAM
