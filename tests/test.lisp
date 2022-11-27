@@ -26,17 +26,6 @@
                                             :padded #(0 1 2 3  6 7))
                 :expected-log-stream '((:PAYLOAD #(1 2 3 4 5))))
 
-  ;; binary inputs
-  (test-a-frame octets #'write-headers-frame
-                  (list (list (encode-header "foo" "bar")
-                              (encode-header :path "/")
-                              (encode-header "baz" "bah")))
-                  :expected-log-stream
-                  '((:header "foo" "bar")
-                    (:header :path "/")
-                    (:header "baz" "bah")))
-
-  ;; string inputs
   (test-a-frame strings #'write-headers-frame
                   '((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104))
                     :end-headers t)
@@ -47,9 +36,7 @@
                     (:end-headers)))
 
   (test-a-frame no-end-headers #'write-headers-frame
-                  '((("foo" "bar")
-                     (:path "/")
-                     ("baz" "bah")))
+                  '((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104)))
                   :expected-log-stream
                   '((:header "foo" "bar")
                     (:header :path "/")

@@ -69,7 +69,7 @@
 
 (defsystem "http2/test"
   :depends-on ("http2" "fiasco" "trivial-gray-streams"
-                       "http2/server" "http2/client"
+                       "http2/server" "http2/client" "http2/server/example"
                        "bordeaux-threads")
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2))

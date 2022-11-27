@@ -2,8 +2,6 @@
 
 (load "~/quicklisp/setup")
 (asdf::load-asd (truename "./http2.asd"))
-(ql:quickload "http2/server")
-
 (setf ql:*local-project-directories* (list (truename "./")))
 (setf asdf:*system-definition-search-functions*
       (list 'ql::local-projects-searcher
@@ -23,7 +21,7 @@
              #p"/tmp/fasl/pre-commit-cache/**/*.*")
            :inherit-configuration :enable-user-cache))
 (ql:quickload "http2/all")
-
+(ql:quickload "http2/server/example")
 (in-package http2)
 
 (setf *dispatch-fn* #'funcall)
