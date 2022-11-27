@@ -84,4 +84,4 @@
                (:file "errors")))
 
 (defsystem "http2/all"
-  :depends-on (http2 http2/test http2/client http2/server http2/tls))
+  :depends-on (http2 http2/test http2/client http2/server http2/server/example http2/tls))
