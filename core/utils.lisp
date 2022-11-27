@@ -44,13 +44,14 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   (dotimes (i n)
     (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
 
-(defvar *log-stream* *standard-output* #+nil (make-broadcast-stream)
+(defvar *log-stream* (make-broadcast-stream)
   "Stream for logging output send by LOGGER.")
 
 (defun logger (fmt &rest pars)
   "Send a format message to *LOG-STREAM*."
   (apply #'format *log-stream* fmt pars)
-  (car pars))
+  (car pars)
+  (terpri *log-stream*))
 
 (defun vector-from-hex-text (text)
   ""
