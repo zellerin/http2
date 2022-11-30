@@ -64,5 +64,69 @@ protocol (H2 by default)."
 (defmethod process-end-headers :after (connection (stream vanilla-client-stream))
   (funcall (get-end-headers-fn stream) stream))
 
+
 (defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
   (funcall (get-end-stream-fn stream) stream))
+
+(defun make-transport-output-stream (raw-stream headers)
+  (let* ((transport raw-stream)
+         (content-type (cdr (assoc "content-type" headers :test 'equal)))
+         (has-charset (search #1="charset=" content-type)))
+    (cond
+      (has-charset
+       (let ((charset (subseq content-type (+ (length #1#) has-charset))))
+         (setf transport
+               (flexi-streams:make-flexi-stream
+                transport
+                :external-format
+                (cond
+                  ((string-equal "UTF-8" charset) :utf8)
+                  (t (warn "Unknown charset ~s, using UTF-8" charset)
+                     :utf8))))))
+      ((= 5 (mismatch "text/" content-type))
+       (warn "Text without specified encoding, guessing utf-8")
+       (setf transport
+             (flexi-streams:make-flexi-stream
+              transport
+              :external-format :utf8)))
+      ((= 7 (mismatch "binary/" content-type)))
+      (t (warn "Content-type ~s not known to be text nor binary."
+               content-type)))
+    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+      (setf transport (gzip-stream:make-gzip-output-stream transport)))
+    transport))
+
+(defun make-transport-stream (raw-stream headers)
+  "Make a transport output stream from RAW-STREAM.
+
+Guess encoding and need to gunzip from headers:
+- apply zip decompression content-encoding is gzip (FIXME: also compression)
+- use charset if understood in content-type
+- otherwise guess whether text (use UTF-8) or binary."
+  ;; This is POC level code. See Drakma on how to detect encoding more properly.
+  (let* ((transport raw-stream)
+         (content-type (cdr (assoc "content-type" headers :test 'equal)))
+         (has-charset (search #1="charset=" content-type)))
+    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+      (setf transport (gzip-stream:make-gzip-input-stream transport)))
+    (cond
+      (has-charset
+       (let ((charset (subseq content-type (+ (length #1#) has-charset))))
+         (setf transport
+               (flexi-streams:make-flexi-stream
+                transport
+                :external-format
+                (cond
+                  ((string-equal "UTF-8" charset) :utf8)
+                  (t (warn "Unknown charset ~s, using UTF-8" charset)
+                     :utf8))))))
+      ((= 5 (mismatch "text/" content-type))
+       (warn "Text without specified encoding, guessing utf-8")
+       (setf transport
+             (flexi-streams:make-flexi-stream
+              transport
+              :external-format :utf8)))
+      ((= 7 (mismatch "binary/" content-type)))
+      (t (warn "Content-type ~s not known to be text nor binary."
+               content-type)))
+    transport))
