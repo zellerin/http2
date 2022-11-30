@@ -24,6 +24,7 @@ headers."
   (vanilla-client-stream type)
   (vanilla-client-connection type)
   (client-stream type)
+  (connect-to-tls-server)
   (header-collecting-mixin type)
   (history-printing-object type)
   (client-http2-connection type)

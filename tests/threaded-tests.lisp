@@ -28,9 +28,9 @@
 
 (fiasco:deftest test-self-compatible ()
   (test-webs `((,(to-srv-port "https://localhost/foo")
-                "Not found" "404")
+                "Not found" 404)
                (,(to-srv-port "https://localhost/ok")
-                "OK" "200"))))
+                "OK" 200))))
 
 (defun test-curl (url content)
   (fiasco:is (search content (uiop:run-program `("/usr/bin/curl" ,(puri:render-uri url nil) "-k") :output :string))))
@@ -43,7 +43,16 @@
                           (to-srv-port "https://localhost/body")
                           :method "POST"
                           :content #(65 66)
-                          :additional-headers '(("content-type" . "binary/unspecified"))))))
+                          :content-type "binary/something")))
+    (fiasco:is (equal "AB" (http2/client:retrieve-url
+                          (to-srv-port "https://localhost/body")
+                          :method "POST"
+                          :content "AB")))
+  (fiasco:is (equal "AB" (http2/client:retrieve-url
+                          (to-srv-port "https://localhost/body")
+                          :method "POST"
+                          :content "AB"
+                          :gzip-content t))))
 
 (fiasco:deftest test-post-2 ()
   (fiasco:is (equal "AB"
@@ -53,7 +62,7 @@
                      :additional-headers '(("content-type" . "text/plain; charset=UTF-8"))
                      :content-fn
                      (lambda (out)
-                                                 (write-sequence "AB" out))))))
+                       (write-sequence "AB" out))))))
 
 (fiasco:deftest test-ping ()
   (flet ((test-ping-returns (&rest pars)

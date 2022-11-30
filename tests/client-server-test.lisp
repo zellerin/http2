@@ -16,7 +16,7 @@
              (fiasco:is (search search-term body)
                  "Page ~a does not contain ~a" page search-term)
              (fiasco:is (equal code status)
-                 "Page ~a does not have status ~a" page code))))
+                 "Page ~a does not have status ~a, but ~a" page code status))))
 
 #+nil(fiasco:deftest external-access ()
   (dolist (web *test-webs*)

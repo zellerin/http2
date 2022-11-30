@@ -4,11 +4,12 @@
 
 (cl:defpackage :http2
   (:use :cl)
+  (:import-from :anaphora #:awhen #:acond #:it)
   (:export #:logging-object
            #:*do-print-log*
            #:*use-huffman-coding-by-default*
 
-           #:tls-connection-to
+           #:connect-to-tls-server
            #:vanilla-client-connection
            #:vanilla-client-io-connection
            #:vanilla-client-stream

@@ -5,13 +5,17 @@
 ;;;; ports.
 (in-package :http2)
 
-(defun process-pending-frames (connection)
-  "Read and process all queued frames."
+(defun process-pending-frames (connection &optional just-pending)
+  "Read and process all queued frames. This is to be called on client when the
+initial request was send.
+
+See PROCESS-SERVER-STREAM in dispatch.lisp for a server equivalent that reads
+all; note that that one also handles locking in multithread environment and some
+other conditions."
   (handler-case
       (loop
-        ;; make sure
         initially (force-output (get-network-stream connection))
-        while (listen (get-network-stream connection))
+        while (or (null just-pending) (listen (get-network-stream connection)))
         do (read-frame connection))
     (end-of-file () nil)))
 
@@ -20,23 +24,18 @@
   Close the underlying network stream when done."
   `(let ((,name (make-instance ,class ,@params)))
      (unwind-protect
-          (let ((values
-                  (multiple-value-call 'list
-                    (progn ,@body))))
-            (write-goaway-frame ,name 0 +no-error+
-                                (map 'vector 'char-code "All done"))
-            (apply 'values values))
-       (process-pending-frames ,name)
+          (progn ,@body)
+       (process-pending-frames ,name t)
        (close ,name))))
 
-(defun tls-connection-to (host &key (port 443) (sni host))
-  "Client TLS stream to HOST on PORT, created using SNI and h2 ALPN protocol."
+(defun connect-to-tls-server (host &key (port 443) (sni host) verify
+                                 (alpn-protocols '("h2")))
+  "Client TLS stream to HOST on PORT, created using SNI and with specified ALPN
+protocol (H2 by default)."
   (cl+ssl:make-ssl-client-stream
    (usocket:socket-stream
     (usocket:socket-connect host port :element-type '(unsigned-byte 8)))
-   :verify nil
-   :hostname sni
-   :alpn-protocols '("h2")))
+   :verify verify :hostname sni :alpn-protocols alpn-protocols))
 
 (defclass vanilla-client-connection (client-http2-connection
                                      http2::history-printing-object
@@ -53,48 +52,80 @@
                                  http2::binary-input-stream-over-data-frames
                                  http2::header-collecting-mixin
                                  http2::history-printing-object)
-  ()
+  ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn)
+   (end-stream-fn  :accessor get-end-stream-fn  :initarg :end-stream-fn))
+  (:default-initargs :end-stream-fn (constantly nil)
+                     :end-headers-fn (constantly nil))
   (:documentation
    "Stream class for retrieve-url style functions. Behaves as a client stream,
    allows one to treat data frames as streams, collect headers to slot HEADERS
    so that they can be later shown as a list, and optionally prints callback
    logs. See individual superclasses for details."))
 
-(defmethod initialize-instance :after ((connection vanilla-client-stream)
-                                       &key &allow-other-keys)
-  "Empty method to allow ignorable keys overflown from send-headers")
+(defmethod process-end-headers :after (connection (stream vanilla-client-stream))
+  (funcall (get-end-headers-fn stream) stream))
 
-(defun make-transport-stream (raw-stream headers)
-  "Make a transport stream from RAW-STREAM.
+(defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
+  (funcall (get-end-stream-fn stream) stream))
+
+(defvar *charset-names*
+  '(("UTF-8" . :utf-8))
+  "Translation table from header charset names to FLEXI-STREAM keywords.")
+
+(defvar *default-encoding* nil
+  "Character encoding to be used when not recognized from headers. Default is nil
+- binary.")
+
+(defvar *default-text-encoding* :utf8
+  "Character encoding for text/ content to be used when not recognized from headers.")
+
+(defun extract-charset-from-content-type (content-type)
+  "Guess charset from the content type. NIL for binary data."
+  (acond
+    ((null content-type)
+     (warn "No content type specified, using ~a" *default-encoding*)
+     *default-encoding*)
+    ((search #1="charset=" content-type)
+     (let ((header-charset (subseq content-type (+ (length #1#) it))))
+       (or (cdr (assoc header-charset *charset-names* :test 'string-equal))
+           (warn "Unrecognized charset ~s, using default ~a" header-charset
+                 *default-text-encoding*)
+           *default-text-encoding*)))
+    ((alexandria:starts-with-subseq "text/" content-type)
+     (warn "Text without specified encoding, guessing utf-8")
+     *default-text-encoding*)
+    ((alexandria:starts-with-subseq "binary/" content-type) nil)
+    ;; see RFC8259. Note that there should not be charset in json CT
+    ((string-equal content-type "application/json") :utf-8)
+    (t (warn "Content-type ~s not known to be text nor binary. Using default ~a"
+             content-type *default-encoding*)
+       *default-encoding*)))
+
+(defun make-transport-output-stream (raw-stream charset gzip)
+  "An OUTPUT-STREAM built atop RAW STREAM with added charset and possibly
+compression."
+  (let* ((transport raw-stream))
+    (when gzip
+      (setf transport (gzip-stream:make-gzip-output-stream transport)))
+    (awhen charset
+      (setf transport
+            (flexi-streams:make-flexi-stream
+             transport
+             :external-format it)))
+
+    transport))
+
+(defun make-transport-stream (raw-stream charset encoded)
+  "INPUT-STREAM built atop RAW-STREAM.
 
 Guess encoding and need to gunzip from headers:
 - apply zip decompression content-encoding is gzip (FIXME: also compression)
 - use charset if understood in content-type
 - otherwise guess whether text (use UTF-8) or binary."
-  ;; This is POC level code. See Drakma on how to detect encoding more properly.
-  (let* ((transport raw-stream)
-         (content-type (cdr (assoc "content-type" headers :test 'equal)))
-         (has-charset (search #1="charset=" content-type)))
-    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+  (let* ((transport raw-stream))
+    (when encoded
       (setf transport (gzip-stream:make-gzip-input-stream transport)))
-    (cond
-      (has-charset
-       (let ((charset (subseq content-type (+ (length #1#) has-charset))))
-         (setf transport
-               (flexi-streams:make-flexi-stream
-                transport
-                :external-format
-                (cond
-                  ((string-equal "UTF-8" charset) :utf8)
-                  (t (warn "Unknown charset ~s, using UTF-8" charset)
-                     :utf8))))))
-      ((= 5 (mismatch "text/" content-type))
-       (warn "Text without specified encoding, guessing utf-8")
-       (setf transport
-             (flexi-streams:make-flexi-stream
-              transport
-              :external-format :utf8)))
-      ((= 7 (mismatch "binary/" content-type)))
-      (t (warn "Content-type ~s not known to be text nor binary."
-               content-type)))
+    (awhen charset
+      (setf transport
+            (flexi-streams:make-flexi-stream transport :external-format charset)))
     transport))

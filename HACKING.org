@@ -35,6 +35,13 @@ headers.
       ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
       time and optionally prints history. See individual superclasses for details.
 
+- =CONNECT-TO-TLS-SERVER= (function)
+   Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
+   protocol (H2 by default).
+
+   Lambda list:
+     : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
+
 - =CLIENT-STREAM= (type)
    HTTP2 stream that checks headers as required for clients (no psedoheader other
    than :status allowed, etc.
@@ -54,7 +61,7 @@ headers.
    communication can be debugged or recorded.
 
 - =MAKE-TRANSPORT-STREAM= (function)
-   Make a transport stream from ~RAW-STREAM~.
+   Make a transport output stream from ~RAW-STREAM~.
 
    Guess encoding and need to gunzip from headers:
    - apply zip decompression content-encoding is gzip (FIXME: also compression)
