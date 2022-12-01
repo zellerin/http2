@@ -108,6 +108,13 @@ More sophisticated clients could, for example,
       ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
       time and optionally prints history. See individual superclasses for details.
 
+- =CONNECT-TO-TLS-SERVER= (function)
+   Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
+   protocol (H2 by default).
+
+   Lambda list:
+     : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
+
 - =CLIENT-STREAM= (type)
    HTTP2 stream that checks headers as required for clients (no psedoheader other
    than :status allowed, etc.
@@ -118,8 +125,21 @@ More sophisticated clients could, for example,
 - =CLIENT-HTTP2-CONNECTION= (type)
    Client connections have odd-numbered streams.
 
+
 - =EXTRACT-CHARSET-FROM-CONTENT-TYPE= (function)
    Guess charset from the content type. NIL for binary data.
+
+- =LOGGING-OBJECT= (type)
+   Objects with this mixin have ~ADD-LOG~ called in many situations so that the
+   communication can be debugged or recorded.
+
+- =MAKE-TRANSPORT-STREAM= (function)
+   Make a transport output stream from ~RAW-STREAM~.
+
+   Guess encoding and need to gunzip from headers:
+   - apply zip decompression content-encoding is gzip (FIXME: also compression)
+   - use charset if understood in content-type
+   - otherwise guess whether text (use UTF-8) or binary.
 
    Lambda list:
      : CONTENT-TYPE

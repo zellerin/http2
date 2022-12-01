@@ -22,6 +22,7 @@
   (vanilla-client-stream type)
   (vanilla-client-connection type)
   (client-stream type)
+  (connect-to-tls-server)
   (header-collecting-mixin type)
   (client-http2-connection type)
   (extract-charset-from-content-type))
