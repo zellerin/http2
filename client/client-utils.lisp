@@ -64,14 +64,27 @@ protocol (H2 by default)."
 (defmethod process-end-headers :after (connection (stream vanilla-client-stream))
   (funcall (get-end-headers-fn stream) stream))
 
-
 (defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
   (funcall (get-end-stream-fn stream) stream))
 
+(defun extract-charset-from-content-type (content-type)
+  "Extract charset from the content type.
+
+This is not designed to hat some content types (such as application/json) have defined
+encoding (UTF-8)"
+  (anaphora:awhen (search #1="charset=" content-type)
+    ))
+
+
 (defun make-transport-output-stream (raw-stream headers)
+  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS.
+
+"
   (let* ((transport raw-stream)
          (content-type (cdr (assoc "content-type" headers :test 'equal)))
          (has-charset (search #1="charset=" content-type)))
+    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+      (setf transport (gzip-stream:make-gzip-output-stream transport)))
     (cond
       (has-charset
        (let ((charset (subseq content-type (+ (length #1#) has-charset))))
@@ -92,8 +105,6 @@ protocol (H2 by default)."
       ((= 7 (mismatch "binary/" content-type)))
       (t (warn "Content-type ~s not known to be text nor binary."
                content-type)))
-    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
-      (setf transport (gzip-stream:make-gzip-output-stream transport)))
     transport))
 
 (defun make-transport-stream (raw-stream headers)
