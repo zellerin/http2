@@ -23,6 +23,7 @@
 (ql:quickload "http2/all")
 (ql:quickload "http2/server/example")
 (in-package http2)
+(http2/server-example::maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
 
 (setf *dispatch-fn* #'funcall)
 (unwind-protect

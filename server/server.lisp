@@ -186,6 +186,11 @@
            `(defun do-tests ()
               ,@(mapcar 'third *tests*))))))))
 
+(defvar *default-certificate-pair*
+  '("/tmp/server.key" "/tmp/server.crt")
+  "Path to files with the default private key and certificate to use for server.")
+
+
 (defclass no-handler-connection (vanilla-server-connection)
   ()
   (:default-initargs :exact-handlers nil :prefix-handlers nil)
@@ -209,20 +214,30 @@ be other ones."
                       (invoke-restart 'kill-server value)))
                 connection)
               (process-server-stream stream :connection connection)))))
-    (create-https-server port "/tmp/server.key" "/tmp/server.crt")))
+    (apply #'create-https-server port *default-certificate-pair*)))
 
-(defun run-demo-server (&key (key "/tmp/server.key")
-                          (certificate "/tmp/server.crt")
-                          (port 1230))
+(defun maybe-create-certificate (key certificate)
+  "Generate key and a self-signed certificate to it for localhost using openssl
+cli."
   (unless (and (probe-file key)
                (probe-file certificate))
     (format t "~%Generating temporary certificates")
     (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
-    (terpri))
+    (terpri)))
+
+(defun run-demo-server (&key (key (first *default-certificate-pair*))
+                          (certificate (second *default-certificate-pair*))
+                          (port 1230))
+  "Start a http2 server on localhost on PORT that servers some test content.
+
+Create certficates if they do not exist.
+
+Do something (see code) with conditions."
+  (maybe-create-certificate key certificate)
 
   (handler-bind ((warning 'muffle-warning)
                  (error (lambda (e)
                           (describe e)
                           (invoke-restart 'kill-server))))
-    (create-https-server port "/tmp/server.key" "/tmp/server.crt"
+    (create-https-server port key certificate
                          :verbose nil)))
