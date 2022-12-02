@@ -80,10 +80,7 @@ protocol (H2 by default)."
   "Character encoding for text/ content to be used when not recognized from headers.")
 
 (defun extract-charset-from-content-type (content-type)
-  "Guess charset from the content type. NIL for binary data.
-
-This is not designed to hat some content types (such as application/json) have defined
-encoding (UTF-8)"
+  "Guess charset from the content type. NIL for binary data."
   (acond
     ((null content-type)
      (warn "No content type specified, using ~a" *default-encoding*)
@@ -94,14 +91,15 @@ encoding (UTF-8)"
            (warn "Unrecognized charset ~s, using default ~a" header-charset
                  *default-text-encoding*)
            *default-text-encoding*)))
-    ((= 5 (mismatch "text/" content-type))
+    ((alexandria:starts-with-subseq "text/" content-type)
      (warn "Text without specified encoding, guessing utf-8")
      *default-text-encoding*)
-    ((= 7 (mismatch "binary/" content-type)) nil)
+    ((alexandria:starts-with-subseq "binary/" content-type) nil)
+    ;; see RFC8259. Note that there should not be charset in json CT
+    ((string-equal content-type "application/json") :utf-8)
     (t (warn "Content-type ~s not known to be text nor binary. Using default ~a"
              content-type *default-encoding*)
        *default-encoding*)))
-
 
 (defun make-transport-output-stream (raw-stream headers)
   "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
@@ -118,18 +116,15 @@ encoding (UTF-8)"
 
     transport))
 
-(defun make-transport-stream (raw-stream headers)
-  "Make a transport output stream from RAW-STREAM.
+(defun make-transport-stream (raw-stream charset encoded)
+  "INPUT-STREAM built atop RAW-STREAM.
 
 Guess encoding and need to gunzip from headers:
 - apply zip decompression content-encoding is gzip (FIXME: also compression)
 - use charset if understood in content-type
 - otherwise guess whether text (use UTF-8) or binary."
-  ;; This is POC level code. See Drakma on how to detect encoding more properly.
-  (let* ((transport raw-stream)
-         (charset (extract-charset-from-content-type
-                   (cdr (assoc "content-type" headers :test 'equal)))))
-    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+  (let* ((transport raw-stream))
+    (when encoded
       (setf transport (gzip-stream:make-gzip-input-stream transport)))
     (awhen charset
       (setf transport
