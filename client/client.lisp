@@ -121,7 +121,6 @@ called) and until END-STREAM-FN is called, any reading of body may block.
                         :end-stream (null (or content content-fn)))))
     (when end-stream-fn (setf (http2::get-end-stream-fn raw-stream) end-stream-fn))
     (when end-headers-fn (setf (http2::get-end-headers-fn raw-stream) end-headers-fn))
-
     (when content-fn
       (let ((out (make-transport-output-stream raw-stream charset nil)))
         (funcall content-fn out)
