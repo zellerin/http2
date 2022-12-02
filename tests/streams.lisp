@@ -8,6 +8,9 @@
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=uTf-8")
                          :utf-8))
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=latIn-2")
+      (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=utf-8")
+                         :utf-8))
+      (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=latin-2")
                          :bar))
       (fiasco:is (equalp (extract-charset-from-content-type "application/binary")
                          :foo))
@@ -77,6 +80,5 @@
                                   3 99 100 98 102 1 0
                                   205 251 60 182 4 0 0 0)
                                  nil t))
-
       ;; binary data
       (fiasco:is (equalp res-array #(1 2 3 4))))))

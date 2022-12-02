@@ -61,50 +61,61 @@ protocol (H2 by default)."
    so that they can be later shown as a list, and optionally prints callback
    logs. See individual superclasses for details."))
 
+
 (defmethod process-end-headers :after (connection (stream vanilla-client-stream))
   (funcall (get-end-headers-fn stream) stream))
 
 (defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
   (funcall (get-end-stream-fn stream) stream))
 
+(defvar *charset-names*
+  '(("UTF-8" . :utf-8))
+  "Translation table from header charset names to FLEXI-STREAM keywords.")
+
+(defvar *default-encoding* nil
+  "Character encoding to be used when not recognized from headers. Default is nil
+- binary.")
+
+(defvar *default-text-encoding* :utf8
+  "Character encoding for text/ content to be used when not recognized from headers.")
+
 (defun extract-charset-from-content-type (content-type)
-  "Extract charset from the content type.
+  "Guess charset from the content type. NIL for binary data.
 
 This is not designed to hat some content types (such as application/json) have defined
 encoding (UTF-8)"
-  (anaphora:awhen (search #1="charset=" content-type)
-    ))
+  (acond
+    ((null content-type)
+     (warn "No content type specified, using ~a" *default-encoding*)
+     *default-encoding*)
+    ((search #1="charset=" content-type)
+     (let ((header-charset (subseq content-type (+ (length #1#) it))))
+       (or (cdr (assoc header-charset *charset-names* :test 'string-equal))
+           (warn "Unrecognized charset ~s, using default ~a" header-charset
+                 *default-text-encoding*)
+           *default-text-encoding*)))
+    ((= 5 (mismatch "text/" content-type))
+     (warn "Text without specified encoding, guessing utf-8")
+     *default-text-encoding*)
+    ((= 7 (mismatch "binary/" content-type)) nil)
+    (t (warn "Content-type ~s not known to be text nor binary. Using default ~a"
+             content-type *default-encoding*)
+       *default-encoding*)))
 
 
 (defun make-transport-output-stream (raw-stream headers)
-  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS.
-
-"
+  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
   (let* ((transport raw-stream)
-         (content-type (cdr (assoc "content-type" headers :test 'equal)))
-         (has-charset (search #1="charset=" content-type)))
+         (charset (extract-charset-from-content-type
+                   (cdr (assoc "content-type" headers :test 'equal)))))
     (when (member '("content-encoding" . "gzip") headers :test 'equalp)
       (setf transport (gzip-stream:make-gzip-output-stream transport)))
-    (cond
-      (has-charset
-       (let ((charset (subseq content-type (+ (length #1#) has-charset))))
-         (setf transport
-               (flexi-streams:make-flexi-stream
-                transport
-                :external-format
-                (cond
-                  ((string-equal "UTF-8" charset) :utf8)
-                  (t (warn "Unknown charset ~s, using UTF-8" charset)
-                     :utf8))))))
-      ((= 5 (mismatch "text/" content-type))
-       (warn "Text without specified encoding, guessing utf-8")
-       (setf transport
-             (flexi-streams:make-flexi-stream
-              transport
-              :external-format :utf8)))
-      ((= 7 (mismatch "binary/" content-type)))
-      (t (warn "Content-type ~s not known to be text nor binary."
-               content-type)))
+    (awhen charset
+      (setf transport
+            (flexi-streams:make-flexi-stream
+             transport
+             :external-format it)))
+
     transport))
 
 (defun make-transport-stream (raw-stream headers)
@@ -116,28 +127,11 @@ Guess encoding and need to gunzip from headers:
 - otherwise guess whether text (use UTF-8) or binary."
   ;; This is POC level code. See Drakma on how to detect encoding more properly.
   (let* ((transport raw-stream)
-         (content-type (cdr (assoc "content-type" headers :test 'equal)))
-         (has-charset (search #1="charset=" content-type)))
+         (charset (extract-charset-from-content-type
+                   (cdr (assoc "content-type" headers :test 'equal)))))
     (when (member '("content-encoding" . "gzip") headers :test 'equalp)
       (setf transport (gzip-stream:make-gzip-input-stream transport)))
-    (cond
-      (has-charset
-       (let ((charset (subseq content-type (+ (length #1#) has-charset))))
-         (setf transport
-               (flexi-streams:make-flexi-stream
-                transport
-                :external-format
-                (cond
-                  ((string-equal "UTF-8" charset) :utf8)
-                  (t (warn "Unknown charset ~s, using UTF-8" charset)
-                     :utf8))))))
-      ((= 5 (mismatch "text/" content-type))
-       (warn "Text without specified encoding, guessing utf-8")
-       (setf transport
-             (flexi-streams:make-flexi-stream
-              transport
-              :external-format :utf8)))
-      ((= 7 (mismatch "binary/" content-type)))
-      (t (warn "Content-type ~s not known to be text nor binary."
-               content-type)))
+    (awhen charset
+      (setf transport
+            (flexi-streams:make-flexi-stream transport :external-format charset)))
     transport))
