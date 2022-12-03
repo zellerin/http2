@@ -1,4 +1,4 @@
-qThis file describes in more detail of client and server implementation, and then selected internal interfaces.
+This file describes in more detail of client and server implementation, and then selected internal interfaces.
 
 It mostly duplicates the docstrings in code (in fact, it is build upon them), but some value should be in the selection and ordering of the content.
 
@@ -341,3 +341,21 @@ when relevant stream or connection has logging-object as superclass.
 
 
 #+END:
+* Low level Debugging
+
+The trace macro should suffice for low level debugging, e.g:
+
+- to watch frames
+  #+begin_src lisp
+    (trace read-frame)
+    (trace write-frame-header
+           . #+sbcl (:print  (frame-type-name  (aref *frame-types* (sb-debug:arg 2)))))
+  #+end_src
+
+- to watch window size increase and decrease
+  #+begin_src lisp
+    (trace write-window-update-frame)
+    (trace read-data-frame)
+  #+end_src
+
+The specific debugging code will likely be slowly removed from the code.

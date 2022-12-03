@@ -50,21 +50,20 @@
 (defconstant +known-frame-types-count+ 256
   "Number of frame types we know.")
 
-
-
 (defvar *frame-types*
-  (make-array 256
-              :initial-element
-              (make-frame-type
-               :unknown
-               "Implementations MUST discard frames that have unknown or unsupported types.
-This means that any of these extension points can be safely used by extensions
-without prior arrangement or negotiation."
-               (lambda (connection http-stream length flags)
-                 (declare (ignore http-stream))
-                 (handle-undefined-frame type flags length)
-                 (let ((stream (get-network-stream connection)))
-                   (dotimes (i length) (read-byte stream))))))
+  (let ((res
+          (make-array 256)))
+    (loop for type from 0 to 255
+          do (setf (aref res type)
+                   (make-frame-type
+                    :unknown
+                    "Implementations MUST discard frames that have unknown or unsupported types."
+                    (lambda (connection http-stream length flags)
+                      (declare (ignore http-stream))
+                      (handle-undefined-frame type flags length)
+                      (let ((stream (get-network-stream connection)))
+                        (dotimes (i length) (read-byte stream)))))))
+    res)
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
 (defun read-padding (stream padding-size)
@@ -363,19 +362,20 @@ passed to the make-instance"
 size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
 type, or is too small to contain mandatory frame data."))
     (if (plusp R) (warn "R is set, we should ignore it"))
-    (let ((frame-type-object
-            (aref *frame-types* type)))
+    (let ((frame-type-object (aref *frame-types* type))
+          (stream-or-connection
+            (if (zerop http-stream) connection
+                (find http-stream (get-streams connection)
+                           :key #'get-stream-id))))
       (cond (frame-type-object
               (funcall (frame-type-receive-fn frame-type-object) connection
                        (if (zerop http-stream) connection
-                           (or (find http-stream (get-streams connection)
-                                     :key #'get-stream-id)
-                               (peer-opens-http-stream connection http-stream type)
-                               http-stream))
+                           (or stream-or-connection
+                               (peer-opens-http-stream connection http-stream type)))
                        length flags)))
       (values
        (frame-type-name frame-type-object)
-       http-stream))))
+       (or stream-or-connection http-stream)))))
 
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame
