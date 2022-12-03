@@ -228,16 +228,16 @@ cli."
     (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
     (terpri)))
 
-(defun run-demo-server (&key (key (first *default-certificate-pair*))
-                          (certificate (second *default-certificate-pair*))
+(defun run-demo-server (&key (key "/tmp/server.key")
+                          (certificate "/tmp/server.crt")
                           (port 1230))
   "Start a http2 server on localhost on PORT that servers some test content.
 
 Create certficates if they do not exist.
 
 Do something (see code) with conditions."
-  (maybe-create-certificate key certificate)
 
+  (maybe-create-certificate key certificate)
   (handler-bind ((warning 'muffle-warning)
                  (error (lambda (e)
                           (describe e)
