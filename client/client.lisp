@@ -23,62 +23,6 @@ this."
           (alexandria:read-stream-content-into-string response-stream)
           (alexandria:read-stream-content-into-byte-vector response-stream)))))
 
-#+nil(defun send-request-process-response (connection parsed-url
-                                      &key (method "GET")
-                                        content-fn additional-headers
-                                        (reader #'alexandria:read-stream-content-into-string)
-                                        callback)
-  "Send a HTTP request using existing connection.
-
-If CONTENT-FN is specified, call it with an output stream to write to as the
-only argument to send content; this stream is already adapted for things
-such as encoding and compression based on ADDITIONAL-HEADERS."
-  (let* ((raw-stream
-           (send-headers connection
-                         (request-headers method
-                                          (puri:uri-path parsed-url)
-                                          (puri:uri-host parsed-url)
-                                          :additional-headers additional-headers)
-                         :end-stream (null content-fn))))
-    (when content-fn
-      (let ((request-stream (make-transport-output-stream raw-stream
-                                                   additional-headers)))
-        (unwind-protect
-             (funcall content-fn request-stream)
-          (http2::close-output raw-stream))))
-    (loop for parsed-frame = (http2::read-frame connection)
-          until (eq parsed-frame :headers-frame))
-    (unwind-protect
-         (values
-          (funcall reader (make-transport-stream raw-stream (get-headers raw-stream)))
-          (http2::get-status raw-stream)
-          (http2::get-headers raw-stream))
-      (http2::process-pending-frames connection))))
-
-(defun retrieve-url-using-network-stream
-    (network-stream parsed-url
-     &key
-       ((:verbose http2::*do-print-log*) http2::*do-print-log*)
-       (connection-class 'vanilla-client-connection)
-       content
-       (content-fn (when content (alexandria:curry #'write-sequence content)))
-       additional-headers
-       ping
-       (method "GET")
-       (content-type "text/plain; charset=utf-8")
-       gzip-content)
-  "Open an HTTP/2 connection over NETWORK-STREAM and use it to request URL."
-
-  (let* ((connection
-           (make-instance connection-class :network-stream network-stream))
-         (raw-stream
-           (send-headers connection
-                         (request-headers method
-                                          (puri:uri-path parsed-url)
-                                          (puri:uri-host parsed-url)
-                                          :additional-headers additional-headers)
-                         :end-stream (null (or content content-fn)))))))
-
 (defun maybe-send-pings (connection ping)
   (typecase ping
     (integer (dotimes (i ping) (send-ping connection)))
