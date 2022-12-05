@@ -38,7 +38,7 @@ REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
            (acons ,prefix ,fn
                   (remove ,prefix ,target :key 'car :test 'equal)))))
 
-(defmacro handler ((flexi-stream-name &rest flexi-pars) &body body)
+(defmacro handler ((flexi-stream-name charset gzip) &body body)
   "Runs BODY in a context with
 - FLEXI-STREAM-NAME bound to a flexi stream,
 - and two available functions, SEND-HEADERS and SEND-GOAWAY to make a function
@@ -49,9 +49,8 @@ The SEND-HEADERS sends the provided headers to the STREAM.
 
 The SEND-GOAWAY sends go away frame to the client to close connection."
   `(lambda (connection stream)
-     (with-open-stream (,flexi-stream-name (flexi-streams:make-flexi-stream
-                                            stream
-                             ,@flexi-pars))
+     (with-open-stream (,flexi-stream-name
+                        (make-transport-output-stream stream ,charset ,gzip))
        (flet ((send-headers (&rest args)
                 (apply #'send-headers stream args))
               (send-goaway (code debug-data)
@@ -61,15 +60,14 @@ The SEND-GOAWAY sends go away frame to the client to close connection."
          (declare (ignorable #'send-goaway))
          ,@body))))
 
-(defmacro scheduling-handler ((flexi-stream-name &rest flexi-pars) &body body)
+(defmacro scheduling-handler ((flexi-stream-name encoding gzip) &body body)
   "Version of HANDLER that is to be used for scheduled (or otherwise processed in
 another thread) responses:
 - It does not close the output stream on exit
 - It makes accessible in BODY function SCHEDULE that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage. "
   `(lambda (connection stream)
-     (let ((,flexi-stream-name (flexi-streams:make-flexi-stream
-                                            stream
-                             ,@flexi-pars)))
+     (let ((,flexi-stream-name (make-transport-output-stream stream
+                                                             ,encoding ,gzip)))
        (flet ((send-headers (&rest args)
                 (apply #'send-headers stream args))
               (send-goaway (code debug-data)
@@ -103,25 +101,27 @@ server defined in future) if the path of the stream is PATH."
   "Alist of paths and functions of connection and stream to make http response.")
 
 (defun send-text-handler (text &key (content-type "text/html; charset=UTF-8")
+                               (gzip t)
                                  additional-headers)
   "A handler that returns TEXT as content of CONTENT-TYPE.
 ADDITIONAL-HEADERS are sent along with :status and content-type
 headers."
-  (handler (out)
+  (handler (out :utf-8 gzip)
     (send-headers `((:status "200") ("content-type" ,content-type)
+                    ,@(when gzip '(("content-encoding" "gzip")))
                     ,@additional-headers))
     (princ text out)))
 
 (defun redirect-handler (target &key (code "301") (content-type "text/html; charset=UTF-8") content)
   "A handler that emits redirect response with http status being CODE, and
 optionally provided CONTENT wit CONTENT-TYPE."
-  (handler (out)
+  (handler (out :utf-8 nil)
     (send-headers `((:status ,code)
                     ("location" ,target)
                     ,@(when content `(("content-type" ,content-type))))
                   :end-stream (null content))
     (when content
-      (princ content  out))))
+      (princ content out))))
 
 (defclass threaded-server-mixin ()
   ((scheduler :accessor get-scheduler :initarg :scheduler)
@@ -161,7 +161,6 @@ new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream
-                                 binary-output-stream-over-data-frames
                                  body-collecting-mixin
                                  history-printing-object)
   ()
@@ -195,7 +194,7 @@ prints activities, and reads full body from client if clients sends one."))
                            `((:status "404")
                              ("content-type" "text/html; charset=UTF-8"))
                            :end-headers t)
-            (with-open-stream (out (flexi-streams:make-flexi-stream stream))
+            (with-open-stream (out (make-transport-output-stream stream :utf-8 nil))
               (format out  "<h1>Not found</h1>")))))))
 
 (defmethod new-frame-ready ((c threaded-server-mixin))

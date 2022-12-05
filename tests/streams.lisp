@@ -23,7 +23,7 @@
   "Write content of different type to possibly gzipped stream."
   (flet ((@ (text charset encode)
              (multiple-value-bind (out in) (make-pipe)
-               (let ((s (make-transport-output-stream out charset encode)))
+               (let ((s (make-transport-output-stream-from-stream out charset encode)))
                  (write-sequence text s)
                  (close s)
                  (get-buffer in)))))
@@ -53,11 +53,12 @@
              (multiple-value-bind (out in) (make-pipe)
                (write-sequence data out)
                (close out)
-               (make-transport-stream in charset compressed))))
+               (make-transport-stream-from-stream in charset compressed))))
 
     ;; expected usage - text
     (fiasco:is (equalp (read-line (@ #(197 189 195 161 98 97)
-                                      :utf-8 nil)) "Žába"))
+                                      :utf-8 nil))
+                       "Žába"))
 
     (fiasco:is (equalp (read-line (@
                                    #(31 139 8 0 0 0 0 0 4

@@ -7,7 +7,7 @@
   :version "1.0"
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams"
-                                      "anaphora")
+                                      "anaphora"  "gzip-stream")
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")
@@ -37,7 +37,7 @@
   :version "0.4"
   :serial t
   :pathname "client"
-  :depends-on ("cl+ssl" "puri" "http2" "gzip-stream")
+  :depends-on ("cl+ssl" "puri" "http2")
   :components ((:file "client-utils")
                (:FILE "client")))
 

@@ -248,19 +248,16 @@ The lifecycle of a stream is shown in Figure 2.
 
 (defgeneric send-headers (stream-or-connection
                           headers &key end-stream end-headers
-                                    padded priority &allow-other-keys)
+                          &allow-other-keys)
   (:documentation
    "Send headers to the connection or stream. Stream is either an existing instance
 of a stream, or a connection; in this case a new stream is created on it. In both
 cases, the stream is returned.")
 
-  (:method ((stream http2-stream) headers &key end-stream (end-headers t)
-                                            padded priority)
+  (:method ((stream http2-stream) headers &key end-stream (end-headers t))
     (with-slots (connection) stream
       (write-headers-frame stream
                            (compile-headers headers connection)
-                           :padded padded
-                           :priority priority
                            :end-stream end-stream
                            :end-headers end-headers)
       (setf (get-updates-needed (get-compression-context connection)) nil))
@@ -269,13 +266,10 @@ cases, the stream is returned.")
   (:method :before ((stream logging-object) headers &rest raw-stream-args)
     (add-log stream `(:sending-headers ,headers ,raw-stream-args)))
 
-  (:method ((connection http2-connection) headers &rest stream-args
-            &key end-stream (end-headers t)
-              padding priority)
-    (send-headers (create-new-local-stream connection `(:state open ,@stream-args))
+  (:method ((connection http2-connection) headers
+            &key end-stream (end-headers t))
+    (send-headers (create-new-local-stream connection `(:state open))
                   headers
-                  :padding padding
-                  :priority priority
                   :end-stream end-stream
                   :end-headers end-headers)))
 

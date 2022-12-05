@@ -70,7 +70,7 @@ called) and until END-STREAM-FN is called, any reading of body may block.
                   nil)))
         (funcall content-fn out)
         (finish-output out)
-        (http2::close-output raw-stream)))
+        (close out)))
     raw-stream))
 
 

@@ -10,12 +10,14 @@
 
 (define-prefix-handler "/re" (redirect-handler "/ok"))
 
-(define-exact-handler "/ok" (send-text-handler "Redirect was OK"
-                                               :content-type "text/plain; charset=UTF-8"
-                                               :additional-headers '(("refresh" "3; url=/"))))
+(define-exact-handler "/ok"
+    (send-text-handler "Redirect was OK"
+                       :content-type "text/plain; charset=UTF-8"
+                       :additional-headers '(("refresh" "3; url=/"))
+                       :gzip nil))
 
 (define-exact-handler "/"
-    (handler (out :external-format :utf-8)
+    (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
       (with-html-output (out)
         (:h1 "Hello World")
@@ -29,7 +31,7 @@
         (:p "UTF8 test: Příliš žluťoučký kůň... 😎"))))
 
 (define-exact-handler "/long"
-    (handler (out)
+    (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
       (with-html-output (out)
@@ -38,7 +40,7 @@
           (htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
 
 (define-exact-handler "/es-test"
-    (handler (out)
+    (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
       (with-html-output (out out :prologue "<!DOCTYPE html>")
@@ -58,25 +60,26 @@
                         (values))))))))))
 
 (define-exact-handler "/event-stream"
-    (scheduling-handler (out :external-format '(:utf-8 :eol-style :crlf))
+    (scheduling-handler (out '(:utf-8 :eol-style :crlf) nil)
       (send-headers `((:status "200") ("content-type" "text/event-stream")))
       (let ((i 0))
         (labels ((send-event-and-plan-next ()
-                   (ignore-errors
-                    ;; unless the stream is closed
-                    (bt:with-lock-held ((get-lock connection))
-                      (format out "id: ~d~%" (incf i))
-                      (multiple-value-bind (sec min hr day)
-                          (decode-universal-time (get-universal-time))
-                        (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr
-                                min sec))
-                      (force-output out)
-                      (schedule-task (get-scheduler connection) 1000000
-                                            #'send-event-and-plan-next)))))
+                   (handler-case
+                       (bt:with-lock-held ((get-lock connection))
+                         (format out "id: ~d~%" (incf i))
+                         (multiple-value-bind (sec min hr day)
+                             (decode-universal-time (get-universal-time))
+                           (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr
+                                   min sec))
+                         (force-output out)
+                         (schedule-task (get-scheduler connection) 1000000
+                                        #'send-event-and-plan-next))
+                     ; TODO: handle stream closed
+                     )))
           (send-event-and-plan-next)))))
 
 (define-exact-handler "/body"
-    (handler (out)
+    (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
@@ -149,7 +152,7 @@
 
 
 (define-exact-handler "/test"
-    (handler (out)
+    (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
       (with-html-output (out out :prologue "<!DOCTYPE html>")
         (:body :onload "doTests()")

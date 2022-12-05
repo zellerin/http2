@@ -48,8 +48,7 @@ protocol (H2 by default)."
    time and optionally prints history. See individual superclasses for details."))
 
 (defclass vanilla-client-stream (client-stream
-                                 http2::binary-output-stream-over-data-frames
-                                 http2::binary-input-stream-over-data-frames
+                                 http2-stream-with-input-stream
                                  http2::header-collecting-mixin
                                  http2::history-printing-object)
   ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn)
@@ -67,65 +66,3 @@ protocol (H2 by default)."
 
 (defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
   (funcall (get-end-stream-fn stream) stream))
-
-(defvar *charset-names*
-  '(("UTF-8" . :utf-8))
-  "Translation table from header charset names to FLEXI-STREAM keywords.")
-
-(defvar *default-encoding* nil
-  "Character encoding to be used when not recognized from headers. Default is nil
-- binary.")
-
-(defvar *default-text-encoding* :utf8
-  "Character encoding for text/ content to be used when not recognized from headers.")
-
-(defun extract-charset-from-content-type (content-type)
-  "Guess charset from the content type. NIL for binary data."
-  (acond
-    ((null content-type)
-     (warn "No content type specified, using ~a" *default-encoding*)
-     *default-encoding*)
-    ((search #1="charset=" content-type)
-     (let ((header-charset (subseq content-type (+ (length #1#) it))))
-       (or (cdr (assoc header-charset *charset-names* :test 'string-equal))
-           (warn "Unrecognized charset ~s, using default ~a" header-charset
-                 *default-text-encoding*)
-           *default-text-encoding*)))
-    ((alexandria:starts-with-subseq "text/" content-type)
-     (warn "Text without specified encoding, guessing utf-8")
-     *default-text-encoding*)
-    ((alexandria:starts-with-subseq "binary/" content-type) nil)
-    ;; see RFC8259. Note that there should not be charset in json CT
-    ((string-equal content-type "application/json") :utf-8)
-    (t (warn "Content-type ~s not known to be text nor binary. Using default ~a"
-             content-type *default-encoding*)
-       *default-encoding*)))
-
-(defun make-transport-output-stream (raw-stream charset gzip)
-  "An OUTPUT-STREAM built atop RAW STREAM with added charset and possibly
-compression."
-  (let* ((transport raw-stream))
-    (when gzip
-      (setf transport (gzip-stream:make-gzip-output-stream transport)))
-    (awhen charset
-      (setf transport
-            (flexi-streams:make-flexi-stream
-             transport
-             :external-format it)))
-
-    transport))
-
-(defun make-transport-stream (raw-stream charset encoded)
-  "INPUT-STREAM built atop RAW-STREAM.
-
-Guess encoding and need to gunzip from headers:
-- apply zip decompression content-encoding is gzip (FIXME: also compression)
-- use charset if understood in content-type
-- otherwise guess whether text (use UTF-8) or binary."
-  (let* ((transport raw-stream))
-    (when encoded
-      (setf transport (gzip-stream:make-gzip-input-stream transport)))
-    (awhen charset
-      (setf transport
-            (flexi-streams:make-flexi-stream transport :external-format charset)))
-    transport))
