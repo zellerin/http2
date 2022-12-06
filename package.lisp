@@ -47,6 +47,7 @@
            #:peer-acks-settings
 
            #:make-transport-stream
+           #:make-transport-output-stream
            #:binary-output-stream-over-data-frames
            ;; Server
            #:create-https-server

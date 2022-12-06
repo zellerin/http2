@@ -1,7 +1,7 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
 (defpackage :http2/client
-  (:use :cl :http2)
+  (:use :cl :http2 :alexandria)
   (:export #:retrieve-url))
 
 (in-package :http2/client)
@@ -18,8 +18,8 @@ this."
     (with-open-stream (response-stream
                        (make-transport-stream raw-stream charset encoded))
       (if charset
-          (alexandria:read-stream-content-into-string response-stream)
-          (alexandria:read-stream-content-into-byte-vector response-stream)))))
+          (read-stream-content-into-string response-stream)
+          (read-stream-content-into-byte-vector response-stream)))))
 
 (defun maybe-send-pings (connection ping)
   (typecase ping
@@ -28,12 +28,13 @@ this."
       (t (send-ping connection))))
 
 (defun retrieve-url-using-connection (connection parsed-url
-                                      &key ((:verbose http2::*do-print-log*) http2::*do-print-log*)
+                                      &key
                                         (method "GET")
                                         content
-                                        (content-fn (when content (alexandria:curry #'write-sequence content)))
+                                        (content-fn (when content (curry #'write-sequence content)))
                                         additional-headers
-                                          (content-type "text/plain; charset=utf-8")
+                                        (content-type "text/plain; charset=utf-8")
+                                        (charset (http2::extract-charset-from-content-type content-type))
                                         gzip-content
                                         end-headers-fn end-stream-fn
                                       &allow-other-keys)
@@ -64,12 +65,8 @@ called) and until END-STREAM-FN is called, any reading of body may block.
     (when end-headers-fn (setf (http2::get-end-headers-fn raw-stream) end-headers-fn))
 
     (when content-fn
-      (let ((out (http2::make-transport-output-stream
-                  raw-stream
-                  (http2::extract-charset-from-content-type content-type)
-                  nil)))
+      (let ((out (make-transport-output-stream raw-stream charset nil)))
         (funcall content-fn out)
-        (finish-output out)
         (close out)))
     raw-stream))
 
@@ -110,8 +107,6 @@ called) and until END-STREAM-FN is called, any reading of body may block.
 (defun retrieve-url (url &rest pars
                      &key &allow-other-keys)
   "Retrieve URL through http/2 over TLS.
-
-Log events with VERBOSE set.
 
 Ping peer and print round trip time if PING is set, repeatedly if this is a
 number.
