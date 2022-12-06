@@ -707,6 +707,10 @@ extensions."))
 (defun get-history (object)
   (reverse (get-reversed-history object)))
 
+(defvar +client-preface-start+
+  #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
+  "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
+ \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
 (defmethod initialize-instance :after ((connection server-http2-connection) &key &allow-other-keys)
   (let ((preface-buffer (make-array (length +client-preface-start+))))
@@ -714,12 +718,6 @@ extensions."))
     (unless (equalp preface-buffer +client-preface-start+)
       (warn "Client preface mismatch: got ~a" preface-buffer)))
   (write-settings-frame connection (get-settings connection)))
-
-;; 3.5.  HTTP/2 Connection Preface
-(defvar +client-preface-start+
-  #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
-  "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
- \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
 (defmethod initialize-instance :after ((connection client-http2-connection) &key &allow-other-keys)
   "In HTTP/2, each endpoint is required to send a connection preface as a
