@@ -6,21 +6,6 @@
 
 (in-package :http2/client)
 
-(defun http-stream-to-vector (raw-stream)
-  "Read HTTP2 raw stream payload data, do guessed conversions and return either
-string or octets vector. You can expect the stream to be closed after calling
-this."
-  (let*  ((headers (get-headers raw-stream))
-          (charset (http2::extract-charset-from-content-type (cdr (assoc "content-type" headers
-                                                                         :test 'string-equal))))
-          (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
-                                             :test 'string-equal)))))
-    (with-open-stream (response-stream
-                       (make-transport-stream raw-stream charset encoded))
-      (if charset
-          (read-stream-content-into-string response-stream)
-          (read-stream-content-into-byte-vector response-stream)))))
-
 (defun maybe-send-pings (connection ping)
   (typecase ping
       (integer (dotimes (i ping) (send-ping connection)))
@@ -70,7 +55,6 @@ called) and until END-STREAM-FN is called, any reading of body may block.
         (close out)))
     raw-stream))
 
-
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
                                           &key (connection-class 'vanilla-client-connection)
@@ -97,10 +81,10 @@ called) and until END-STREAM-FN is called, any reading of body may block.
 - reason phrase (bogus value)"
   (values
    (http-stream-to-vector raw-stream)
-   (parse-integer (http2::get-status raw-stream))
-   (http2::get-headers raw-stream)
+   (parse-integer (get-status raw-stream))
+   (get-headers raw-stream)
    "/"
-   (http2::get-connection raw-stream)
+   (get-connection raw-stream)
    close-stream
    "HTTP2 does not provide reason phrases"))
 

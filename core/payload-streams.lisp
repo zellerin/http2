@@ -252,13 +252,13 @@ compression."
     transport))
 
 (defun make-transport-output-stream (raw-stream charset gzip)
-  "An OUTPUT-STREAM built atop RAW STREAM with added charset and possibly
-compression."
+  "An OUTPUT-STREAM built atop RAW STREAM with added text to binary encoding using
+charset (as understood by flexi-streams) and possibly gzip compression."
   (make-transport-output-stream-from-stream
    (make-instance 'payload-output-stream :base-http2-stream raw-stream)
    charset gzip))
 
-(defun make-transport-stream-from-stream (raw-stream charset encoded)
+(defun make-transport-input-stream-from-stream (raw-stream charset encoded)
   "INPUT-STREAM built atop RAW-STREAM.
 
 Guess encoding and need to gunzip from headers:
@@ -273,13 +273,28 @@ Guess encoding and need to gunzip from headers:
             (flexi-streams:make-flexi-stream transport :external-format charset)))
     transport))
 
-(defun make-transport-stream (raw-stream charset encoded)
+(defun make-transport-input-stream (raw-stream charset gzip)
   "INPUT-STREAM built atop RAW-STREAM.
 
 Guess encoding and need to gunzip from headers:
-- apply zip decompression content-encoding is gzip (FIXME: also compression)
-- use charset if understood in content-type
-- otherwise guess whether text (use UTF-8) or binary."
-  (make-transport-stream-from-stream
+- apply zip decompression if gzip is set
+- if charset is not null, use it to convert to text."
+  (make-transport-input-stream-from-stream
    (make-instance 'http2::payload-input-stream :base-http2-stream raw-stream)
-   charset encoded))
+   charset gzip))
+
+(defun http-stream-to-vector (raw-stream)
+  "Read HTTP2 stream payload data, do guessed conversions and return either
+string or octets vector. You can expect the HTTP2 stream to be closed after calling
+this."
+  (let*  ((headers (get-headers raw-stream))
+          (charset (extract-charset-from-content-type
+                    (cdr (assoc "content-type" headers
+                                :test 'string-equal))))
+          (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
+                                             :test 'string-equal)))))
+    (with-open-stream (response-stream
+                       (make-transport-input-stream raw-stream charset encoded))
+      (if charset
+          (read-stream-content-into-string response-stream)
+          (read-stream-content-into-byte-vector response-stream)))))

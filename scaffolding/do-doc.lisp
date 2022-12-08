@@ -10,27 +10,21 @@
       '(@client @api-frames @callbacks @new-frames-api))
 
 (cz.zellerin.doc::define-section @client
-  "To faciliate client creation, create a socket (typically TLS one), connection
-of class ~VANILLA-CLIENT-CONNECTION~ over that socket, and spawn
-~VANILLA-CLIENT-STREAM~ or several from the connection by calling
-~SEND-HEADERS~. This covers most of the desired
-functionality.
-
-VANILLA-CLIENT-STREAM represents a HTTP2 stream, but also acts as a Lisp binary
-input/output stream. Turning this to a character stream is a task for
-flexi-streams; MAKE-TRANSPORT-STREAM can sometimes do it automatically based on
-headers."
+  ""
+  (connect-to-tls-server)
+  (with-http2-connection)
   (send-headers)
+  (make-transport-output-stream)
+  (make-transport-input-stream)
+  (process-pending-frames)
+  (drakma-style-stream-values)
+  (http-stream-to-vector)
   (vanilla-client-stream type)
   (vanilla-client-connection type)
   (client-stream type)
-  (connect-to-tls-server)
   (header-collecting-mixin type)
-  (history-printing-object type)
   (client-http2-connection type)
-  (logging-object type)
-#+nil  (timeshift-pinging-connection type)
-  (make-transport-stream))
+  (extract-charset-from-content-type))
 
 (cz.zellerin.doc::define-section @api-frames
   "Lowest level interace deals with sending and receiving individual frames. For

@@ -5,6 +5,8 @@
 (cl:defpackage :http2
   (:use :cl)
   (:import-from :anaphora #:awhen #:acond #:it)
+  (:import-from :alexandria
+                #:read-stream-content-into-string #:read-stream-content-into-byte-vector)
   (:export #:logging-object
            #:*do-print-log*
            #:*use-huffman-coding-by-default*
@@ -17,9 +19,9 @@
            #:vanilla-server-stream
            #:header-collecting-mixin
            #:get-path
-           #:get-body
            #:get-headers
            #:encode-header
+           #:http-stream-to-vector
 
            #:connection #:stream
            #:with-http-connection ; obsolete
@@ -46,6 +48,7 @@
            #:peer-expects-settings-ack
            #:peer-acks-settings
 
+           #:extract-charset-from-content-type
            #:make-transport-stream
            #:make-transport-output-stream
            #:binary-output-stream-over-data-frames
@@ -66,6 +69,9 @@
            #:process-server-stream
            #:get-body
            #:kill-server #:kill-connection
+           #:get-header
+           #:get-connection
+           #:get-status
 
            #:+no-error+
 

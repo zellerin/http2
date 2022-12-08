@@ -250,9 +250,11 @@ The lifecycle of a stream is shown in Figure 2.
                           headers &key end-stream end-headers
                           &allow-other-keys)
   (:documentation
-   "Send headers to the connection or stream. Stream is either an existing instance
-of a stream, or a connection; in this case a new stream is created on it. In both
-cases, the stream is returned.")
+   "Send HEADERS to the connection or stream. STREAM is either an existing instance
+of a stream, or a HTTP2 connection; in that case a new stream is created on
+it. In both cases, the stream is returned.
+
+The END-HEADERS and END-STREAM allow to set the appropriate flags.")
 
   (:method ((stream http2-stream) headers &key end-stream (end-headers t))
     (with-slots (connection) stream

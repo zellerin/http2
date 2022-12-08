@@ -2,77 +2,137 @@ This file describes in more detail of client and server implementation, and then
 
 It mostly duplicates the docstrings in code (in fact, it is build upon them), but some value should be in the selection and ordering of the content.
 
-* Simple client support
-#+BEGIN: lisp-fns-doc :section http2::@client :package http2
-To faciliate client creation, create a socket (typically TLS one), connection
-of class ~VANILLA-CLIENT-CONNECTION~ over that socket, and spawn
-~VANILLA-CLIENT-STREAM~ or several from the connection by calling
-~SEND-HEADERS~. This covers most of the desired
-functionality.
+* Client creation
+See [[file:client/client.lisp][client.lisp]] for an example how to build a drakma-like client that handles
+one request (which is maybe good example, but not effective way to reap
+benefits of HTTP2 protocol).
 
-VANILLA-CLIENT-STREAM represents a HTTP2 stream, but also acts as a Lisp binary
-input/output stream. Turning this to a character stream is a task for
-flexi-streams; MAKE-TRANSPORT-STREAM can sometimes do it automatically based on
-headers.
+The necessary components are
+- connect to the server over TLS with ALPN (CONNECT-TO-TLS-SERVER),
+- create connection object (WITH-HTTP2-CONNECTION),
+- open request stream by sending the headers (SEND-HEADERS),
+- optionally send the request body (to a Common Lisp stream created by
+  MAKE-TRANSPORT-OUTPUT-STREAM),
+- read the frames until server responds to the request (PROCESS-PENDING-FRAMES),
+- read the data from the response (from Common Lisp stream created by
+  MAKE-TRANSPORT-INPUT-STREAM). In this example, this is done in a callback
+  function that also stops further processing,
+- get the drakma-style data from the stream object using
+  DRAKMA-STYLE-STREAM-VALUES, that in turn uses HTTP-STREAM-TO-VECTOR to read
+  full body as text or binary content, and collected values of the
+  VANILLA-CLIENT-STREAM object for status and other headers.
 
-- =SEND-HEADERS= (function)
-   Send headers to the connection or stream. Stream is either an existing instance
-   of a stream, or a connection; in this case a new stream is created on it. In both
-   cases, the stream is returned.
-
-   Lambda list:
-     : STREAM-OR-CONNECTION HEADERS &KEY END-STREAM END-HEADERS PADDED PRIORITY
-     : PADDING &ALLOW-OTHER-KEYS
-
-- =VANILLA-CLIENT-STREAM= (type)
-   Stream class for retrieve-url style functions. Behaves as a client stream,
-      allows one to treat data frames as streams, collect headers to slot ~HEADERS~
-      so that they can be later shown as a list, and optionally prints callback
-      logs. See individual superclasses for details.
-
-- =VANILLA-CLIENT-CONNECTION= (type)
-   Connection class for retrieve-url style functions that uses streams of
-      ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
-      time and optionally prints history. See individual superclasses for details.
-
-- =CONNECT-TO-TLS-SERVER= (function)
-   Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
-   protocol (H2 by default).
-
-   Lambda list:
-     : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
-
-- =CLIENT-STREAM= (type)
-   HTTP2 stream that checks headers as required for clients (no psedoheader other
-   than :status allowed, etc.
-
-- =HEADER-COLLECTING-MIXIN= (type)
-   Mixin to be used to collect all observed headers to a slot.
-
-- =HISTORY-PRINTING-OBJECT= (type)
-   A ~LOGGING-OBJECT~ that implements ~ADD-LOG~ to print all logs to
-   *TRACE-OUTPUT* as soon as it receives them.
-
-- =CLIENT-HTTP2-CONNECTION= (type)
-   Client connections have odd-numbered streams.
-
-- =LOGGING-OBJECT= (type)
-   Objects with this mixin have ~ADD-LOG~ called in many situations so that the
-   communication can be debugged or recorded.
-
-- =MAKE-TRANSPORT-STREAM= (function)
-   Make a transport output stream from ~RAW-STREAM~.
-
-   Guess encoding and need to gunzip from headers:
-   - apply zip decompression content-encoding is gzip (FIXME: also compression)
-   - use charset if understood in content-type
-   - otherwise guess whether text (use UTF-8) or binary.
-
-   Lambda list:
-     : RAW-STREAM HEADERS
+More sophisticated clients could, for example,
+- send several queries on the connection,
+- receive frames in dedicated thread,
+- handle redirect, cookies, etc.
 
 
-#+END:
+  #+BEGIN: lisp-fns-doc :section http2::@client :package http2
+
+  - =CONNECT-TO-TLS-SERVER= (function)
+     Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
+     protocol (H2 by default).
+
+     Lambda list:
+       : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
+
+  - =WITH-HTTP2-CONNECTION= (function)
+     Run ~BODY~ with ~NAME~ bound to instance of ~CLASS~ with parameters.
+       Close the underlying network stream when done.
+
+     Lambda list:
+       : (NAME CLASS &REST PARAMS) &BODY BODY
+
+  - =SEND-HEADERS= (function)
+     Send ~HEADERS~ to the connection or stream. ~STREAM~ is either an existing instance
+     of a stream, or a HTTP2 connection; in that case a new stream is created on
+     it. In both cases, the stream is returned.
+
+     The ~END-HEADERS~ and ~END-STREAM~ allow to set the appropriate flags.
+
+     Lambda list:
+       : STREAM-OR-CONNECTION HEADERS &KEY END-STREAM END-HEADERS
+       : &ALLOW-OTHER-KEYS
+
+  - =MAKE-TRANSPORT-OUTPUT-STREAM= (function)
+     An OUTPUT-STREAM built atop RAW ~STREAM~ with added text to binary encoding using
+     charset (as understood by flexi-streams) and possibly gzip compression.
+
+     Lambda list:
+       : RAW-STREAM CHARSET GZIP
+
+  - =MAKE-TRANSPORT-INPUT-STREAM= (function)
+     INPUT-STREAM built atop ~RAW-STREAM~.
+
+     Guess encoding and need to gunzip from headers:
+     - apply zip decompression if gzip is set
+     - if charset is not null, use it to convert to text.
+
+     Lambda list:
+       : RAW-STREAM CHARSET GZIP
+
+  - =PROCESS-PENDING-FRAMES= (function)
+     Read and process all queued frames. This is to be called on client when the
+     initial request was send.
+
+     See ~PROCESS-SERVER-STREAM~ in dispatch.lisp for a server equivalent that reads
+     all; note that that one also handles locking in multithread environment and some
+     other conditions.
+
+     Lambda list:
+       : CONNECTION &OPTIONAL JUST-PENDING
+
+  - =DRAKMA-STYLE-STREAM-VALUES= (function)
+     Return first few values as from DRAKMA:HTTP-REQUEST
+     - body of the reply
+     - status code as integer
+     - alist of headers
+     - the ~URL~ the reply came from (bogus value)
+     - the connection the reply comes from (not network stream)
+     - whether connection is closed (passed as parameter)
+     - reason phrase (bogus value)
+
+     Lambda list:
+       : HTTP2/CLIENT::RAW-STREAM &KEY HTTP2/CLIENT::CLOSE-STREAM
+
+  - =HTTP-STREAM-TO-VECTOR= (function)
+     Read HTTP2 stream payload data, do guessed conversions and return either
+     string or octets vector. You can expect the HTTP2 stream to be closed after calling
+     this.
+
+     Lambda list:
+       : RAW-STREAM
+
+  - =VANILLA-CLIENT-STREAM= (type)
+     Stream class for retrieve-url style functions. Behaves as a client stream,
+        allows one to treat data frames as streams, collect headers to slot ~HEADERS~
+        so that they can be later shown as a list, and optionally prints callback
+        logs. See individual superclasses for details.
+
+  - =VANILLA-CLIENT-CONNECTION= (type)
+     Connection class for retrieve-url style functions that uses streams of
+        ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
+        time and optionally prints history. See individual superclasses for details.
+
+  - =CLIENT-STREAM= (type)
+     HTTP2 stream that checks headers as required for clients (no psedoheader other
+     than :status allowed, etc.
+
+  - =HEADER-COLLECTING-MIXIN= (type)
+     Mixin to be used to collect all observed headers to a slot.
+
+  - =CLIENT-HTTP2-CONNECTION= (type)
+     Client connections have odd-numbered streams.
+
+  - =EXTRACT-CHARSET-FROM-CONTENT-TYPE= (function)
+     Guess charset from the content type. NIL for binary data.
+
+     Lambda list:
+       : CONTENT-TYPE
+
+
+  #+END:
 
 * Simple server support
 

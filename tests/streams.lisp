@@ -53,7 +53,7 @@
              (multiple-value-bind (out in) (make-pipe)
                (write-sequence data out)
                (close out)
-               (make-transport-stream-from-stream in charset compressed))))
+               (make-transport-input-stream-from-stream in charset compressed))))
 
     ;; expected usage - text
     (fiasco:is (equalp (read-line (@ #(197 189 195 161 98 97)
