@@ -80,16 +80,16 @@ when relevant stream or connection has logging-object as superclass."
 
 (cz.zellerin.doc:define-section @server
   ""
+  (handler cz.zellerin.doc::macro)
+  (scheduling-handler cz.zellerin.doc::macro)
+  (send-text-handler)
+  (redirect-handler)
+  (define-exact-handler cz.zellerin.doc::macro)
+  (define-prefix-handler cz.zellerin.doc::macro)
   (process-server-stream)
   (dispatcher-mixin class)
   (vanilla-server-connection class)
   (vanilla-server-stream class)
-  (define-exact-handler cz.zellerin.doc::macro)
-  (define-prefix-handler cz.zellerin.doc::macro)
-  (handler cz.zellerin.doc::macro)
-  (scheduling-handler cz.zellerin.doc::macro)
-  (redirect-handler)
-  (send-text-handler)
   (kill-server restart
                "Kill server and close its underlying network stream. Bound in
 CREATE-HTTPS-SERVER."))
