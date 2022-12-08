@@ -27,112 +27,104 @@ More sophisticated clients could, for example,
 - receive frames in dedicated thread,
 - handle redirect, cookies, etc.
 
+** Detailed documentation
 
-  #+BEGIN: lisp-fns-doc :section http2::@client :package http2
+#+BEGIN: lisp-fns-doc :section http2::@client :package http2
 
-  - =CONNECT-TO-TLS-SERVER= (function)
-     Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
-     protocol (H2 by default).
+- =CONNECT-TO-TLS-SERVER= (function)
+   Client TLS stream to ~HOST~ on ~PORT~, created using ~SNI~ and with specified ~ALPN~
+   protocol (H2 by default).
 
-     Lambda list:
-       : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
+   Lambda list:
+     : HOST &KEY (PORT 443) (SNI HOST) VERIFY (ALPN-PROTOCOLS '("h2"))
+- =WITH-HTTP2-CONNECTION= (function)
+   Run ~BODY~ with ~NAME~ bound to instance of ~CLASS~ with parameters.
+     Close the underlying network stream when done.
 
-  - =WITH-HTTP2-CONNECTION= (function)
-     Run ~BODY~ with ~NAME~ bound to instance of ~CLASS~ with parameters.
-       Close the underlying network stream when done.
+   Lambda list:
+     : (NAME CLASS &REST PARAMS) &BODY BODY
+- =SEND-HEADERS= (function)
+   Send ~HEADERS~ to the connection or stream. ~STREAM~ is either an existing instance
+   of a stream, or a HTTP2 connection; in that case a new stream is created on
+   it. In both cases, the stream is returned.
 
-     Lambda list:
-       : (NAME CLASS &REST PARAMS) &BODY BODY
+   The ~END-HEADERS~ and ~END-STREAM~ allow to set the appropriate flags.
 
-  - =SEND-HEADERS= (function)
-     Send ~HEADERS~ to the connection or stream. ~STREAM~ is either an existing instance
-     of a stream, or a HTTP2 connection; in that case a new stream is created on
-     it. In both cases, the stream is returned.
+   Lambda list:
+     : STREAM-OR-CONNECTION HEADERS &KEY END-STREAM END-HEADERS
+     : &ALLOW-OTHER-KEYS
+- =MAKE-TRANSPORT-OUTPUT-STREAM= (function)
+   An OUTPUT-STREAM built atop RAW ~STREAM~ with added text to binary encoding using
+   charset (as understood by flexi-streams) and possibly gzip compression.
 
-     The ~END-HEADERS~ and ~END-STREAM~ allow to set the appropriate flags.
+   Lambda list:
+     : RAW-STREAM CHARSET GZIP
+- =MAKE-TRANSPORT-INPUT-STREAM= (function)
+   INPUT-STREAM built atop ~RAW-STREAM~.
 
-     Lambda list:
-       : STREAM-OR-CONNECTION HEADERS &KEY END-STREAM END-HEADERS
-       : &ALLOW-OTHER-KEYS
+   Guess encoding and need to gunzip from headers:
+   - apply zip decompression if gzip is set
+   - if charset is not null, use it to convert to text.
 
-  - =MAKE-TRANSPORT-OUTPUT-STREAM= (function)
-     An OUTPUT-STREAM built atop RAW ~STREAM~ with added text to binary encoding using
-     charset (as understood by flexi-streams) and possibly gzip compression.
+   Lambda list:
+     : RAW-STREAM CHARSET GZIP
+- =PROCESS-PENDING-FRAMES= (function)
+   Read and process all queued frames. This is to be called on client when the
+   initial request was send.
 
-     Lambda list:
-       : RAW-STREAM CHARSET GZIP
+   See ~PROCESS-SERVER-STREAM~ in dispatch.lisp for a server equivalent that reads
+   all; note that that one also handles locking in multithread environment and some
+   other conditions.
 
-  - =MAKE-TRANSPORT-INPUT-STREAM= (function)
-     INPUT-STREAM built atop ~RAW-STREAM~.
+   Lambda list:
+     : CONNECTION &OPTIONAL JUST-PENDING
+- =DRAKMA-STYLE-STREAM-VALUES= (function)
+   Return first few values as from DRAKMA:HTTP-REQUEST
+   - body of the reply
+   - status code as integer
+   - alist of headers
+   - the ~URL~ the reply came from (bogus value)
+   - the connection the reply comes from (not network stream)
+   - whether connection is closed (passed as parameter)
+   - reason phrase (bogus value)
 
-     Guess encoding and need to gunzip from headers:
-     - apply zip decompression if gzip is set
-     - if charset is not null, use it to convert to text.
+   Lambda list:
+     : HTTP2/CLIENT::RAW-STREAM &KEY HTTP2/CLIENT::CLOSE-STREAM
+- =HTTP-STREAM-TO-VECTOR= (function)
+   Read HTTP2 stream payload data, do guessed conversions and return either
+   string or octets vector. You can expect the HTTP2 stream to be closed after calling
+   this.
 
-     Lambda list:
-       : RAW-STREAM CHARSET GZIP
+   Lambda list:
+     : RAW-STREAM
+- =VANILLA-CLIENT-STREAM= (type)
+   Stream class for retrieve-url style functions. Behaves as a client stream,
+      allows one to treat data frames as streams, collect headers to slot ~HEADERS~
+      so that they can be later shown as a list, and optionally prints callback
+      logs. See individual superclasses for details.
 
-  - =PROCESS-PENDING-FRAMES= (function)
-     Read and process all queued frames. This is to be called on client when the
-     initial request was send.
+- =VANILLA-CLIENT-CONNECTION= (type)
+   Connection class for retrieve-url style functions that uses streams of
+      ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
+      time and optionally prints history. See individual superclasses for details.
 
-     See ~PROCESS-SERVER-STREAM~ in dispatch.lisp for a server equivalent that reads
-     all; note that that one also handles locking in multithread environment and some
-     other conditions.
+- =CLIENT-STREAM= (type)
+   HTTP2 stream that checks headers as required for clients (no psedoheader other
+   than :status allowed, etc.
 
-     Lambda list:
-       : CONNECTION &OPTIONAL JUST-PENDING
+- =HEADER-COLLECTING-MIXIN= (type)
+   Mixin to be used to collect all observed headers to a slot.
 
-  - =DRAKMA-STYLE-STREAM-VALUES= (function)
-     Return first few values as from DRAKMA:HTTP-REQUEST
-     - body of the reply
-     - status code as integer
-     - alist of headers
-     - the ~URL~ the reply came from (bogus value)
-     - the connection the reply comes from (not network stream)
-     - whether connection is closed (passed as parameter)
-     - reason phrase (bogus value)
+- =CLIENT-HTTP2-CONNECTION= (type)
+   Client connections have odd-numbered streams.
 
-     Lambda list:
-       : HTTP2/CLIENT::RAW-STREAM &KEY HTTP2/CLIENT::CLOSE-STREAM
+- =EXTRACT-CHARSET-FROM-CONTENT-TYPE= (function)
+   Guess charset from the content type. NIL for binary data.
 
-  - =HTTP-STREAM-TO-VECTOR= (function)
-     Read HTTP2 stream payload data, do guessed conversions and return either
-     string or octets vector. You can expect the HTTP2 stream to be closed after calling
-     this.
+   Lambda list:
+     : CONTENT-TYPE
 
-     Lambda list:
-       : RAW-STREAM
-
-  - =VANILLA-CLIENT-STREAM= (type)
-     Stream class for retrieve-url style functions. Behaves as a client stream,
-        allows one to treat data frames as streams, collect headers to slot ~HEADERS~
-        so that they can be later shown as a list, and optionally prints callback
-        logs. See individual superclasses for details.
-
-  - =VANILLA-CLIENT-CONNECTION= (type)
-     Connection class for retrieve-url style functions that uses streams of
-        ~VANILLA-CLIENT-STREAM~. Behaves as client, can send pings to measure roundtrip
-        time and optionally prints history. See individual superclasses for details.
-
-  - =CLIENT-STREAM= (type)
-     HTTP2 stream that checks headers as required for clients (no psedoheader other
-     than :status allowed, etc.
-
-  - =HEADER-COLLECTING-MIXIN= (type)
-     Mixin to be used to collect all observed headers to a slot.
-
-  - =CLIENT-HTTP2-CONNECTION= (type)
-     Client connections have odd-numbered streams.
-
-  - =EXTRACT-CHARSET-FROM-CONTENT-TYPE= (function)
-     Guess charset from the content type. NIL for binary data.
-
-     Lambda list:
-       : CONTENT-TYPE
-
-
-  #+END:
+   #+END:
 
 * Simple server support
 
@@ -150,6 +142,7 @@ The [[./server/server.lisp][sample server]] show how to:
   restart ABORT is available to return from it; otherwise, most errors are
   handled and kill only the affected HTTP2 stream.
 
+** Detailed documentation
 #+BEGIN: lisp-fns-doc :section http2::@server :package http2
 
 - =HANDLER= (macro)
@@ -165,7 +158,6 @@ The [[./server/server.lisp][sample server]] show how to:
 
    Lambda list:
      : (FLEXI-STREAM-NAME CHARSET GZIP) &BODY BODY
-
 - =SCHEDULING-HANDLER= (macro)
    Version of ~HANDLER~ that is to be used for scheduled (or otherwise processed in
    another thread) responses:
@@ -174,7 +166,6 @@ The [[./server/server.lisp][sample server]] show how to:
 
    Lambda list:
      : (FLEXI-STREAM-NAME ENCODING GZIP) &BODY BODY
-
 - =SEND-TEXT-HANDLER= (function)
    A handler that returns ~TEXT~ as content of ~CONTENT-TYPE~.
    ~ADDITIONAL-HEADERS~ are sent along with :status and content-type
@@ -183,7 +174,6 @@ The [[./server/server.lisp][sample server]] show how to:
    Lambda list:
      : TEXT &KEY (CONTENT-TYPE "text/html; charset=UTF-8") (GZIP T)
      : ADDITIONAL-HEADERS
-
 - =REDIRECT-HANDLER= (function)
    A handler that emits redirect response with http status being ~CODE~, and
    optionally provided ~CONTENT~ wit ~CONTENT-TYPE~.
@@ -191,21 +181,18 @@ The [[./server/server.lisp][sample server]] show how to:
    Lambda list:
      : TARGET &KEY (CODE "301") (CONTENT-TYPE "text/html; charset=UTF-8")
      : CONTENT
-
 - =DEFINE-EXACT-HANDLER= (macro)
    Define function to run when peer closes http stream on ~CONNECTION~ (or any
    server defined in future) if the path of the stream is ~PATH~.
 
    Lambda list:
      : PATH FN &OPTIONAL CONNECTION
-
 - =DEFINE-PREFIX-HANDLER= (macro)
    Define function to run when peer closes http stream on ~CONNECTION~ (or any
    server defined in future) if the path of the stream starts with ~PREFIX~.
 
    Lambda list:
      : PREFIX FN &OPTIONAL CONNECTION
-
 - =PROCESS-SERVER-STREAM= (function)
    Make a HTTP2 connection of ~CONNECTION-CLASS~ on the underlying ~STREAM~ (that is a
    stream in Common Lisp sense, so either network stream or even standard io) and
@@ -215,7 +202,6 @@ The [[./server/server.lisp][sample server]] show how to:
 
    Lambda list:
      : STREAM &KEY (CONNECTION-CLASS 'VANILLA-SERVER-CONNECTION) CONNECTION
-
 - =DISPATCHER-MIXIN= (class)
    Server with behaviour that is defined by two sets of handlers, exact and
    prefix. Appropriate handler is run to process the request when peer closes the
@@ -253,70 +239,7 @@ The [[./server/server.lisp][sample server]] show how to:
 
 
 #+END:
-** Publishing server
-The defined server needs to be published; the only widely use option is over TLS with support signalled by ALPN H2.
-#+BEGIN: lisp-fns-doc :section http2::@tls-server :package http2
-
-- =CREATE-HTTPS-SERVER= (function)
-   Open TLS wrapped HTTPS(/2) server on ~PORT~ on ~HOST~ (localhost by default).
-
-   It accepts new connections and uses ~WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM~ to
-   establish TLS.
-
-   ~ANNOUNCE-OPEN-FN~ is called, when set, to inform caller that the server is up and
-   running. This is used for testing, when we need to have the server running (in a
-   thread) to start testing it.
-
-   If VERBOSE is set and ~CONNECTION-CLASS~ is derived from LOGGING-CLASS, verbose
-   debug is printed.
-
-   Lambda list:
-     : PORT KEY CERT &KEY ((:VERBOSE *DO-PRINT-LOG*))
-     : (ANNOUNCE-OPEN-FN (CONSTANTLY NIL))
-     : (CONNECTION-CLASS 'VANILLA-SERVER-CONNECTION) (HOST "127.0.0.1")
-
-- =WRAP-TO-TLS-AND-PROCESS-SERVER-STREAM= (function)
-   Establish TLS connection over ~RAW-STREAM~, and run ~PROCESS-SERVER-STREAM~ over it.
-
-   Use TLS ~KEY~ and ~CERT~ for server identity.
-
-   ~ARGS~ are passed to ~PROCESS-SERVER-STREAM~ that is invoked using *DISPATCH-FN* to
-   allow threading, pooling etc.
-
-   Wrap call to  with an error handler.
-
-   Raise error when H2 is not the selected ~ALPN~ protocol.
-
-   Lambda list:
-     : RAW-STREAM KEY CERT &REST ARGS
-
-- =*DISPATCH-FN*= (variable)
-   How to call process-server-stream. Default is ~THREADED-DISPATCH~.
-
-   The function is called with ~PROCESS-SERVER-STREAM~ as the first parameter and its
-   parameters following.
-
-- =THREADED-DISPATCH= (function)
-   When used as *dispatch-fn* callback, open a new thread for a connection and
-   handle it there.
-
-   Technically, apply FN-AND-PARS in a new thread.
-
-   Lambda list:
-     : FN TLS-STREAM &REST PARS
-
-- =CREATE-ONE-SHOT-SERVER= (function)
-   Open server on ~PORT~ that handles just one request and returns value from ~HANDLER~.
-
-   The original use case is server for oauth2 authentication redirect, there might
-   be other ones.
-
-   Lambda list:
-     : HANDLER HTTP2/SERVER::PORT
-
-
-#+END:
-* Callbacks
+* Changing internals: Callbacks
 #+BEGIN: lisp-fns-doc :section http2::@callbacks :package http2
 The reader functions for individual frames may call a callback that is supposed
 to handle received frame in some way. All callbacks have stream or connection as
@@ -331,14 +254,12 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : CONNECTION STREAM-ID FRAME-TYPE
-
 - =PEER-SENDS-PUSH-PROMISE= (function)
    This should be called on push promise (FIXME: and maybe it is not, and maybe
    the parameters should be different anyway). By default throws an error.
 
    Lambda list:
      : STREAM
-
 - =APPLY-DATA-FRAME= (function)
    Data frame is received by a stream.
     By default does nothing; there are several mixins that implement reading the
@@ -346,21 +267,18 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : STREAM PAYLOAD
-
 - =APPLY-STREAM-PRIORITY= (function)
    Called when priority frame - or other frame with priority settings set -
    arrives. Does nothing, as priorities are deprecated in RFC9113 anyway.
 
    Lambda list:
      : STREAM EXCLUSIVE WEIGHT STREAM-DEPENDENCY
-
 - =APPLY-WINDOW-SIZE-INCREMENT= (function)
    Called on window update frame. By default, increases ~PEER-WINDOW-SIZE~ slot of
    the strem or connection.
 
    Lambda list:
      : OBJECT INCREMENT
-
 - =PEER-RESETS-STREAM= (function)
    The RST_STREAM frame fully terminates the referenced stream and
       causes it to enter the "closed" state.  After receiving a RST_STREAM
@@ -372,7 +290,6 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : STREAM ERROR-CODE
-
 - =SET-PEER-SETTING= (function)
    Process received information about peers setting.
 
@@ -382,47 +299,40 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : CONNECTION NAME VALUE
-
 - =PEER-EXPECTS-SETTINGS-ACK= (function)
    Called when settings-frame without ~ACK~ is received, after individual
    ~SET-PEER-SETTING~ calls. By default, send ~ACK~ frame.
 
    Lambda list:
      : CONNECTION
-
 - =PEER-ACKS-SETTINGS= (function)
    Called when SETTINGS-FRAME with ~ACK~ flag is received. By default does nothing.
 
    Lambda list:
      : CONNECTION
-
 - =PEER-ENDS-HTTP-STREAM= (function)
    Do relevant state changes when closing http stream (as part of received ~HEADERS~ or
    ~PAYLOAD~).
 
    Lambda list:
      : STREAM
-
 - =HANDLE-UNDEFINED-FRAME= (function)
    Callback that is called when a frame of unknown type is received - see
    extensions.
 
    Lambda list:
      : TYPE FLAGS LENGTH
-
 - =DO-PONG= (function)
    Called when ping-frame with ~ACK~ is received. By default warns about unexpected ping response; see also ~TIMESHIFT-PINGING-CONNECTION~ mixin.
 
    Lambda list:
      : CONNECTION DATA
-
 - =DO-GOAWAY= (function)
    Called when a go-away frame is received. By default throws ~GO-AWAY~ condition if
    error was reported.
 
    Lambda list:
      : CONNECTION ERROR-CODE LAST-STREAM-ID DEBUG-DATA
-
 
 #+END:
 * Low level Debugging
