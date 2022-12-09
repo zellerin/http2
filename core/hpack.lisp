@@ -1,6 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/hpack)
 
 ;;;; See RFC7541
 (defvar static-headers-table
@@ -210,15 +210,15 @@ that CONTEXT.
 Use Huffman when HUFFMAN is true."
   ;; note: ECL reports error in the declaration w/o type
   (declare (type (or null hpack-context) context))
-  (anaphora:acond
+  (acond
     ((find-pair-in-tables context (list name value))
-     (write-indexed-header-pair res anaphora:it))
+     (write-indexed-header-pair res it))
     ((find-header-in-tables context name)
      (cond
        (context
-        (write-indexed-name res +literal-header-index+ anaphora:it value 6 huffman)
+        (write-indexed-name res +literal-header-index+ it value 6 huffman)
         (add-dynamic-header context (list name value)))
-       (t (write-indexed-name res +literal-header-noindex+ anaphora:it value 4 huffman))))
+       (t (write-indexed-name res +literal-header-noindex+ it value 4 huffman))))
     (context
      (write-literal-header-pair res +literal-header-index+ name value huffman)
      (add-dynamic-header context (list name value)))
@@ -246,11 +246,20 @@ Use Huffman when HUFFMAN is true."
   (let ((res (make-array 0 :fill-pointer 0 :adjustable t)))
     (header-writer res name value context huffman)))
 
+(defun compute-update-dynamic-size-codes (res updates)
+  (when updates
+    ;; we need to send update to both minimum and then (if different) final
+    ;; size.
+    (let ((min-update (reduce #'min updates))
+          (last-update (car updates)))
+      (encode-dynamic-table-update res min-update)
+      (when (< min-update last-update)
+        (encode-dynamic-table-update res last-update))
+      res)))
 
-(defun compile-headers (headers connection)
+(defun compile-headers (headers context)
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
-    with context = (when connection (get-compression-context connection))
     initially (when context
                 (compute-update-dynamic-size-codes
                  res (get-updates-needed context)))
@@ -268,7 +277,7 @@ Use Huffman when HUFFMAN is true."
                           content-type
                           gzip-content
                           additional-headers)
-  "Encode standard headers that are obligatory."
+  "Encode standard request headers that are obligatory."
   (compile-headers
    `((:method, (if (symbolp method) (symbol-name method) method))
      (:scheme ,scheme)
@@ -369,11 +378,9 @@ Use USE-BITS from the OCTET0 for name index"
 Neither name of the header nor value is in table, so read both as literals."
   (list (read-string-from-stream stream) (read-string-from-stream stream)))
 
-(defun read-http-header (connection)
-  "Read header field from stream. Decrement *bytes-left* as needed."
-  (let* ((stream (get-network-stream connection))
-         (octet0 (read-byte* stream))
-         (context (get-decompression-context connection)))
+(defun read-http-header (stream context)
+  "Read header field from network stream associated with the CONNECTION."
+  (let* ((octet0 (read-byte* stream)))
     (cond
       ((plusp (ldb (byte 1 7) octet0))  ;; 1xxx xxxx
        (read-from-tables (get-integer-from-octet stream octet0 7) context))

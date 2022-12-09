@@ -2,8 +2,18 @@
 
 ;;;; package.lisp
 
+(cl:defpackage :http2/hpack
+  (:use :cl #:anaphora)
+  (:export #:compile-headers #:decode-huffman
+           #:dynamic-table-value
+           #:get-bytes-left-in-table #:get-deleted-items #:get-dynamic-table #:get-dynamic-table-size #:get-integer-from-octet #:get-updates-needed #:integer-to-array #:read-http-header #:hpack-context
+           ;; used by it
+           #:read-byte*
+           ;; reexported from http2
+           #:ENCODE-HEADER #:REQUEST-HEADERS #:UPDATE-DYNAMIC-TABLE-SIZE))
+
 (cl:defpackage :http2
-  (:use :cl)
+  (:use :cl :http2/hpack)
   (:import-from :anaphora #:awhen #:acond #:it)
   (:import-from :alexandria
                 #:read-stream-content-into-string #:read-stream-content-into-byte-vector)

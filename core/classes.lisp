@@ -235,17 +235,6 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
-(defun compute-update-dynamic-size-codes (res updates)
-  (when updates
-    ;; we need to send update to both minimum and then (if different) final
-    ;; size.
-    (let ((min-update (reduce #'min updates))
-          (last-update (car updates)))
-      (encode-dynamic-table-update res min-update)
-      (when (< min-update last-update)
-        (encode-dynamic-table-update res last-update))
-      res)))
-
 (defgeneric send-headers (stream-or-connection
                           headers &key end-stream end-headers
                           &allow-other-keys)
@@ -259,7 +248,7 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags.")
   (:method ((stream http2-stream) headers &key end-stream (end-headers t))
     (with-slots (connection) stream
       (write-headers-frame stream
-                           (compile-headers headers connection)
+                           (compile-headers headers (get-compression-context connection))
                            :end-stream end-stream
                            :end-headers end-headers)
       (setf (get-updates-needed (get-compression-context connection)) nil))

@@ -13,7 +13,7 @@
                 :components ((:file "utils")
                              (:file "frames")
                              (:file "classes")
-                             (:file "headers")
+                             (:file "hpack")
                              (:file "payload-streams"))))
   :in-order-to ((test-op (test-op "http2/test"))))
 

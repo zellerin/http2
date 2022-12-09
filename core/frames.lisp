@@ -457,7 +457,8 @@ PROTOCOL_ERROR"))
         (*when-no-bytes-left-fn* nil))
     (set-when-no-bytes-left-fn (get-stream-id http-stream) end-headers)
     (loop while (plusp *bytes-left*)
-          for (name value) = (read-http-header connection)
+          for (name value) = (read-http-header (get-network-stream connection)
+                                               (get-decompression-context connection))
           when name
           do (add-header connection http-stream name value))))
 

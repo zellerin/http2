@@ -30,16 +30,16 @@ C.2.  Header Field Representation Examples
 (fiasco:deftest headers-representation ()
   (multiple-value-bind (write read) (make-pipe)
     (flet ((test-decode (source-text expect-name expect-value &optional dynamic-table)
-             (let* ((connection (make-instance 'http2-connection :network-stream read))
-                    (source (vector-from-hex-text source-text))
-                    (*bytes-left* (length source)))
+             (let* ((source (vector-from-hex-text source-text))
+                    (*bytes-left* (length source))
+                    (context (make-instance 'hpack-context)))
                (write-sequence source write)
                (destructuring-bind (name value)
-                   (read-http-header connection)
+                   (read-http-header read context)
                  (fiasco:is (equal name expect-name))
                  (fiasco:is (equal value expect-value))
                  (fiasco:is (equalp (if dynamic-table (vector `(,name ,value)) #())
-                                    (get-dynamic-table (get-decompression-context connection)))))
+                                    (get-dynamic-table context))))
                (fiasco:is (zerop *bytes-left*)))))
                                         ; C.2.1
       (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
@@ -75,7 +75,8 @@ C.2.  Header Field Representation Examples
 
                 with *bytes-left* = (length source)
          while (plusp *bytes-left*)
-         collect (read-http-header connection)))))
+                collect (read-http-header (get-network-stream connection)
+                                          (get-decompression-context connection))))))
 
 (fiasco:deftest test-header-packings ()
   (let* ((connection (make-instance 'http2-connection
@@ -108,15 +109,16 @@ C.2.  Header Field Representation Examples
     (fiasco:is (equalp  (dynamic-table-value decompression-context 64) '(:AUTHORITY "www.example.com")))
     (fiasco:is (equalp  (get-dynamic-table (get-compression-context connection)) (get-dynamic-table (get-decompression-context connection))))))
 
-(fiasco:deftest test-header-decoder (connection encoded headers values)
+(fiasco:deftest test-header-decoder (stream decompression-context encoded headers values)
   (fiasco:is
       (equalp (mapcar 'list headers values)
               (loop
                 with source = (vector-from-hex-text encoded)
                 with *bytes-left* = (length source)
-                for (name value) =  (read-http-header connection)
-                initially (setf (get-buffer (get-network-stream connection)) source
-                                (get-index (get-network-stream connection)) 0)
+                for (name value) = (read-http-header
+                                    stream decompression-context)
+                initially (setf (get-buffer stream) source
+                                (get-index stream) 0)
 
 
 
@@ -126,24 +128,26 @@ C.2.  Header Field Representation Examples
 ;; C.4.  Request Examples with Huffman Coding
 
 (fiasco:deftest test-huffman-decoding ()
-  (let* ((connection (make-instance 'http2-connection
-                                    :network-stream
-                                    (make-instance 'pipe-end-for-read :index 0)))
-         (decompression-context (get-decompression-context connection)))
+  (let* ((stream (make-instance 'pipe-end-for-read :index 0))
+         (compression-context (make-instance 'hpack-context))
+         (decompression-context (make-instance 'hpack-context)))
 
     ;; C.4.1.  First Request
-    (test-huffman-header connection "828684418cf1e3c2e5f23a6ba0ab90f4ff"
+    (test-huffman-header stream compression-context decompression-context
+                         "828684418cf1e3c2e5f23a6ba0ab90f4ff"
                          '(:method :scheme :path :authority)
                          '("GET" "http" "/" "www.example.com"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '(:authority "www.example.com")))
     ;; C.4.2.  Second Request
-    (test-huffman-header connection "828684be5886a8eb10649cbf"
+    (test-huffman-header stream compression-context decompression-context
+                         "828684be5886a8eb10649cbf"
                          '(:method :scheme :path :authority "cache-control")
                          '("GET" "http" "/" "www.example.com" "no-cache"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("cache-control" "no-cache")))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 63) '(:authority "www.example.com")))
     ;; C.4.3.  Third Request
-    (test-huffman-header connection "828785bf408825a849e95ba97d7f8925a849e95bb8e8b4bf"
+    (test-huffman-header stream compression-context decompression-context
+                         "828785bf408825a849e95ba97d7f8925a849e95bb8e8b4bf"
                          '(:method :scheme :path :authority "custom-key")
                          '("GET" "https" "/index.html" "www.example.com" "custom-value"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("custom-key" "custom-value")))
@@ -197,23 +201,24 @@ C.2.  Header Field Representation Examples
 
 
 ;; C.6.  Response Examples with Huffman Coding
-(defun test-huffman-header (connection encoded headers values)
-  (test-header-decoder connection encoded headers values)
+(defun test-huffman-header (stream compression-context decompression-context
+                            encoded headers values)
+  (test-header-decoder stream decompression-context encoded headers values)
   (fiasco:is (equalp (apply 'concatenate 'vector
                             (mapcar (lambda (a b)
                                       (encode-header a b
-                                                     (get-compression-context connection)
+                                                     compression-context
                                                      t))
                                     headers values))
                      (vector-from-hex-text encoded))))
 
 (fiasco:deftest test-header-packing-huffman-response ()
-  (let* ((connection (make-instance 'http2-connection
-                                    :network-stream
-                                    (make-instance 'pipe-end-for-read :index 0)))
-         (decompression-context (get-decompression-context connection)))
+  (let* ((stream (make-instance 'pipe-end-for-read :index 0))
+         (compression-context (make-instance 'hpack-context))
+         (decompression-context (make-instance 'hpack-context)))
     ;; C.6.1.  First Response
-    (test-huffman-header connection "488264025885aec3771a4b6196d07abe941054d444a8200595040b8166e082a62d1bff6e919d29ad171863c78f0b97c8e9ae82ae43d3"
+    (test-huffman-header stream compression-context decompression-context
+                         "488264025885aec3771a4b6196d07abe941054d444a8200595040b8166e082a62d1bff6e919d29ad171863c78f0b97c8e9ae82ae43d3"
                          '(:status "cache-control" "date" "location")
                          '("302" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
     (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("location" "https://www.example.com")))
@@ -222,13 +227,14 @@ C.2.  Header Field Representation Examples
     (fiasco:is (equalp  (dynamic-table-value decompression-context 65) '(:status "302")))
 
     ;; C.6.2.  Second Response
-    (test-huffman-header connection "4883640effc1c0bf"
+    (test-huffman-header stream compression-context decompression-context "4883640effc1c0bf"
                          '(:status "cache-control" "date" "location")
                          '("307" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
     ;; here we should evict part of cache to fit 256 size, but we do not.
     ;; regardless, it works, which probably mean we need another tests.
 
     ;; C.6.3.  Third Response
-    (test-huffman-header connection "88c16196d07abe941054d444a8200595040b8166e084a62d1bffc05a839bd9ab77ad94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007"
+    (test-huffman-header stream compression-context decompression-context
+                         "88c16196d07abe941054d444a8200595040b8166e084a62d1bffc05a839bd9ab77ad94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007"
                          '(:status "cache-control" "date" "location" "content-encoding" "set-cookie")
                          '("200" "private" "Mon, 21 Oct 2013 20:13:22 GMT" "https://www.example.com" "gzip" "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"))))
