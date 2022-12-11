@@ -241,6 +241,6 @@ Do something (see code) with conditions."
   (handler-bind ((warning 'muffle-warning)
                  (error (lambda (e)
                           (describe e)
-                          (invoke-restart 'kill-server))))
+                          (invoke-restart 'abort))))
     (create-https-server port key certificate
                          :verbose nil)))
