@@ -41,7 +41,7 @@ C.2.  Header Field Representation Examples
                  (fiasco:is (equalp (if dynamic-table (vector `(,name ,value)) #())
                                     (get-dynamic-table context))))
                (fiasco:is (zerop *bytes-left*)))))
-                                        ; C.2.1
+      ;; C.2.1
       (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
                      "custom-key"  "custom-header" t)
 
@@ -58,11 +58,12 @@ C.2.  Header Field Representation Examples
 
 ;; C.3.  Request Examples without Huffman Coding
 
-(fiasco:deftest test-header-packing (connection encoded headers values)
+(fiasco:deftest test-header-packing (stream compression-context decompression-context
+                                            encoded headers values)
   (fiasco:is (equalp (apply 'concatenate 'vector
                             (mapcar (lambda (a b)
                                       (encode-header a b
-                                                     (get-compression-context connection)
+                                                     compression-context
                                                      nil))
                                     headers values))
                      (vector-from-hex-text encoded)))
@@ -70,44 +71,50 @@ C.2.  Header Field Representation Examples
       (equalp (mapcar 'list headers values)
               (loop
                 with source = (vector-from-hex-text encoded)
-                initially (setf (get-buffer (get-network-stream connection)) source
-                                (get-index (get-network-stream connection)) 0)
+                initially (setf (get-buffer stream) source
+                                (get-index stream) 0)
 
                 with *bytes-left* = (length source)
          while (plusp *bytes-left*)
-                collect (read-http-header (get-network-stream connection)
-                                          (get-decompression-context connection))))))
+                collect (read-http-header stream decompression-context)))))
 
 (fiasco:deftest test-header-packings ()
-  (let* ((connection (make-instance 'http2-connection
-                                    :network-stream
-                                    (make-instance 'pipe-end-for-read :index 0)))
-         (decompression-context (get-decompression-context connection)))
+  (let* ((stream (make-instance 'pipe-end-for-read :index 0))
+         (compression-context (make-instance 'hpack-context))
+         (decompression-context (make-instance 'hpack-context)))
     ;; C.3.1.  First Request
-    (test-header-packing connection "828684410f7777772e6578616d706c652e636f6d"
+    (test-header-packing stream compression-context decompression-context
+                         "828684410f7777772e6578616d706c652e636f6d"
                          '(:method :scheme :path :authority)
                          '("GET" "http" "/" "www.example.com"))
-    (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '(:AUTHORITY "www.example.com")))
+    (fiasco:is (equalp  (dynamic-table-value decompression-context 62)
+                        '(:AUTHORITY "www.example.com")))
     (fiasco:is (equalp  (get-dynamic-table decompression-context)
-                        (get-dynamic-table (get-compression-context connection))))
+                        (get-dynamic-table compression-context)))
 
     ;; C.3.2.  Second Request
-    (test-header-packing connection "828684be58086e6f2d6361636865"
-                            '(:method :scheme :path :authority "cache-control")
-                            '("GET" "http" "/" "www.example.com" "no-cache"))
+    (test-header-packing stream compression-context decompression-context
+                         "828684be58086e6f2d6361636865"
+                         '(:method :scheme :path :authority "cache-control")
+                         '("GET" "http" "/" "www.example.com" "no-cache"))
     (fiasco:is (equalp (dynamic-table-value decompression-context 62) '("cache-control" "no-cache")))
     (fiasco:is (equalp (dynamic-table-value decompression-context 63) '(:AUTHORITY "www.example.com")))
-    (fiasco:is (equalp (get-dynamic-table (get-compression-context connection))
+    (fiasco:is (equalp (get-dynamic-table compression-context)
                        (get-dynamic-table decompression-context)))
 
     ;; C.3.3.  Third Request
-    (test-header-packing connection "828785bf400a637573746f6d2d6b65790c637573746f6d2d76616c7565"
+    (test-header-packing stream compression-context decompression-context
+                         "828785bf400a637573746f6d2d6b65790c637573746f6d2d76616c7565"
                          '(:method :scheme :path :authority "custom-key")
                          '("GET" "https" "/index.html" "www.example.com" "custom-value"))
-    (fiasco:is (equalp  (dynamic-table-value decompression-context 62) '("custom-key" "custom-value")))
-    (fiasco:is (equalp  (dynamic-table-value decompression-context 63) '("cache-control" "no-cache")))
-    (fiasco:is (equalp  (dynamic-table-value decompression-context 64) '(:AUTHORITY "www.example.com")))
-    (fiasco:is (equalp  (get-dynamic-table (get-compression-context connection)) (get-dynamic-table (get-decompression-context connection))))))
+    (fiasco:is (equalp  (dynamic-table-value decompression-context 62)
+                        '("custom-key" "custom-value")))
+    (fiasco:is (equalp  (dynamic-table-value decompression-context 63)
+                        '("cache-control" "no-cache")))
+    (fiasco:is (equalp  (dynamic-table-value decompression-context 64)
+                        '(:AUTHORITY "www.example.com")))
+    (fiasco:is (equalp  (get-dynamic-table compression-context)
+                        (get-dynamic-table decompression-context)))))
 
 (fiasco:deftest test-header-decoder (stream decompression-context encoded headers values)
   (fiasco:is
@@ -156,27 +163,32 @@ C.2.  Header Field Representation Examples
 
 ;; C.5.  Response Examples without Huffman Coding
 (fiasco:deftest test-header-packings-response ()
-  (let* ((connection (make-instance 'http2-connection
-                                    :network-stream
-                                    (make-instance 'pipe-end-for-read :index 0)
-                                    :decompression-context (make-instance 'hpack-context :dynamic-table-size 256)))
-         (decompression-context (get-decompression-context connection))
-         (compression-context (get-compression-context connection)))
+  (let* ((stream (make-instance 'pipe-end-for-read :index 0))
+         (decompression-context (make-instance 'hpack-context
+                                               :dynamic-table-size 256))
+         (compression-context (make-instance 'hpack-context)))
     ;; C.5.1.  First Response
-    (test-header-packing connection "4803333032580770726976617465611d4d6f6e2c203231204f637420323031332032303a31333a323120474d546e1768747470733a2f2f7777772e6578616d706c652e636f6d"
+    (test-header-packing stream compression-context decompression-context
+                         "4803333032580770726976617465611d4d6f6e2c203231204f637420323031332032303a31333a323120474d546e1768747470733a2f2f7777772e6578616d706c652e636f6d"
                          '(:status "cache-control" "date" "location")
                          '("302" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
-    (fiasco:is (equalp (dynamic-table-value decompression-context 62) '("location" "https://www.example.com")))
-    (fiasco:is (equalp (dynamic-table-value decompression-context 63) '("date" "Mon, 21 Oct 2013 20:13:21 GMT")))
-    (fiasco:is (equalp (dynamic-table-value decompression-context 64) '("cache-control" "private")))
-    (fiasco:is (equalp (dynamic-table-value decompression-context 65) '(:status "302")))
+    (fiasco:is (equalp (dynamic-table-value decompression-context 62)
+                       '("location" "https://www.example.com")))
+    (fiasco:is (equalp (dynamic-table-value decompression-context 63)
+                       '("date" "Mon, 21 Oct 2013 20:13:21 GMT")))
+    (fiasco:is (equalp (dynamic-table-value decompression-context 64)
+                       '("cache-control" "private")))
+    (fiasco:is (equalp (dynamic-table-value decompression-context 65)
+                       '(:status "302")))
     (fiasco:is (equalp (get-bytes-left-in-table decompression-context) (- 256 222)))
     (fiasco:is (= (- (length (get-dynamic-table decompression-context))
                           (get-deleted-items decompression-context))
                   4))
-    (fiasco:is (equalp (get-dynamic-table (get-compression-context connection)) (get-dynamic-table (get-decompression-context connection))))
+    (fiasco:is (equalp (get-dynamic-table compression-context)
+                       (get-dynamic-table decompression-context)))
     ;; C.5.2.  Second Response
-    (test-header-packing connection "4803333037c1c0bf"
+    (test-header-packing stream compression-context decompression-context
+                         "4803333037c1c0bf"
                          '(:status "cache-control" "date" "location")
                          '("307" "private" "Mon, 21 Oct 2013 20:13:21 GMT" "https://www.example.com"))
     (fiasco:is (equalp (dynamic-table-value decompression-context 63) '("location" "https://www.example.com")))
@@ -189,7 +201,8 @@ C.2.  Header Field Representation Examples
     (fiasco:is (equalp (get-bytes-left-in-table decompression-context) (- 256 222)))
 
     ;; C.5.3.  Third Response
-    (test-header-packing connection "88c1611d4d6f6e2c203231204f637420323031332032303a31333a323220474d54c05a04677a69707738666f6f3d4153444a4b48514b425a584f5157454f50495541585157454f49553b206d61782d6167653d333630303b2076657273696f6e3d31"
+    (test-header-packing stream compression-context decompression-context
+                         "88c1611d4d6f6e2c203231204f637420323031332032303a31333a323220474d54c05a04677a69707738666f6f3d4153444a4b48514b425a584f5157454f50495541585157454f49553b206d61782d6167653d333630303b2076657273696f6e3d31"
                          '(:status "cache-control" "date" "location" "content-encoding" "set-cookie")
                          '("200" "private" "Mon, 21 Oct 2013 20:13:22 GMT" "https://www.example.com" "gzip" "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"))
     (fiasco:is (= (- (length (get-dynamic-table decompression-context))
