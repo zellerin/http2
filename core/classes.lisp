@@ -338,6 +338,8 @@ the parameters should be different anyway). By default throws an error."))
     (unless (eq error-code '+cancel+)
       (error 'http-stream-error :stream stream
                                 :error-code error-code
+                                :error-text (when (< -1 error-code (length *error-codes*))
+                                              (aref *error-codes* error-code))
                                 :debug-data nil)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
@@ -639,6 +641,7 @@ ACK and same data.")
 
 (define-condition peer-should-go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
+   (error-text     :accessor get-error-text     :initarg :error-text)
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
 
