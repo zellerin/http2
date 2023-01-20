@@ -168,35 +168,38 @@ optionally prints activities."))
    "A server-side stream that can be used as a binary output stream, optionally
 prints activities, and reads full body from client if clients sends one."))
 
+(defvar *default-handler*
+  (handler (out :utf-8 nil)
+    (send-headers
+     `((:status "404")
+       ("content-type" "text/html; charset=UTF-8")))
+    (format out  "<h1>Not found</h1>"))
+  "Handler used as last resort - page not found.")
+
+(defun find-matching-handler (path connection)
+  "Function that should prepare response for request on PATH in streams of given
+CONNECTION."
+  (or
+   (cdr (assoc path
+               (or (get-exact-handlers connection)
+                   *exact-handlers*)
+               :test (lambda (prefix path)
+                             (let ((mismatch (mismatch prefix path)))
+                               (or (null mismatch)
+                                   (and (eql mismatch (position #\? path))
+                                        (eql mismatch (length path))))))))
+   (cdr (assoc path
+               (or (get-prefix-handlers connection)
+                   *prefix-handlers*)
+               :test (lambda (prefix path)
+                       (let ((mismatch (mismatch prefix path)))
+                         (or (null mismatch) (equal mismatch (length path)))))))
+   *default-handler*))
+
 (defmethod peer-ends-http-stream ((stream vanilla-server-stream))
-  "Send some random payloads, or shut down the server."
-  (let* ((connection (get-connection stream))
-         (handler
-            (or
-             (cdr (assoc (get-path stream)
-                         (or (get-exact-handlers connection)
-                             *exact-handlers*)
-                         :test (lambda (prefix path)
-                                 (let ((mismatch (mismatch prefix path)))
-                                   (or (null mismatch)
-                                       (and (eql mismatch (position #\? path))
-                                            (eql mismatch (length path))))))))
-             (cdr (assoc (get-path stream)
-                         (or (get-prefix-handlers connection)
-                             *prefix-handlers*)
-                         :test (lambda (prefix path)
-                                 (let ((mismatch (mismatch prefix path)))
-                                   (or (null mismatch) (equal mismatch (length path))))))))))
-    (with-slots (connection) stream
-      (if handler (funcall handler connection stream)
-          (progn
-            (send-headers stream
-                           `((:status "404")
-                             ("content-type" "text/html; charset=UTF-8"))
-                           :end-headers t)
-            (with-open-stream (out (make-transport-output-stream
-                                    stream :utf-8 nil))
-              (format out  "<h1>Not found</h1>")))))))
+  "Send appropriate payload, or an error page."
+  (with-slots (connection) stream
+    (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
 (defmethod new-frame-ready ((c threaded-server-mixin))
   "Make sure that lock for writing the stream is held while processing input
