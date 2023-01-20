@@ -4,9 +4,9 @@
 
 ;;;; Classes
 #|
-                     http2-stream                   http2-connection--------------\
-                     /   /                         /       \                       \
-        logging-stream  /     client-http2-connection   server-http2-connection  logging-connection
+                     http2-stream                   http2-connection
+                         /                         /       \
+                        /     client-http2-connection   server-http2-connection
                        /                      \
      (stream mixins)  /                        \        (connection mixins)
                \     /                          \             /
