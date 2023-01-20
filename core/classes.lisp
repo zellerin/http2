@@ -242,31 +242,19 @@ The lifecycle of a stream is shown in Figure 2.
                 :end-stream end-stream
                 :end-headers end-headers))
 
-(defgeneric send-headers (stream-or-connection
-                          headers &key end-stream end-headers
+(defun send-headers (stream
+                     headers &key end-stream (end-headers t)
                           &allow-other-keys)
-  (:documentation
-   "Send HEADERS to the connection or stream. STREAM is either an existing instance
-of a stream, or a HTTP2 connection; in that case a new stream is created on
-it. In both cases, the stream is returned.
+  "Send HEADERS to a HTTP2 stream. The stream is returned.
 
-The END-HEADERS and END-STREAM allow to set the appropriate flags.")
-
-  (:method ((stream http2-stream) headers &key end-stream (end-headers t))
-    (with-slots (connection) stream
-      (write-headers-frame stream
-                           (compile-headers headers (get-compression-context connection))
-                           :end-stream end-stream
-                           :end-headers end-headers)
-      (setf (get-updates-needed (get-compression-context connection)) nil))
-    stream)
-
-  (:method :before ((stream logging-object) headers &rest raw-stream-args)
-    (add-log stream `(:sending-headers ,headers ,raw-stream-args)))
-
-  (:method ((connection http2-connection) headers
-            &key)
-   (error "Do not call this!.")))
+The END-HEADERS and END-STREAM allow to set the appropriate flags."
+  (with-slots (connection) stream
+    (write-headers-frame stream
+                         (compile-headers headers (get-compression-context connection))
+                         :end-stream end-stream
+                         :end-headers end-headers)
+    (setf (get-updates-needed (get-compression-context connection)) nil))
+  stream)
 
 (defun peer-opens-http-stream-really-open (connection stream-id state)
     (unless (> stream-id (get-last-id-seen connection))
