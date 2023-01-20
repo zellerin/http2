@@ -6,6 +6,7 @@
 
 (in-package :http2/client)
 
+(defun http-stream-to-vector (http2-stream)
   "Read HTTP2 raw stream payload data, do guessed conversions and return either
 string or octets vector. You can expect the stream to be closed after calling
 this."
@@ -17,8 +18,8 @@ this."
     (with-open-stream (response-stream
                        (make-transport-stream http2-stream charset encoded))
       (if charset
-          (alexandria:read-stream-content-into-string response-stream)
-          (alexandria:read-stream-content-into-byte-vector response-stream)))))
+          (read-stream-content-into-string response-stream)
+          (read-stream-content-into-byte-vector response-stream)))))
 
 (defun maybe-send-pings (connection ping)
   (typecase ping
@@ -33,7 +34,7 @@ this."
                                         (content-fn (when content (curry #'write-sequence content)))
                                         additional-headers
                                         (content-type "text/plain; charset=utf-8")
-                                        (charset (http2::extract-charset-from-content-type content-type))
+                                        (charset (extract-charset-from-content-type content-type))
                                         gzip-content
                                         end-headers-fn end-stream-fn
                                       &allow-other-keys)
