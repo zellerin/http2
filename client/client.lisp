@@ -6,19 +6,16 @@
 
 (in-package :http2/client)
 
-
-
-(defun http-stream-to-vector (raw-stream)
   "Read HTTP2 raw stream payload data, do guessed conversions and return either
 string or octets vector. You can expect the stream to be closed after calling
 this."
-  (let*  ((headers (get-headers raw-stream))
+  (let*  ((headers (get-headers http2-stream))
           (charset (http2::extract-charset-from-content-type (cdr (assoc "content-type" headers
                                                                          :test 'string-equal))))
           (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
                                              :test 'string-equal)))))
     (with-open-stream (response-stream
-                       (make-transport-stream raw-stream charset encoded))
+                       (make-transport-stream http2-stream charset encoded))
       (if charset
           (alexandria:read-stream-content-into-string response-stream)
           (alexandria:read-stream-content-into-byte-vector response-stream)))))
@@ -74,7 +71,7 @@ called) and until END-STREAM-FN is called, any reading of body may block.
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
                                           &key (connection-class 'vanilla-client-connection)
-                                          ping
+                                            ping
                                           &allow-other-keys)
   "Open an HTTP/2 connection over NETWORK-STREAM and use it to request URL."
 

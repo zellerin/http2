@@ -101,29 +101,27 @@ protocol (H2 by default)."
              content-type *default-encoding*)
        *default-encoding*)))
 
-(defun make-transport-output-stream (raw-stream headers)
+(defun make-transport-output-stream (http2-stream charset gzip)
   "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
-  (let* ((transport raw-stream)
-         (charset (extract-charset-from-content-type
-                   (cdr (assoc "content-type" headers :test 'equal)))))
-    (when (member '("content-encoding" . "gzip") headers :test 'equalp)
+  (let* ((transport (make-instance 'payload-output-stream :base-http2-stream http2-stream)))
+    (when gzip
       (setf transport (gzip-stream:make-gzip-output-stream transport)))
     (awhen charset
       (setf transport
             (flexi-streams:make-flexi-stream
              transport
-             :external-format it)))
+             :external-format charset)))
 
     transport))
 
-(defun make-transport-stream (raw-stream charset encoded)
-  "INPUT-STREAM built atop RAW-STREAM.
+(defun make-transport-stream (http2-stream charset encoded)
+  "INPUT-STREAM built atop a HTTP2-STREAM.
 
 Guess encoding and need to gunzip from headers:
 - apply zip decompression content-encoding is gzip (FIXME: also compression)
 - use charset if understood in content-type
 - otherwise guess whether text (use UTF-8) or binary."
-  (let* ((transport raw-stream))
+  (let* ((transport (make-instance 'payload-input-stream :base-http2-stream http2-stream)))
     (when encoded
       (setf transport (gzip-stream:make-gzip-input-stream transport)))
     (awhen charset

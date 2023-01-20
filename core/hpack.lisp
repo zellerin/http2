@@ -471,6 +471,7 @@ Neither name of the header nor value is in table, so read both as literals."
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
+               (declare (optimize (safety 0)))
                (when (> min-prefix nr-size)
                  (when (= idx (length bytes)) (return-from decode-huffman-to-stream))
                  (let ((old nr))
