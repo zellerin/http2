@@ -88,11 +88,9 @@ where it is used.")
   (defun flags-to-vars-code (flags)
     "Create code to extract variables named as each member of *flag-codes*
 that is set to T if it is in FLAGS and appropriate bit is set in the read flags."
-    (loop for flag in *flag-codes* by 'cddr
+    (loop for flag in *flag-codes* by #'cddr
           collect `(,flag ,(when (member flag flags)
                              `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags)))))))
-
-
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -150,6 +148,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
                       (write-vector (vector) (write-sequence vector ,stream-name))
                       (write-31 (value)
+                        (declare (ignorable value))
                         ,(if has-reserved
                              `(write-31-bits ,stream-name value reserved)
                              `(error "write-31 is not allowed here"))))
