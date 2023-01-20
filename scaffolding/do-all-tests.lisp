@@ -23,8 +23,8 @@
              #p"/tmp/fasl/pre-commit-cache/**/*.*")
            :inherit-configuration :enable-user-cache))
 
-(asdf:oos 'asdf:load-op :http2/all :force t)
-;(ql:quickload "http2/server/example")
+(asdf:load-system :http2/all :force t)
+
 (in-package http2)
 (http2/server-example::maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
 
