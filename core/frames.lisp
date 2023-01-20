@@ -225,6 +225,7 @@ passed to the make-instance"
                        :window-size (get-initial-window-size connection)
                        :connection connection
                        :network-stream (get-network-stream connection)
+                       :state 'open
                        pars)))
     (incf (get-id-to-use connection) 2)
     (push stream (get-streams connection))

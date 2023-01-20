@@ -237,7 +237,7 @@ The lifecycle of a stream is shown in Figure 2.
 
 (defun open-http2-stream (connection headers &key end-stream (end-headers t) stream-pars)
   "Open http2 stream by sending headers."
-  (send-headers (create-new-local-stream connection `(:state open ,@stream-pars))
+  (send-headers (create-new-local-stream connection stream-pars)
                 headers
                 :end-stream end-stream
                 :end-headers end-headers))
