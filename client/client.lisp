@@ -36,7 +36,7 @@ this."
                                         (content-type "text/plain; charset=utf-8")
                                         (charset (extract-charset-from-content-type content-type))
                                         gzip-content
-                                        end-headers-fn end-stream-fn
+                                        end-headers-fn
                                       &allow-other-keys)
   "HTTP2 stream object that represent a request sent on CONNECTION.
 
@@ -53,16 +53,15 @@ called) and until END-STREAM-FN is called, any reading of body may block.
 - if GZIP-CONTENT is set, the appropriate header is send, and the stream for
   CONTENT-FN is encrypted transparently."
   (let ((raw-stream
-          (send-headers connection
+          (http2::open-http2-stream connection
                         (request-headers method
                                          (puri:uri-path parsed-url)
                                          (puri:uri-host parsed-url)
                                          :content-type content-type
                                          :gzip-content gzip-content
                                          :additional-headers additional-headers)
-                        :end-stream (null (or content content-fn)))))
-    (when end-stream-fn (setf (http2::get-end-stream-fn raw-stream) end-stream-fn))
-    (when end-headers-fn (setf (http2::get-end-headers-fn raw-stream) end-headers-fn))
+                        :end-stream (null (or content content-fn))
+                        :stream-pars `(:end-headers-fn ,end-headers-fn))))
     (when content-fn
       (let ((out (make-transport-output-stream raw-stream charset nil)))
         (funcall content-fn out)

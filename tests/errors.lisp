@@ -7,7 +7,7 @@
                         'vanilla-client-connection
                         :network-stream (connect-to-tls-server "localhost" :port *server-port*))
                      (loop
-                       with stream = (send-headers connection headers)
+                       with stream = (open-http2-stream connection headers)
                        do
                           ;; if it does not signal eventually we lose.
                           (read-frame connection)))))

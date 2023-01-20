@@ -235,6 +235,13 @@ The lifecycle of a stream is shown in Figure 2.
     (call-next-method))
   (call-next-method))
 
+(defun open-http2-stream (connection headers &key end-stream (end-headers t) stream-pars)
+  "Open http2 stream by sending headers."
+  (send-headers (create-new-local-stream connection `(:state open ,@stream-pars))
+                headers
+                :end-stream end-stream
+                :end-headers end-headers))
+
 (defgeneric send-headers (stream-or-connection
                           headers &key end-stream end-headers
                           &allow-other-keys)
@@ -258,11 +265,8 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags.")
     (add-log stream `(:sending-headers ,headers ,raw-stream-args)))
 
   (:method ((connection http2-connection) headers
-            &key end-stream (end-headers t))
-    (send-headers (create-new-local-stream connection `(:state open))
-                  headers
-                  :end-stream end-stream
-                  :end-headers end-headers)))
+            &key)
+   (error "Do not call this!.")))
 
 (defun peer-opens-http-stream-really-open (connection stream-id state)
     (unless (> stream-id (get-last-id-seen connection))
