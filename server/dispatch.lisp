@@ -194,7 +194,8 @@ prints activities, and reads full body from client if clients sends one."))
                            `((:status "404")
                              ("content-type" "text/html; charset=UTF-8"))
                            :end-headers t)
-            (with-open-stream (out (make-transport-output-stream stream :utf-8 nil))
+            (with-open-stream (out (make-transport-output-stream
+                                    stream (get-headers stream)))
               (format out  "<h1>Not found</h1>")))))))
 
 (defmethod new-frame-ready ((c threaded-server-mixin))

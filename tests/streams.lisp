@@ -8,6 +8,7 @@
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=uTf-8")
                          :utf-8))
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=latIn-2")
+                         :bar))
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=utf-8")
                          :utf-8))
       (fiasco:is (equalp (extract-charset-from-content-type "text/plain; charset=latin-2")
