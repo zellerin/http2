@@ -317,11 +317,11 @@ the parameters should be different anyway). By default throws an error."))
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method (stream error-code)
-    (setf (get-state stream) 'closed)
     (unless (eq error-code '+cancel+)
       (error 'http-stream-error :stream stream
                                 :error-code error-code
-                                :debug-data nil)))
+                                :debug-data nil))
+    (setf (get-state stream) 'closed))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
 
@@ -653,6 +653,10 @@ ACK and same data.")
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
 
+(defmethod print-object ((err go-away) out)
+  (with-slots (error-code debug-data last-stream-id) err
+    (print-unreadable-object (err out :type t)
+      (format out "~a (~s)" error-code (map 'string 'code-char debug-data)))))
 
 (defgeneric do-goaway (connection error-code last-stream-id debug-data)
   (:documentation
