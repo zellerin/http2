@@ -130,8 +130,10 @@ than :status allowed, etc."))
   (:default-initargs :method nil :scheme nil :authority nil :path nil))
 
 (defmethod print-object ((stream server-stream) out)
-  (print-unreadable-object (stream out :type t)
-    (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
+  (if *print-escape*
+      (print-unreadable-object (stream out :type t)
+        (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
+      (format out (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))))
 
 (defclass log-headers-mixin ()
   ()
@@ -319,8 +321,6 @@ the parameters should be different anyway). By default throws an error."))
     (unless (eq error-code '+cancel+)
       (error 'http-stream-error :stream stream
                                 :error-code error-code
-                                :error-text (when (< -1 error-code (length *error-codes*))
-                                              (aref *error-codes* error-code))
                                 :debug-data nil)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
@@ -486,9 +486,11 @@ SET-PEER-SETTING calls. By default, send ACK frame.")
     `((:enable-push . 0))))
 
 (defmethod print-object ((o http2-stream) out)
-  (print-unreadable-object (o out :type t :identity nil)
-    (format out "~a #~d" (get-state o)
-            (get-stream-id o))))
+  (if *print-escape*
+      (print-unreadable-object (o out :type t :identity nil)
+        (format out "~a #~d" (get-state o)
+                (get-stream-id o)))
+      (format out "~:(~a~) stream #~d" (get-state o) (get-stream-id o))))
 
 (defgeneric peer-ends-http-stream (stream)
   (:documentation
@@ -622,14 +624,17 @@ ACK and same data.")
 
 (define-condition peer-should-go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
-   (error-text     :accessor get-error-text     :initarg :error-text)
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
 
 (define-condition http-stream-error (serious-condition)
   ((error-code :accessor get-error-code :initarg :error-code)
-   (debug-data :accessor get-debug-data :initarg :debug-data)
    (stream     :accessor get-stream     :initarg :stream)))
+
+(defmethod print-object ((err http-stream-error) out)
+  (with-slots (error-code debug-data stream) err
+      (print-unreadable-object (err out :type t)
+        (format out "~a: ~a" stream (get-error-name error-code)))))
 
 (defmethod http2-error (connection error-code debug-code &rest args)
   (let ((formatted (apply #'format nil debug-code args)))
