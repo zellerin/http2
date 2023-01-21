@@ -399,7 +399,7 @@ the strem or connection.")
    "Process received information about peers setting.
 
 The setting relates to the CONNECTION. NAME is a keyword symbol (see
-*SETTINGS-ALIST*, subject to possible change to 16bit number in future) and VALUE is
+*SETTINGS*, subject to possible change to 16bit number in future) and VALUE is
 32bit number.")
   (:method (connection name value)
     "Fallback."
