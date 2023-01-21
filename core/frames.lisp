@@ -613,6 +613,35 @@ PROTOCOL_ERROR"))
       For any given request, a lower limit than what is advertised MAY
       be enforced.  The initial value of this setting is unlimited.")
 
+    (:accept-cache-digest 7 ; not part of standard
+     "A server can notify its support for CACHE_DIGEST frame by sending the
+      SETTINGS_ACCEPT_CACHE_DIGEST (0x7) SETTINGS parameter. If the server is
+      tempted to making optimizations based on CACHE_DIGEST frames, it SHOULD
+      send the SETTINGS parameter immediately after the connection is
+      established.
+
+      The value of the parameter is a bit-field of which the following bits are
+      defined:
+
+      ACCEPT (0x1): When set, it indicates that the server is willing to make
+      use of a digest of cached responses.
+
+      Rest of the bits MUST be ignored and MUST be left unset when sending.
+
+      The initial value of the parameter is zero (0x0) meaning that the server
+      is not interested in seeing a CACHE_DIGEST frame.
+
+      Some underlying transports allow the server's first flight of application
+      data to reach the client at around the same time when the client sends
+      it's first flight data. When such transport (e.g., TLS 1.3
+      [I-D.ietf-tls-tls13] in full-handshake mode) is used, a client can
+      postpone sending the CACHE_DIGEST frame until it receives a
+      SETTINGS_ACCEPT_CACHE_DIGEST settings value.
+
+      When the underlying transport does not have such property (e.g., TLS 1.3
+      in 0-RTT mode), a client can reuse the settings value found in previous
+      connections to that origin [RFC6454] to make assumptions.")
+
     (:enable-connect-protocol 8
      "See RFC8441. Upon receipt of SETTINGS_ENABLE_CONNECT_PROTOCOL with a value of
    1, a client MAY use the Extended CONNECT as defined in this document when
