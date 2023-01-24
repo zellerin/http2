@@ -1,5 +1,6 @@
 (in-package :http2)
 
+(defvar *server-domain* "localhost")
 (defvar *server-port* nil)
 (defvar *test-server-thread*
   (bt:make-thread

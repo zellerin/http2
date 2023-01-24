@@ -5,7 +5,7 @@
       (with-http2-connection
                        (connection
                         'vanilla-client-connection
-                        :network-stream (connect-to-tls-server "localhost" :port *server-port*))
+                        :network-stream (connect-to-tls-server *server-domain* :port *server-port*))
                      (loop
                        with stream = (open-http2-stream connection headers)
                        do
