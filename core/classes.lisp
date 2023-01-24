@@ -296,12 +296,13 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
   (:method :before ((connection client-http2-connection) stream-id frame-type)
     (if (oddp stream-id)
         ;; Q: does RFC document what to do?
-        (warn "Strems initiated by the server MUST use even-numbered stream identifiers.")))
+        (http2-error connection +protocol-error+ "Event-numbered ID expected" )))
 
   (:method :before ((connection server-http2-connection) stream-id frame-type)
-    (when (evenp stream-id)
-        ;; Q: does RFC document what to do?
-      (warn "Streams initiated by a client MUST use odd-numbered stream identifiers")))
+    (cond
+      ((evenp stream-id)
+       ;; Q: does RFC document what to do?
+       (http2-error connection +protocol-error+ "Odd-numbered ID expected" ))))
 
   (:method :around ((connection logging-object) stream-id frame-type)
     (let ((stream (call-next-method)))
@@ -636,16 +637,24 @@ ACK and same data.")
       (print-unreadable-object (err out :type t)
         (format out "~a: ~a" stream (get-error-name error-code)))))
 
-(defmethod http2-error (connection error-code debug-code &rest args)
+(defun http2-error (connection error-code debug-code &rest args)
+  "Signal to the peer the ERROR CODE and kill connection.
+
+For a client, raise error to signal we are done with connection.
+For a server, close the connection by invoking the restart."
   (let ((formatted (apply #'format nil debug-code args)))
     (write-goaway-frame connection
                         0 ; fixme: last processed stream
                         error-code
                         (map 'vector 'char-code formatted) )
-    #+nil(error 'peer-should-go-away
-           :last-stream-id 0 ; fixme: last processed stream
-           :error-code error-code
-           :debug-data formatted)
+    (finish-output (get-network-stream connection))
+    (typecase connection
+      (server-http2-connection
+       (sleep 1.0)
+       (invoke-restart 'close-connection))
+      (client-http2-connection
+       (error 'peer-should-go-away :error-code error-code
+                                   :debug-data formatted)))
     nil))
 
 (define-condition go-away (serious-condition)
@@ -662,15 +671,22 @@ ACK and same data.")
   (:documentation
    "Called when a go-away frame is received. By default throws GO-AWAY condition if
 error was reported.")
-  (:method :before ((connection logging-object) error-code last-stream-id debug-data)
+  (:method ((connection logging-object) error-code last-stream-id debug-data)
     (add-log connection `(:go-away :last-stream-id ,last-stream-id
                                    :error-code ,error-code)))
 
-  (:method (connection error-code last-stream-id debug-data)
+  (:method ((connection client-http2-connection) error-code last-stream-id debug-data)
     (unless (eq error-code '+no-error+)
       (error 'go-away :last-stream-id last-stream-id
                       :error-code error-code
-                      :debug-data debug-data))))
+                      :debug-data debug-data)))
+
+  (:method ((connection server-http2-connection) error-code last-stream-id debug-data)
+    (unless (eq error-code '+no-error+)
+      (signal 'go-away :last-stream-id last-stream-id
+                       :error-code error-code
+                       :debug-data debug-data)
+      (invoke-restart 'close-connection))))
 
 (defgeneric handle-undefined-frame (type flags length)
   (:method (type flags length))

@@ -19,8 +19,7 @@
                   :init-state 'closed
                   :expected-log-stream '((:payload #(1 2 3 4 5)))
                   :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 0
-                                                   :ERROR-CODE +STREAM-CLOSED+))
-                  :expected-sender-error 'go-away)
+                                                   :ERROR-CODE +STREAM-CLOSED+)))
 
   (test-a-frame padded #'write-data-frame '(#(1 2 3 4 5)
                                             :padded #(0 1 2 3  6 7))
@@ -62,7 +61,7 @@
                   :expected-log-stream
                   '((:new-prio :exclusive nil :weight 34 :dependency 12)))
 
-  (test-a-frame unknown-code #'write-rst-stream-frame '(#xdeadbeef)
+  (test-a-frame undefined-code #'write-rst-stream-frame '(#xdeadbeef)
                   :expected-log-stream
                   '((:closed :error undefined-error-code-deadbeef)
                     (:STATE-CHANGE OPEN HTTP2::-> HTTP2::CLOSED))
@@ -89,8 +88,7 @@
                   :expected-log-connection
                   '((:go-away :last-stream-id #x42 :error-code
                      undefined-error-code-ec0de))
-                  :stream :connection
-                  :expected-receiver-error 'go-away)
+                  :stream :connection)
 
   (test-a-frame no-error #'write-goaway-frame `(#x42 ,+no-error+ #(1 2 3 4 5))
                   :expected-log-connection

@@ -110,7 +110,7 @@ debug is printed."
       (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
         (funcall announce-open-fn socket)
         (loop
-          (with-simple-restart (continue "Kill connection on ~s" socket)
+          (with-simple-restart (kill-connection "Kill connection on ~s" socket)
             (wrap-to-tls-and-process-server-stream
              (usocket:socket-stream
               (handler-case
@@ -118,7 +118,7 @@ debug is printed."
                 ;; ignore condition
                 (usocket:connection-aborted-error ())))
              key cert :connection-class connection-class)))))
-    (abort (&optional value)
+    (kill-server (&optional value)
       :report "Kill server"
       value)))
 
