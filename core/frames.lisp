@@ -358,9 +358,7 @@ passed to the make-instance"
     (when (> length (get-max-frame-size connection))
         ;; fixme: sometimes connection error.
         (http2-error connection +frame-size-error+
-                     "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the
-size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any limit defined for the frame
-type, or is too small to contain mandatory frame data."))
+                     "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE"))
     (if (plusp R) (warn "R is set, we should ignore it"))
     (let ((frame-type-object (aref *frame-types* type))
           (stream-or-connection
