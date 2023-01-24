@@ -1,3 +1,5 @@
+;;;; Copyright 2022, 2023 by Tomáš Zellerin
+
 (in-package http2)
 
 (defun threaded-dispatch (fn tls-stream &rest pars)

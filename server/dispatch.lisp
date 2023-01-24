@@ -1,6 +1,6 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022, 2023 by Tomáš Zellerin
 
-;;;; As an example of how could server be built, define class
+;;;; As an example of how a server could be built, define class
 ;;;; vanilla-server-connection that dispatches incoming requests based on their
 ;;;; path to a handler function.  Handlers are mapped either to specific path
 ;;;; (exact handler) or to a prefix (prefix handler).

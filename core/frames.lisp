@@ -1,4 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022, 2023 by Tomáš Zellerin
 
 ;;;; http2.lisp
 
