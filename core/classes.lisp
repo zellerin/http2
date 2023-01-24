@@ -318,11 +318,12 @@ the parameters should be different anyway). By default throws an error."))
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method (stream error-code)
-    (unless (eq error-code '+cancel+)
-      (error 'http-stream-error :stream stream
-                                :error-code error-code
-                                :debug-data nil))
-    (setf (get-state stream) 'closed))
+    (unwind-protect
+         (unless (eq error-code '+cancel+)
+           (error 'http-stream-error :stream stream
+                                     :error-code error-code
+                                     :debug-data nil))
+      (setf (get-state stream) 'closed)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
 
@@ -334,8 +335,6 @@ the parameters should be different anyway). By default throws an error."))
    RST_STREAM, the sending endpoint MUST be prepared to receive and
    process additional frames sent on the stream that might have been
    sent by the peer prior to the arrival of the RST_STREAM."))
-
-#+nil (defgeneric peer-pushes-promise)
 
 (defgeneric send-stream-error (stream error-code note)
   (:method ((stream http2-stream) error-code note)
