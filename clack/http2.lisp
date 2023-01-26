@@ -4,24 +4,19 @@
 
 (in-package clack.handler.http2)
 
-(defvar *app*
-  nil "Value to initialize app. Needed before http2 has new version that allows to pass it as a parameter.")
-
-(defclass clack-server-connection (http2::server-http2-connection http2::history-printing-object)
+(defclass clack-server-connection (http2::server-http2-connection)
   ((app          :accessor get-app          :initarg :app)
    (peer-address :accessor get-peer-address :initarg :peer-address)
    (peer-port    :accessor get-peer-port    :initarg :peer-port))
-  (:default-initargs :stream-class 'clack-server-stream
-                     :app *app*))
+  (:default-initargs :stream-class 'clack-server-stream))
 
 (defmethod initialize-instance :after ((connection clack-server-connection)
-                                       &key http2::network-stream &allow-other-keys)
+                                       &key &allow-other-keys)
   (with-slots (peer-port peer-address) connection
     (setf peer-port nil
           peer-address nil)))
 
-(defclass clack-server-stream (http2::server-stream binary-output-stream-over-data-frames
-                               http2::history-printing-object)
+(defclass clack-server-stream (http2::http2-stream-with-input-stream http2::server-stream)
   ((request-headers :accessor get-request-headers
                     :initarg :request-headers))
   (:default-initargs :request-headers (make-hash-table :test 'equal)))
@@ -62,22 +57,21 @@
           (send-headers stream (cons (list :status (format nil "~d" status))
                                      (loop for (key value) on headers by 'cddr
                                            collect (list (string-downcase (symbol-name key))
-                                                         value))))
-          (etypecase body
-            (cons ; list of streams
-             (with-open-stream (out (flexi-streams:make-flexi-stream stream))
+                                                         (princ-to-string value)))))
+          (with-open-stream (out (make-transport-output-stream stream :utf8 nil))
+            (etypecase body
+              (cons ; list of streams
                (dolist (string body)
-                 (princ string out))))
-            (vector
-             (write-sequence body stream))
-            (pathname
-             (let ((buffer (make-array 4096 :element-type '(unsigned-byte 8))))
-               (with-open-file (in body :element-type '(unsigned-byte 8))
-                 (loop for len = (read-sequence buffer in)
-                       while (plusp len)
-                       do
-                          (write-sequence buffer stream :end len))
-                 (close stream))))))
+                 (princ string out)))
+              (vector
+               (write-sequence body out))
+              (pathname
+               (let ((buffer (make-array 4096 :element-type '(unsigned-byte 8))))
+                 (with-open-file (in body :element-type '(unsigned-byte 8))
+                   (loop for len = (read-sequence buffer in)
+                         while (plusp len)
+                         do
+                            (write-sequence buffer out :end len))))))))
         (funcall response (http2-responder stream)))))
 
 ;; this API looks a bit crazy, lambdas in lambdas...
@@ -89,20 +83,26 @@
                                    (loop for (key value) on headers by 'cddr
                                          collect (list (string-downcase (symbol-name key))
                                                        value)))))
-    (lambda (body &key (start 0) (end (length body)) (close nil))
-      (etypecase body
-        (string
-         (write-sequence
-          (flex:string-to-octets body
-                                 :start start :end end
-                                 :external-format :utf-8)
-          stream))
-        (vector (write-sequence body stream :start start :end end))
-        (null))
-      (when close (close stream)))))
+    (lambda (body &key (start 0) (end (length body)) &allow-other-keys)
+      (with-open-stream (out (make-transport-output-stream stream :utf8 nil))
+        (etypecase body
+          (string
+           (write-sequence
+            (flex:string-to-octets body
+                                   :start start :end end
+                                   :external-format :utf-8)
+            out))
+          (vector (write-sequence body out :start start :end end))
+          (null))))))
 
-(defun run (*app* &key debug port ssl-key-file ssl-cert-file fd)
+(defvar *default-certificate-pair*
+  '("/tmp/server.key" "/tmp/server.crt")
+  "Path to files with the default private key and certificate to use for server.")
+
+(defun run (app &key port (ssl-key-file (first *default-certificate-pair*))
+                    (ssl-cert-file (second *default-certificate-pair*))
+                    fd)
   (when fd (error "cannot listen on FD"))
-  (http2::create-https-server port ssl-key-file ssl-cert-file
-                              :verbose debug
-                              :connection-class 'clack-server-connection))
+  (http2:create-https-server port ssl-key-file ssl-cert-file
+                             :connection (make-instance 'clack-server-connection
+                                                        :app app)))
