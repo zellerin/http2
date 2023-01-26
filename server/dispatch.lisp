@@ -138,23 +138,9 @@ events)."))
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
-                                     history-printing-object
                                      threaded-server-mixin)
   ()
   (:default-initargs :stream-class 'vanilla-server-stream)
-  (:documentation
-   "A server connection that spawns streams of VANILLA-SERVER-STREAM type when a
-new stream is requested, and optionally prints activities."))
-
-(defclass vanilla-server-connection (server-http2-connection
-                                     dispatcher-mixin
-                                     history-printing-object)
-  ((scheduler :accessor get-scheduler :initarg :scheduler)
-   (lock      :accessor get-lock      :initarg :lock))
-  (:default-initargs :stream-class 'vanilla-server-stream
-                     :scheduler (make-instance 'scheduler
-                                               :name "Scheduler for connection")
-                     :lock (bt:make-lock))
   (:documentation
    "A server connection that spawns streams of VANILLA-SERVER-STREAM type when a
 new stream is requested, allows scheduled or other asynchronous writes, and
