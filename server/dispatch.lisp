@@ -222,8 +222,9 @@ read frames from it until END-OF-FILE (client closed the underlying stream - or
 maybe we do) or GO-AWAY (client closes connection - or maybe we do) is
 signalled."
   (let ((connection (or connection
-                        (make-instance connection-class
-                                       :network-stream stream))))
+                        (make-instance connection-class))))
+    (setf (get-network-stream connection) stream)
+    (read-client-preface connection)
     (with-simple-restart (close-connection "Close current connection")
       (unwind-protect
            (handler-case

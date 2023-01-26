@@ -87,9 +87,9 @@ We should also limit allowed ciphers, but we do not."
     context))
 
 (defun create-https-server (port key cert &key
-                                            ((:verbose http2::*do-print-log*))
                                             (announce-open-fn (constantly nil))
                                             (connection-class 'vanilla-server-connection)
+                                            connection
                                             (host "127.0.0.1"))
   "Open TLS wrapped HTTPS(/2) server on PORT on HOST (localhost by default).
 
