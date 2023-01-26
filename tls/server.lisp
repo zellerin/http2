@@ -51,7 +51,7 @@ Raise error when H2 is not the selected ALPN protocol."
                       :key key)
                    (error (err)
                      (describe err)
-                     (abort)))))
+                     (invoke-restart 'close-connection)))))
            (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
                (setf keep-stream-open
                      (apply *dispatch-fn*
@@ -110,13 +110,14 @@ debug is printed."
       (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
         (funcall announce-open-fn socket)
         (loop
-          (wrap-to-tls-and-process-server-stream
-           (usocket:socket-stream
-            (handler-case
-                (usocket:socket-accept socket :element-type '(unsigned-byte 8))
-              ;; ignore condition
-              (usocket:connection-aborted-error ())))
-           key cert :connection-class connection-class))))
+          (with-simple-restart (close-connection "Kill connection")
+            (wrap-to-tls-and-process-server-stream
+             (usocket:socket-stream
+              (handler-case
+                  (usocket:socket-accept socket :element-type '(unsigned-byte 8))
+                ;; ignore condition
+                (usocket:connection-aborted-error ())))
+             key cert :connection-class connection-class :connection connection)))))
     (kill-server (&optional value)
       :report "Kill server"
       value)))
