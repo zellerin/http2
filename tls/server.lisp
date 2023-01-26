@@ -98,10 +98,7 @@ establish TLS.
 
 ANNOUNCE-OPEN-FN is called, when set, to inform caller that the server is up and
 running. This is used for testing, when we need to have the server running (in a
-thread) to start testing it.
-
-If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
-debug is printed."
+thread) to start testing it."
   (restart-case
     (usocket:with-server-socket (socket (usocket:socket-listen host port
                                                                :reuse-address t

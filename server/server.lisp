@@ -242,5 +242,4 @@ Do something (see code) with conditions."
                  (error (lambda (e)
                           (describe e)
                           (invoke-restart 'abort))))
-    (create-https-server port key certificate
-                         :verbose nil)))
+    (create-https-server port key certificate)))
