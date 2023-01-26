@@ -67,7 +67,10 @@ during the sleep to re-asses next tasks."
 (defmethod initialize-instance :after ((s scheduler) &key &allow-other-keys)
   (run-scheduler-in-thread s))
 
-(defun terminate-scheduler-thread (s)
-  (let ((thread (get-thread s)))
-    (bt:destroy-thread thread))
-  (logger "Scheduler thread terminated~%"))
+(defgeneric cleanup-connection (connection)
+  (:method (connection) nil)
+  (:method :after ((connection threaded-server-mixin))
+    (bt:destroy-thread (get-thread (get-scheduler connection))))
+  (:documentation
+   "Remove resources associated with a server connection. Called after connection is
+closed."))

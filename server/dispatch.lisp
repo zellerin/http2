@@ -220,4 +220,4 @@ signalled."
              (http-stream-error (e)
                (logger "Stream ~s closed, ~a" connection
                        (aref *error-codes* (get-error-code e)))))
-        (terminate-scheduler-thread (get-scheduler connection))))))
+        (cleanup-connection connection)))))
