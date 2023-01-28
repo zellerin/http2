@@ -259,17 +259,18 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
   stream)
 
 (defun peer-opens-http-stream-really-open (connection stream-id state)
-    (unless (> stream-id (get-last-id-seen connection))
-      (http2-error connection +protocol-error+
-                   "The identifier of a newly established stream MUST be
+  (unless (> stream-id (get-last-id-seen connection))
+    (http2-error connection +protocol-error+
+                   "The identifier of a newly established stream (~d) MUST be
                    numerically greater than all streams that the initiating
-                   endpoint has opened or reserved.  This governs streams that
+                   endpoint has opened or reserved (max was ~d).  This governs streams that
                    are opened using a HEADERS frame and streams that are
                    reserved using PUSH_PROMISE.  An endpoint that receives an
                    unexpected stream identifier MUST respond with a connection
-                   error (Section 5.4.1) of type PROTOCOL_ERROR."))
+                   error (Section 5.4.1) of type PROTOCOL_ERROR." stream-id (get-last-id-seen connection)))
     ;; todo: count and check open streams
-    (push (make-instance (get-stream-class connection)
+  (setf (get-last-id-seen connection) stream-id)
+  (push (make-instance (get-stream-class connection)
                          :stream-id stream-id
                          :state state
                          :window-size (get-initial-window-size connection)
