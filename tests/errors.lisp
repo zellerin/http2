@@ -27,7 +27,14 @@
                       (:authority "localhost")
                       ("FOO" "bar"))))
 
-(defun send-bad-stream-id ()
+(defmacro define-protocol-error-test (name &body body)
+  `(fiasco:deftest ,name ()
+       (let ((err (fiasco:signals go-away
+                    ,@body)))
+         (fiasco:is (eq '+protocol-error+ (get-error-code err)))
+         err)))
+
+(define-protocol-error-test send-bad-stream-id
   "Send request with bad stream ID. Should raise a protocol error."
   (with-http2-connection
       (connection
@@ -42,38 +49,29 @@
                        :end-stream t)
     (process-pending-frames connection)))
 
-(defun send-too-low-stream-id ()
-  "Send request with bad stream ID. Should raise a protocol error."
+(define-protocol-error-test send-too-low-stream-id
   (with-http2-connection
       (connection
        'vanilla-client-connection
        :network-stream (connect-to-tls-server *server-domain* :port *server-port*)
-       :id-to-use 7)
+                      :id-to-use 7)
     (http-stream-to-vector
-             (open-http2-stream connection
-                                '((:method "HEAD")
-                                  (:path "/")
-                                  (:scheme "https")
-                                  (:authority "localhost"))
-                                :end-stream t))
+                                (open-http2-stream connection
+                                                   '((:method "HEAD")
+                                                     (:path "/")
+                                                     (:scheme "https")
+                                                     (:authority "localhost"))
+                                                   :end-stream t))
     (setf (get-id-to-use connection) 1)
     (http-stream-to-vector
-     (open-http2-stream connection
-                        '((:method "HEAD")
-                          (:path "/")
-                          (:scheme "https")
-                          (:authority "localhost"))
-                        :end-stream t))))
+                    (open-http2-stream connection
+                                       '((:method "HEAD")
+                                         (:path "/")
+                                         (:scheme "https")
+                                         (:authority "localhost"))
+                                       :end-stream t))))
 
 ;; test:
 ;; (let ((*server-domain* "www.example.com")(*server-port* 443)) (send-bad-stream-id))
-
-(fiasco:deftest test-errors ()
-  (fiasco:is (eq '+protocol-error+
-                (get-error-code
-                 (fiasco:signals go-away
-                   (send-bad-stream-id)))))
-  (fiasco:is (eq '+protocol-error+
-                 (get-error-code
-                  (fiasco:signals go-away
-                   (send-too-low-stream-id))))))
+;; (let ((*server-domain* "www.example.com")(*server-port* 443)) (send-too-low-stream-id))
+;; (let ((*server-domain* "www.akamai.com")(*server-port* 443)) (send-too-low-stream-id))

@@ -70,7 +70,8 @@ during the sleep to re-asses next tasks."
 (defgeneric cleanup-connection (connection)
   (:method (connection) nil)
   (:method :after ((connection threaded-server-mixin))
-    (bt:destroy-thread (get-thread (get-scheduler connection))))
+    (ignore-errors ; we might be in shutdown phase and thread gone
+     (bt:destroy-thread (get-thread (get-scheduler connection)))))
   (:documentation
    "Remove resources associated with a server connection. Called after connection is
 closed."))
