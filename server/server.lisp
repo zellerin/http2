@@ -76,7 +76,9 @@
                                         #'send-event-and-plan-next))
                      ; TODO: handle stream closed
                      )))
-          (send-event-and-plan-next)))))
+          ;; this needs to be scheduled so that existing lock is not re-acquired
+          (schedule-task (get-scheduler connection) 0
+                         #'send-event-and-plan-next)))))
 
 (define-exact-handler "/body"
     (handler (out :utf-8 nil)
