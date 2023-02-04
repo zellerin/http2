@@ -322,8 +322,7 @@ the parameters should be different anyway). By default throws an error."))
     (unwind-protect
          (unless (eq error-code '+cancel+)
            (error 'http-stream-error :stream stream
-                                     :error-code error-code
-                                     :debug-data nil))
+                                     :error-code error-code))
       (setf (get-state stream) 'closed)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
