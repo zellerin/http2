@@ -288,7 +288,6 @@ passed to the make-instance"
     (write-byte flags stream)
     (write-31-bits stream http-stream-id R)))
 
-
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
@@ -343,6 +342,7 @@ passed to the make-instance"
              ((unsigned-byte 8) type flags)
              ((unsigned-byte 31) http-stream))
 
+    (maybe-lock-for-write connection)
     ;;  A frame
     ;; size error in a frame that could alter the state of the entire connection
     ;; MUST be treated as a connection error (Section 5.4.1); this includes any
@@ -354,26 +354,28 @@ passed to the make-instance"
     ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
     ;; which, if blocked by the transmission of a large frame, could affect
     ;; performance.
-    (new-frame-ready connection)
-    (when (> length (get-max-frame-size connection))
-        ;; fixme: sometimes connection error.
-        (http2-error connection +frame-size-error+
-                     "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE"))
-    (if (plusp R) (warn "R is set, we should ignore it"))
-    (let ((frame-type-object (aref *frame-types* type))
-          (stream-or-connection
-            (if (zerop http-stream) connection
-                (find http-stream (get-streams connection)
-                           :key #'get-stream-id))))
-      (cond (frame-type-object
-              (funcall (frame-type-receive-fn frame-type-object) connection
-                       (if (zerop http-stream) connection
-                           (or stream-or-connection
-                               (peer-opens-http-stream connection http-stream type)))
-                       length flags)))
-      (values
-       (frame-type-name frame-type-object)
-       (or stream-or-connection http-stream)))))
+    (unwind-protect
+         (progn
+           (when (> length (get-max-frame-size connection))
+             ;; fixme: sometimes connection error.
+             (http2-error connection +frame-size-error+
+                          "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE"))
+           (if (plusp R) (warn "R is set, we should ignore it"))
+           (let ((frame-type-object (aref *frame-types* type))
+                 (stream-or-connection
+                   (if (zerop http-stream) connection
+                       (find http-stream (get-streams connection)
+                             :key #'get-stream-id))))
+             (cond (frame-type-object
+                    (funcall (frame-type-receive-fn frame-type-object) connection
+                             (if (zerop http-stream) connection
+                                 (or stream-or-connection
+                                     (peer-opens-http-stream connection http-stream type)))
+                             length flags)))
+             (values
+              (frame-type-name frame-type-object)
+              (or stream-or-connection http-stream))))
+      (maybe-unlock-for-write connection))))
 
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame

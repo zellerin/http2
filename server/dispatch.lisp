@@ -187,18 +187,11 @@ CONNECTION."
   (with-slots (connection) stream
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
-(defmethod new-frame-ready ((c threaded-server-mixin))
-  "Make sure that lock for writing the stream is held while processing input
-frame (and its calbacks)."
+(defmethod maybe-lock-for-write ((c threaded-server-mixin))
   (bt:acquire-lock (get-lock c)))
 
-(defgeneric do-frame (connection)
-  (:method (connection) (read-frame connection))
-  (:method ((connection threaded-server-mixin))
-    (unwind-protect (read-frame connection)
-      (bt:release-lock (get-lock connection))))
-  (:documentation
-   "Read and process one frame, safely."))
+(defmethod maybe-unlock-for-write ((c threaded-server-mixin))
+ (bt:release-lock (get-lock c)))
 
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection)
                                        connection)
@@ -214,7 +207,7 @@ signalled."
     (with-simple-restart (close-connection "Close current connection")
       (unwind-protect
            (handler-case
-               (loop (do-frame connection))
+               (loop (read-frame connection))
              (end-of-file () nil)
              (go-away ())
              (http-stream-error (e)

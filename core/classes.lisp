@@ -346,8 +346,13 @@ the parameters should be different anyway). By default throws an error."))
       (setf (get-state stream) 'closed))))
 
 ;;;; Other callbacks
-(defgeneric new-frame-ready (connection)
-  (:method (connection) nil))
+(defgeneric maybe-lock-for-write (connection)
+  (:method (connection) nil)
+  (:documentation "This is called when a new frame is ready "))
+
+(defgeneric maybe-unlock-for-write (connection)
+  (:method (connection) nil)
+  (:documentation "This is called when a new frame is ready "))
 
 (defgeneric apply-data-frame (stream payload)
   (:documentation "Data frame is received by a stream.
