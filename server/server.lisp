@@ -4,7 +4,9 @@
 ;;;; server, and actually bind it to a TLS socket.
 
 (defpackage :http2/server-example
-  (:use :cl :http2 :cl-who :ps))
+  (:use :cl :http2 :cl-who :ps)
+  (:export #:maybe-create-certificate
+           #:run-demo-server #:create-one-shot-server))
 
 (in-package :http2/server-example)
 

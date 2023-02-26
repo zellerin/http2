@@ -38,5 +38,4 @@ jobs:
        - name: load code and run tests
          shell: bash
          run: |
-           openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt
            ros -e '(handler-bind (#+asdf3.2(asdf:bad-SYSTEM-NAME (function MUFFLE-WARNING))) (handler-case (ql:quickload :http2/all) (error (a) (format t "caught error ~s~%~a~%" a a) (uiop:quit 123))))' -e '(asdf:oos :test-op :http2)' -e '(uiop:quit (length (fiasco::failures-of fiasco:*last-test-result*)))'

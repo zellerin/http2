@@ -6,6 +6,7 @@
   (bt:make-thread
    (lambda ()
      (handler-bind ((warning 'muffle-warning))
+       (http2/server-example:maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
        (http2:create-https-server 0
                                   "/tmp/server.key" "/tmp/server.crt"
                                   :announce-open-fn (lambda (a)
