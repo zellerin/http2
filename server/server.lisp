@@ -1,4 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022, 2023 by Tomáš Zellerin
 
 ;;;; Create a specific server. Use dispatch handlers to define behaviour of the
 ;;;; server, and actually bind it to a TLS socket.
@@ -54,7 +54,8 @@
                       (let ((source (new (-event-source "/event-stream"))))
                         (setf (@ source onmessage)
                               (lambda (event)
-                                (setf (@ ((@ document get-element-by-id) "events") inner-h-t-m-l)
+                                (setf (@ ((@ document get-element-by-id) "events")
+                                         text-content)
                                       (@ event data))
                                 (values)) )
                         (values))))))))))
@@ -107,7 +108,7 @@
                                       (+ (@ reply status)
                                          " "  (@ reply response-text))))
                                   "POST" "/body"  "SAMPLE BODY"))
-    ("Long" "Test that long responses are handled well (streams over http streams."
+    ("Long" "Test that long responses are handled well (streams over http streams)."
             (test-request "Long"
                           (lambda (reply)
                             (unless (and
@@ -125,7 +126,7 @@
                               (when (= "5"
                                        (@ event last-event-id))
                                 ((@ source close))
-                                (set-result "Event stream" "PASS"))
+                                (set-result "Event stream" "PASS" "ok"))
                               (values)))
                       (values)))
     ("1000 events" "Test sending 1000 parallel requests"
@@ -136,65 +137,100 @@
                           "load"
                           (lambda ()
                             (incf res)
-                            (when (= res 1000)
-                              (set-result "1000 events"
-                                          "PASS"))
-                            (when (> res 1000)
-                              (set-result "1000 events"
-                                          "FAIL (too much)"))
-                            (when (< res 1000)
-                              (set-result "1000 events"
-                                          res))))
+                            (cond
+                              ((= res 1000)
+                                (set-result "1000 events"
+                                            "PASS" "ok"))
+                              ((> res 1000)
+                                (set-result "1000 events"
+                                            "FAIL (too much)" "nok"))
+                              ((< res 1000)
+                                (set-result "1000 events"
+                                            res "todo")))))
                          ((@ req add-event-listener)
                           "error"
-                          (lambda () (set-result "1000 events" "ERROR")))
+                          (lambda () (set-result "1000 events" "ERROR" "nok")))
                          ((@ req open) "GET" "/")
                          ((@ req send)))))))
   "Tests to be executed in the browser on /test page. Each item is test name, test description and test code in Parenscript.")
 
+(defparameter *test-stylesheet*
+  "tr.ok   {background-color: LimeGreen}
+   tr.nok  {background-color: LightCoral}
+   tr.todo {background-color: Yellow}
+   tr      {background-color: LightBlue}
+
+   td     { padding: 0.1em 1em}
+   th.res { padding: 0.1em 3em 0.1em 3em}
+   td.res { text-align: center}
+
+   table,th,td {border: 1px solid black}
+   table {border-collapse: collapse}"
+
+  "Rudimental CSS to prettify and colorize the results table in /test.
+
+Complication solved by padding is that the intermediate yellow text can be
+longer than PASS text and table width changes on fly.")
+
+(defun print-test-table (out)
+  "Print result table for the tests with all fields in TODO state."
+  (with-html-output (out)
+    (:table
+     (:tr (:th "Test") (:th :class "res" "Status") (:th "Comment"))
+     (dolist (test *tests*)
+       (htm (:tr :class "todo" (:td (str (car test)))
+                 (:td :id (car test) :class "res" "TODO")
+                 (:td (str (second test)))))))))
+
+(defparameter *js-test-helpers*
+  (ps
+    (defun set-result (test result res-class)
+      (setf (@ ((@ document get-element-by-id) test)
+               text-content)
+            result
+            (@ ((@ document get-element-by-id) test)
+               parent-element class-name)
+            res-class))
+
+    (defun test-request (name check-fn method page &optional body)
+      (let ((req (new *X-M-L-Http-Request)))
+        ((@ req add-event-listener)
+         "load"
+         (lambda ()
+           (let ((res (funcall check-fn this)))
+             (set-result name
+                         (if res  (+ "BAD: " res)  "PASS")
+                         (if res "nok" "ok")))))
+        ((@ req add-event-listener)
+         "error"
+         (lambda () (set-result name "ERROR")))
+        ((@ req open) method page)
+        ((@ req send) body))))
+
+  "Helper functions for ")
 
 (define-exact-handler "/test"
-    (handler (out :utf-8 nil)
-      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
+    (handler (out :utf-8 t)
+      (send-headers `((:status "200")
+                      ("content-type" "text/html; charset=utf-8")
+                      ("content-encoding" "gzip")))
       (with-html-output (out out :prologue "<!DOCTYPE html>")
-        (:body :onload "doTests()")
-        (:h1 "Automated test page")
-        (:p "Run several tests of the server over Javascript.")
-        (:table
-         (:tr (:th "Test") (:th "----- Status -----") (:th "Comment"))
-         (dolist (test *tests*)
-           (htm (:tr (:td (str (car test)))
-                     (:td :id (car test) "TODO")
-                     (:td (str (second test)))))))
-        (:script
-         (str (ps
-                (defun set-result (test result)
-                  (setf (@ ((@ document get-element-by-id) test)
-                           inner-h-t-m-l)
-                        result))
-
-                (defun test-request (name check-fn method page &optional body)
-                  (let ((req (new *X-M-L-Http-Request)))
-                    ((@ req add-event-listener)
-                     "load"
-                     (lambda ()
-                       (set-result name
-                                   (let ((res (funcall check-fn this)))
-                                     (if res  (+ "BAD: " res)  "PASS")))))
-                    ((@ req add-event-listener)
-                     "error"
-                     (lambda () (set-result name "ERROR")))
-                    ((@ req open) method page)
-                    ((@ req send) body)))))
-         (str
-          (ps*
-           `(defun do-tests ()
-              ,@(mapcar 'third *tests*))))))))
+        (:html
+         (:header (:style (esc *test-stylesheet*)))
+         (:body :onload "doTests()"
+                (:h1 "HTTP/2 demo server test page")
+                (:p "Run several tests of the server over Javascript. After few seconds, all yellow rows in the table below should turn green.")
+                (print-test-table out)
+                (:script
+                 (str *js-test-helpers*)
+                 (str
+                  (ps*
+                   `(defun do-tests ()
+                      ,@(mapcar 'third *tests*))))))))))
 
 (defvar *default-certificate-pair*
   '("/tmp/server.key" "/tmp/server.crt")
   "Path to files with the default private key and certificate to use for server.")
-
 
 (defclass no-handler-connection (vanilla-server-connection)
   ()
