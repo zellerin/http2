@@ -293,8 +293,8 @@ cli."
     (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
     (terpri)))
 
-(defun run-demo-server (&key (key "/tmp/server.key")
-                          (certificate "/tmp/server.crt")
+(defun run-demo-server (&key (key (car *default-certificate-pair*))
+                          (certificate (second *default-certificate-pair*))
                           (port 1230))
   "Start a http2 server on localhost on PORT that servers some test content.
 
