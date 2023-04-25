@@ -92,67 +92,89 @@
     (call-next-method)))
 
 (defparameter *tests*
-  `(("404" "Test that the response of not-found is 404"
-           (test-request "404"
-                         (lambda (reply)
-                           (unless (= 404 (@ reply status))
-                             (@ reply status)))
-                         "GET" "/no-such-page"))
-    ("Body passing" "Test that body is available to the server."
-                    (test-request "Body passing"
-                                  (lambda (reply)
-                                    (unless
-                                        (and
-                                         (= 200 (@ reply status))
-                                         (= "SAMPLE BODY" (@ reply response-text)))
-                                      (+ (@ reply status)
-                                         " "  (@ reply response-text))))
-                                  "POST" "/body"  "SAMPLE BODY"))
-    ("Long" "Test that long responses are handled well (streams over http streams)."
-            (test-request "Long"
-                          (lambda (reply)
-                            (unless (and
-                                     (= 200 (@ reply status))
-                                     (= 2588913 (length (@ reply response-text))))
-                              (+ "BAD: code " (@ reply status)
-                                 " length "  (length (@ reply response-text)))))
-                          "GET" "/long"))
-    ("Event stream" "Test event streams - scheduler and locking"
-                    (let ((source (new (-event-source "/event-stream"))))
-                      (setf (@ source onmessage)
-                            (lambda (event)
-                              (setf (@ ((@ document get-element-by-id) "Event stream") inner-h-t-m-l)
-                                    (@ event data))
-                              (when (= "5"
-                                       (@ event last-event-id))
-                                ((@ source close))
-                                (set-result "Event stream" "PASS" "ok"))
-                              (values)))
-                      (values)))
-    ("1000 events" "Test sending 1000 parallel requests"
-                   (let ((res 0))
-                     (dotimes (i 1000)
-                       (let ((req (new *X-M-L-Http-Request)))
-                         ((@ req add-event-listener)
-                          "load"
-                          (lambda ()
-                            (incf res)
-                            (cond
-                              ((= res 1000)
-                                (set-result "1000 events"
-                                            "PASS" "ok"))
-                              ((> res 1000)
-                                (set-result "1000 events"
-                                            "FAIL (too much)" "nok"))
-                              ((< res 1000)
-                                (set-result "1000 events"
-                                            res "todo")))))
-                         ((@ req add-event-listener)
-                          "error"
-                          (lambda () (set-result "1000 events" "ERROR" "nok")))
-                         ((@ req open) "GET" "/")
-                         ((@ req send)))))))
+  `()
   "Tests to be executed in the browser on /test page. Each item is test name, test description and test code in Parenscript.")
+
+(defmacro define-server-test (&whole test name &body docstring-and-body)
+  (declare (ignore docstring-and-body))
+  `(setf *tests* (cons ',(cdr test) (remove ,name *tests* :key 'car :test 'string-equal))))
+
+(defmacro define-simple-server-test (name docstring query-params test)
+  "Define a test that makes a request to server with QUERY-PARAMS and then runs
+TEST form.
+
+TEST form should evaluate to NIL if test passes, or to a string to print to
+table otherwise."
+  `(define-server-test ,name
+     ,docstring
+     (test-request ,name
+                   (lambda (reply) ,test)
+                   ,@query-params)))
+
+(define-simple-server-test "404"
+  "Test that the response of not-found is 404"
+  ("GET" "/no-such-page")
+  (unless (= 404 (@ reply status)) (@ reply status)))
+
+(define-simple-server-test "Long"
+  "Test that long responses are handled well (streams over http streams)."
+  ("GET" "/long")
+  (let ((resp-code (@ reply status))
+        (resp-length (length (@ reply response-text))))
+    (unless (and
+             (= 200 resp-code)
+             (= 2588913 resp-length))
+      (+ "code " resp-code ", length "  resp-length))))
+
+(define-simple-server-test "Body passing"
+  "Test that body is available to the server."
+  ("POST" "/body" "SAMPLE BODY")
+  (let ((resp-code (@ reply status))
+        (resp-text (@ reply response-text)))
+    (unless
+        (and
+         (= 200 resp-code)
+         (= "SAMPLE BODY" resp-text))
+      (+ resp-code ", "  resp-text))))
+
+(define-server-test "Event stream"
+  "Test event streams - scheduler and locking."
+  (let ((source (new (-event-source "/event-stream"))))
+    (setf (@ source onmessage)
+          (lambda (event)
+            (setf (@ ((@ document get-element-by-id) "Event stream") text-content)
+                  (@ event data))
+            (when (= "5"
+                     (@ event last-event-id))
+              ((@ source close))
+              (set-result "Event stream" "PASS" "ok"))
+            (values)))
+    (values)))
+
+(define-server-test "1000 events"
+  "Test sending 1000 parallel requests. "
+  (let ((res 0))
+    (dotimes (i 1000)
+      (let ((req (new *X-M-L-Http-Request)))
+        ((@ req add-event-listener)
+         "load"
+         (lambda ()
+           (incf res)
+           (cond
+             ((= res 1000)
+              (set-result "1000 events"
+                          "PASS" "ok"))
+             ((> res 1000)
+              (set-result "1000 events"
+                          "FAIL (too much)" "nok"))
+             ((< res 1000)
+              (set-result "1000 events"
+                          res "todo")))))
+        ((@ req add-event-listener)
+         "error"
+         (lambda () (set-result "1000 events" "ERROR" "nok")))
+        ((@ req open) "GET" "/")
+        ((@ req send))))))
 
 (defparameter *test-stylesheet*
   "tr.ok   {background-color: LimeGreen}
