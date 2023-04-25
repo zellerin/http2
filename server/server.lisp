@@ -95,9 +95,11 @@
   `()
   "Tests to be executed in the browser on /test page. Each item is test name, test description and test code in Parenscript.")
 
-(defmacro define-server-test (&whole test name &body docstring-and-body)
-  (declare (ignore docstring-and-body))
-  `(setf *tests* (cons ',(cdr test) (remove ,name *tests* :key 'car :test 'string-equal))))
+(defmacro define-server-test (name docstring &body body)
+  `(setf *tests*
+         (cons `(,,name ,,docstring ,(ps* '((@ tests set) ,name
+                                            (lambda () ,@body))))
+               (remove ,name *tests* :key 'car :test 'string-equal))))
 
 (defmacro define-simple-server-test (name docstring query-params test)
   "Define a test that makes a request to server with QUERY-PARAMS and then runs
@@ -206,6 +208,7 @@ longer than PASS text and table width changes on fly.")
 
 (defparameter *js-test-helpers*
   (ps
+    (defparameter tests (new *map))
     (defun set-result (test result res-class)
       (setf (@ ((@ document get-element-by-id) test)
                text-content)
@@ -245,14 +248,16 @@ longer than PASS text and table width changes on fly.")
                 (print-test-table out)
                 (:script
                  (str *js-test-helpers*)
+                 ;; NB str is a macro, so no map below
+                 (dolist (test (mapcar 'third *tests*))
+                   (str test))
                  (str
-                  (ps*
-                   `(defun do-tests ()
-                      ,@(mapcar 'third *tests*))))))))))
+                  (ps (defun do-tests ()
+                        ((@ tests for-each) (lambda (val key map) (val))))))))))))
 
 (defvar *default-certificate-pair*
   '("/tmp/server.key" "/tmp/server.crt")
-  "Path to files with the default private key and certificate to use for server.")
+  "Paths to files with the default private key and certificate to use for server.")
 
 (defclass no-handler-connection (vanilla-server-connection)
   ()
