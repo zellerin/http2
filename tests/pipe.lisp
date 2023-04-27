@@ -52,7 +52,9 @@ read from the other."
   "Make a dummy connection class with one stream of id ID in state STATE. Used for
 testing."
   (let ((connection (make-instance class
-                         :network-stream stream)))
+                         :network-stream stream
+                         :last-id-seen stream-id
+                         :id-to-use (1+ stream-id))))
     (when state
       (push (make-instance 'logging-stream
                            :stream-id stream-id
@@ -132,7 +134,7 @@ expected."
       (fiasco:is (eq expected-receiver-error
                      (and receiver-signalled (type-of receiver-signalled)))
           "Receiver error should be ~s is ~s" expected-receiver-error receiver-signalled)
-      (when init-state
+      (when (and expected-log-stream) init-state
         (check-history send-fn send-pars expected-log-stream
                        (get-history (car (get-streams receiver))) "stream"))
       (check-history send-fn send-pars expected-log-connection

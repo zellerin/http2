@@ -370,7 +370,6 @@ Also do some checks on the stream id based on the frame type."
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
   ;; first flush anything we should have send to prevent both sides waiting
-  (declare (optimize speed))
   (force-output stream)
   (let* ((length (read-bytes stream 3))
          (type (read-byte stream))
@@ -426,16 +425,13 @@ Also do some checks on the stream id based on the frame type."
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads."
-    ((data (or cons vector null)))
+    ((data (or cons vector)))
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    ((cond
-       ((null data))
-       ((consp data)
-        (map nil #'write-vector data))
-       (t
-        (write-vector data))))
+    ((if (consp data)
+         (map nil #'write-vector data)
+         (write-vector data)))
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
