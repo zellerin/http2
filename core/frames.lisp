@@ -43,9 +43,10 @@
 ;;;; that they can be dispatched after reading.
 
 (defstruct (frame-type (:constructor make-frame-type
-                           (name documentation receive-fn)))
+                           (name documentation receive-fn
+                            old-stream-ok new-stream-state connection-ok)))
   "Description of a frame type"
-  name receive-fn documentation)
+   documentation name receive-fn old-stream-ok new-stream-state connection-ok)
 
 (defconstant +known-frame-types-count+ 256
   "Number of frame types we know.")
@@ -62,7 +63,8 @@
                       (declare (ignore http-stream))
                       (handle-undefined-frame type flags length)
                       (let ((stream (get-network-stream connection)))
-                        (dotimes (i length) (read-byte stream)))))))
+                        (dotimes (i length) (read-byte stream))))
+                    nil nil nil)))
     res)
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
@@ -95,6 +97,7 @@ that is set to T if it is in FLAGS and appropriate bit is set in the read flags.
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
                                 must-have-stream-in must-not-have-stream
+                                new-stream-state
                                 (bad-state-error +stream-closed+)
                                 has-reserved)
                              writer-body
@@ -170,9 +173,10 @@ The macro defining FRAME-TYPE-NAME :foo defines
                      '((when padded (write-vector padded))))
                  ,@(when (find 'end-stream flags)
                      '((when end-stream
-                         (setf (get-state http-connection-or-stream)
-                               (if (eql (get-state http-connection-or-stream) 'open)
-                                   'half-closed/local 'closed))))))))
+                         (with-slots (state) http-connection-or-stream
+                             (ecase state
+                               (open (setf state 'half-closed/local))
+                               (half-closed/remote (close-http2-stream http-connection-or-stream))))))))))
 
            (defun ,reader-name (connection http-stream length flags)
              ,documentation
@@ -187,12 +191,7 @@ The macro defining FRAME-TYPE-NAME :foo defines
                         (http2-error connection 'protocol-error text)))
                  (declare (ignorable #'read-bytes #'read-vector #'protocol-error))
                  ,@(cond (must-have-stream-in
-                          `((when (eq connection http-stream)
-                              (protocol-error
-                                           "Frame MUST be associated with a stream. If a
-                              frame is received whose stream identifier field is
-                              0x0, the recipient MUST respond with a connection
-                              error (Section 5.4.1) of type PROTOCOL_ERROR."))
+                          `(
                             (unless (member (get-state http-stream)
                                             ',must-have-stream-in)
                               (http2-error connection ',bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ',must-have-stream-in))))
@@ -206,15 +205,18 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               (protocol-error "Frame must not be associated with a stream")))))
                  ,@reader
                  (when end-stream
-                   (setf (get-state http-stream)
-                         (if (eql (get-state http-stream) 'open)
-                             'half-closed/remote 'closed))
+                   (ecase (get-state http-stream)
+                     (half-closed/local (close-http2-stream http-stream))
+                     (open (setf (get-state http-stream) 'half-closed/remote)))
                    (peer-ends-http-stream http-stream)))
                (read-padding ,stream-name padding-size)))
 
            (setf (aref *frame-types* ,type-code)
                  (make-frame-type ,frame-type-name ,documentation
-                                  #',reader-name))))))
+                                  #',reader-name
+                                  ,(not must-not-have-stream)
+                                  ,new-stream-state
+                                  ,(not must-have-stream-in)))))))
 
 (defun create-new-local-stream (connection &optional pars)
   "Create new local stream of default class on CONNECTION. Additional PARS are
@@ -288,6 +290,43 @@ passed to the make-instance"
     (write-byte flags stream)
     (write-31-bits stream http-stream-id R)))
 
+(defun find-http-stream-by-id (connection id frame-type)
+  "Find HTTP stream in the connection.
+
+The list of streams should be sorted from high number to low number, so we can
+stop as soon as we can see lower value. The list part needed to be searched is
+assumed to be pretty short.
+
+Also do some checks on the stream id based on the frame type."
+  (with-slots (streams last-id-seen) connection
+    (let ((new-stream-state (frame-type-new-stream-state frame-type))
+          (our-id (is-our-stream-id connection id)))
+      (cond
+        ((and (frame-type-connection-ok frame-type)
+              (zerop id))
+         connection)
+        ((zerop id)
+         (http2-error connection 'protocol-error
+                      "Frame MUST be associated with a stream. If a frame is received whose
+        stream identifier field is 0x0, the recipient MUST respond with a
+        connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
+        ((and (not our-id) (> id last-id-seen) new-stream-state)
+         (peer-opens-http-stream-really-open connection id new-stream-state))
+        ((and our-id (>= id (get-id-to-use connection)))
+         (http2-error connection +protocol-error+ "~a ID expected" our-id))
+        ((and (not our-id) (> id last-id-seen)) :idle)
+        ;; stream not seen yet is in idle state. This should not happen much and
+        ;; should throw an error eventually elsewhere.
+        ((frame-type-old-stream-ok frame-type)
+         (loop for item in streams
+               for key-val = (get-stream-id item)
+               while (<= id key-val)
+               when (= key-val id)
+                 do (return item)
+               when (> id key-val) do (return :closed)
+                 finally
+                    (return :closed)))))))
+
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
@@ -331,6 +370,7 @@ passed to the make-instance"
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
   ;; first flush anything we should have send to prevent both sides waiting
+  (declare (optimize speed))
   (force-output stream)
   (let* ((length (read-bytes stream 3))
          (type (read-byte stream))
@@ -340,7 +380,8 @@ passed to the make-instance"
          (R (ldb (byte 1 31) http-stream+R)))
     (declare ((unsigned-byte 24) length)
              ((unsigned-byte 8) type flags)
-             ((unsigned-byte 31) http-stream))
+             ((unsigned-byte 31) http-stream)
+             (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
     (maybe-lock-for-write connection)
     ;;  A frame
@@ -356,21 +397,17 @@ passed to the make-instance"
     ;; performance.
     (unwind-protect
          (progn
-           (when (> length (get-max-frame-size connection))
+           (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
              ;; fixme: sometimes connection error.
              (http2-error connection +frame-size-error+
                           "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE"))
            (if (plusp R) (warn "R is set, we should ignore it"))
-           (let ((frame-type-object (aref *frame-types* type))
-                 (stream-or-connection
-                   (if (zerop http-stream) connection
-                       (find http-stream (get-streams connection)
-                             :key #'get-stream-id))))
+           (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
+                  (stream-or-connection
+                    (find-http-stream-by-id connection http-stream frame-type-object)))
              (cond (frame-type-object
-                    (funcall (frame-type-receive-fn frame-type-object) connection
-                             (if (zerop http-stream) connection
-                                 (or stream-or-connection
-                                     (peer-opens-http-stream connection http-stream type)))
+                    (funcall (the function (frame-type-receive-fn frame-type-object)) connection
+                             stream-or-connection
                              length flags)))
              (values
               (frame-type-name frame-type-object)
@@ -389,13 +426,16 @@ passed to the make-instance"
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads."
-    ((data (or cons vector)))
+    ((data (or cons vector null)))
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    ((if (consp data)
-         (map nil #'write-vector data)
-         (write-vector data)))
+    ((cond
+       ((null data))
+       ((consp data)
+        (map nil #'write-vector data))
+       (t
+        (write-vector data))))
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
@@ -432,7 +472,8 @@ PROTOCOL_ERROR"))
                     ;;
                     ;; Priority is a list (e+stream-dependency weight)
                     priority)
-     :must-have-stream-in (idle reserved/remote open half-closed/local))
+     :must-have-stream-in (idle reserved/remote open half-closed/local)
+     :new-stream-state 'open)
 
     ;; writer
     ((when priority ;; this is obsoleted, but still in place
@@ -498,7 +539,8 @@ PROTOCOL_ERROR"))
      (stream-dependency 31)
      (weight 8))
     (:length 5
-     :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed))
+     :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed)
+     :new-stream-state 'idle)
     ((let ((e+strdep stream-dependency))
        (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
        (write-bytes 4 e+strdep)

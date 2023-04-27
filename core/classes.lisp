@@ -68,6 +68,9 @@
   (:default-initargs :id-to-use 2
    :peer-accepts-push t))
 
+(defgeneric get-state (state)
+  (:method ((state (eql :closed))) 'closed))
+
 (defclass http2-stream (flow-control-mixin)
   ((connection       :accessor get-connection       :initarg :connection)
    (network-stream   :accessor get-network-stream   :initarg :network-stream)
@@ -75,8 +78,8 @@
                      :type (unsigned-byte 31))
    (state            :accessor get-state            :initarg :state
                      :type (member idle open closed
-                                             half-closed/local half-closed/remote
-                                             reserved/local reserved/remote))
+                                   half-closed/local half-closed/remote
+                                   reserved/local reserved/remote))
    (data             :accessor get-data             :initarg :data)
    (weight           :accessor get-weight           :initarg :weight)
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
@@ -280,36 +283,18 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
           (get-streams connection))
   (car (get-streams connection)))
 
-(defgeneric peer-opens-http-stream (connection stream-id frame-type)
+(defgeneric is-our-stream-id (connection stream-id)
   (:documentation
-   "Unknown stream ID was sent by the other side - i.e., from headers frame. Should
- return an object representing new stream.")
-  (:method :before ((connection logging-object) stream-id frame-type)
-    (add-log connection `(:new-stream-received :id ,stream-id :type
-                                               ,(frame-type-name (aref *frame-types* frame-type)))))
+   "Return true if the STREAM-ID should be initiated on our side. The ID is known
+not to be zero.")
+  (:method ((connection client-http2-connection) stream-id)
+    (when (oddp stream-id) :even))
 
-  (:method (connection stream-id (frame-type (eql #.+headers-frame+)))
-    (peer-opens-http-stream-really-open connection stream-id 'open))
+  (:method ((connection logging-connection) stream-id)
+    (when (oddp stream-id) nil))
 
-  (:method (connection stream-id (frame-type (eql #.+priority-frame+)))
-    (peer-opens-http-stream-really-open connection stream-id 'idle))
-
-  (:method :before ((connection client-http2-connection) stream-id frame-type)
-    (if (oddp stream-id)
-        ;; Q: does RFC document what to do?
-        (http2-error connection +protocol-error+ "Event-numbered ID expected" )))
-
-  (:method :before ((connection server-http2-connection) stream-id frame-type)
-    (cond
-      ((evenp stream-id)
-       ;; Q: does RFC document what to do?
-       (http2-error connection +protocol-error+ "Odd-numbered ID expected" ))))
-
-  (:method :around ((connection logging-object) stream-id frame-type)
-    (let ((stream (call-next-method)))
-      (add-log stream `(:opened :id ,stream-id
-                                :frame-type ,(frame-type-name (aref *frame-types* frame-type))))
-      stream)))
+  (:method ((connection server-http2-connection) stream-id)
+    (when (evenp stream-id) :odd)))
 
 (defgeneric peer-sends-push-promise (stream)
   (:method (stream) (error "Push promises not supported."))
@@ -317,13 +302,35 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
    "This should be called on push promise (FIXME: and maybe it is not, and maybe
 the parameters should be different anyway). By default throws an error."))
 
+(defun close-http2-stream (stream)
+  "Close the http2 stream.
+
+It marks the stream as closed, which is maybe unnecessary, as the stream is
+immediately removed from the list of streams of its connection. This is
+consistent with the concept that any stream not in the connection streams
+explicitly is either idle (if above last-id-seen or id-to-use, depending on
+even/odd) or closed - see FIND-HTTP-STREAM-BY-ID.
+
+The removal of unused streams is necessary to prevent leakage for big requests -
+other solution would be to send go-away after the number of streams is too high;
+however some clients (e.g., h2load) do not retry when they receive this.
+
+This stream removal should be done with lock on the appropriate stream when in
+multiple threads. When this is called from the read-frame callbacks it is done
+automatically, otherwise caller must ensure it."
+  (with-slots (connection state) stream
+    (with-slots (streams) connection
+      (setf streams (remove stream streams :test 'eq)
+            state 'closed))))
+
 (defgeneric peer-resets-stream (stream error-code)
+  (:method ((stram (eql :closed)) error-code))
   (:method (stream error-code)
     (unwind-protect
          (unless (eq error-code '+cancel+)
            (error 'http-stream-error :stream stream
                                      :error-code error-code))
-      (setf (get-state stream) 'closed)))
+      (close-http2-stream stream)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
 
@@ -342,7 +349,7 @@ the parameters should be different anyway). By default throws an error."))
       (write-rst-stream-frame stream error-code)
       (force-output (get-network-stream connection))
       (warn "Stream error: rst frame sent locally - ~s" note)
-      (setf (get-state stream) 'closed))))
+      (close-http2-stream stream))))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)
@@ -390,6 +397,7 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway.")
   (:documentation
    "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
 the strem or connection.")
+  (:method ((object (eql :closed)) increment))
   (:method :before ((object logging-object) increment)
     (add-log object `(:window-size-increment ,(get-peer-window-size object) + ,increment)))
 
@@ -424,7 +432,9 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
 
   (:method (connection (name (eql :initial-window-size)) value)
     (declare (type (unsigned-byte 32) value))
-    (setf (get-initial-peer-window-size connection) value))
+    (if (> value (1- (expt 2 31)))
+        (http2-error connection +flow-control-error+ "SETTINGS_INITIAL_WINDOW_SIZE must be below 2^31, is ~x." value)
+        (setf (get-initial-peer-window-size connection) value)))
 
   (:method (connection (name (eql :max-frame-size)) value)
     (if (>= 16777215 value 16384)
