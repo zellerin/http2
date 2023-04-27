@@ -62,15 +62,11 @@
                   '((:new-prio :exclusive nil :weight 34 :dependency 12)))
 
   (test-a-frame undefined-code #'write-rst-stream-frame '(#xdeadbeef)
-                  :expected-log-stream
-                  '((:closed :error undefined-error-code-deadbeef)
-                    (:STATE-CHANGE OPEN HTTP2::-> HTTP2::CLOSED))
-                  :expected-receiver-error 'http-stream-error)
+                  :expected-log-stream nil ; closed stream
+                    :expected-receiver-error 'http-stream-error)
 
   (test-a-frame protocol-error #'write-rst-stream-frame '(1)
-                  :expected-log-stream
-                  '((:closed :error +protocol-error+)
-                    (:STATE-CHANGE OPEN HTTP2::-> HTTP2::CLOSED))
+                  :expected-log-stream nil ; closed stream
                   :expected-receiver-error 'http-stream-error)
 
   (test-a-frame nil 'write-settings-frame '(((1 . 2)))
