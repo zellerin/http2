@@ -37,7 +37,7 @@ enough to send the data as a data frame on BASE-HTTP2-STREAM (or forced to by cl
                                        &key
                                          base-http2-stream
                                          (connection (get-connection base-http2-stream))
-                                         (window-size (get-initial-peer-window-size connection))  &allow-other-keys)
+                                         (window-size (min 65536 (get-initial-peer-window-size connection)))  &allow-other-keys)
   (setf (get-output-buffer stream)
         (make-array window-size :element-type '(unsigned-byte 8)
                                 :fill-pointer 0 :adjustable nil)))
