@@ -147,8 +147,7 @@ new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream
-                                 body-collecting-mixin
-                                 history-printing-object)
+                                 body-collecting-mixin)
   ()
   (:documentation
    "A server-side stream that can be used as a binary output stream, optionally
