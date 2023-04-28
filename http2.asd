@@ -4,7 +4,7 @@
   :description "HTTP2 protocol implementation"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "1.0"
+  :version "1.1"
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams"
                                       "anaphora"  "gzip-stream" "alexandria")
@@ -46,7 +46,7 @@
   :description "An example of http/2 server"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "0.4"
+  :version "0.5"
   :serial t
   :pathname "server"
   :depends-on ("puri" "http2/tls")
