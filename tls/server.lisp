@@ -119,8 +119,8 @@ thread) to start testing it."
       :report "Kill server"
       value)))
 
-(defun create-http-server (port key cert &key
-                                            ((:verbose http2::*do-print-log*))
+(defun create-http-server (port &key
+
                                             (announce-open-fn (constantly nil))
                                             (connection-class 'vanilla-server-connection))
   "Open HTTP/2 server on PORT on localhost (no TLS).
@@ -144,5 +144,5 @@ debug is printed."
                               (handler-case
                                   (usocket:socket-accept socket :element-type '(unsigned-byte 8))
                                 ;; ignore condition
-                                (usocket:connection-aborted-error ()))))
-      key cert :connection-class connection-class)))
+                                (usocket:connection-aborted-error ())))
+                             :connection-class connection-class))))
