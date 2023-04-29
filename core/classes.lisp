@@ -26,11 +26,10 @@
    (acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
    (compression-context      :accessor get-compression-context      :initarg :compression-context)
    (decompression-context    :accessor get-decompression-context    :initarg :decompression-context)
-   (last-id-seen             :accessor get-last-id-seen             :initarg :last-id-seen)
+   (last-id-seen             :accessor get-last-id-seen             :initarg :last-id-seen
+                             :type stream-id)
    (id-to-use                :accessor get-id-to-use                :initarg :id-to-use
-                             :type          (unsigned-byte 31)
-                             :documentation
-                             "Streams are identified with an unsigned 31-bit  integer.")
+                             :type stream-id)
    (stream-class             :accessor get-stream-class             :initarg :stream-class
                              :documentation "Class for new streams")
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
@@ -77,9 +76,7 @@
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type (unsigned-byte 31))
    (state            :accessor get-state            :initarg :state
-                     :type (member idle open closed
-                                   half-closed/local half-closed/remote
-                                   reserved/local reserved/remote))
+                     :type http2-stream-state)
    (data             :accessor get-data             :initarg :data)
    (weight           :accessor get-weight           :initarg :weight)
    (depends-on       :accessor get-depends-on       :initarg :depends-on)

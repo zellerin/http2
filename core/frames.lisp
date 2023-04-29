@@ -46,7 +46,10 @@
                            (name documentation receive-fn
                             old-stream-ok new-stream-state connection-ok)))
   "Description of a frame type"
-   documentation name receive-fn old-stream-ok new-stream-state connection-ok)
+  (documentation nil :type (or null string))
+  (name nil :type symbol)
+  (receive-fn (constantly nil) :type function)
+  old-stream-ok new-stream-state connection-ok)
 
 (defconstant +known-frame-types-count+ 256
   "Number of frame types we know.")
@@ -92,7 +95,59 @@ where it is used.")
 that is set to T if it is in FLAGS and appropriate bit is set in the read flags."
     (loop for flag in *flag-codes* by #'cddr
           collect `(,flag ,(when (member flag flags)
-                             `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags)))))))
+                             `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags))))))
+
+  (defun collect-parameter-declarations (parameters has-reserved)
+    (when has-reserved (push '(reserved t) parameters))
+    `(declare ,@(loop for par in parameters
+                      collect `(,(if (integerp (second par))
+                                     `(unsigned-byte ,(second par))
+                                     (second par))
+                                ,(first par)))))
+
+  (defun make-writer-fn (writer-body writer-pars has-reserved)
+  `(lambda (stream-name ,@writer-pars)
+     (flet ((write-bytes (n value) (write-bytes stream-name n value))
+            (write-vector (vector) (write-sequence vector stream-name))
+            ,@(when has-reserved
+                `((write-31-bits (value)
+                                 (write-31-bits stream-name value reserved))
+                  (write-stream-id (value)
+                                   (write-stream-id stream-name value reserved)))))
+       (declare (ignorable #'write-vector #'write-bytes #'write-vector
+                           ,@(when has-reserved
+                               '(#'write-stream-id #'write-31-bits))))
+       ,@writer-body))))
+
+(declaim
+#+nil (inline possibly-padded-body change-state-on-write-end padded check-stream-state-ok
+         write-31-bits)
+(optimize (safety 1) (speed 1) (debug 0)))
+
+(defun possibly-padded-body (stream fn padded &rest pars)
+  "Add padding code to BODY if needed."
+  (cond
+    ((null padded) (apply fn stream pars))
+    (t
+     (write-bytes stream 1 (length padded))
+     (apply fn stream pars)
+     (write-sequence padded stream))))
+
+(defun change-state-on-write-end (http-stream)
+  "Change state of the stream when STREAM-END is sent."
+  (with-slots (state) http-stream
+    (ecase state
+      (open (setf state 'half-closed/local))
+      (half-closed/remote (close-http2-stream http-stream)))))
+
+(defun padded-length (length padding)
+  (if padding (+ 1 length (length padding)) length))
+
+(defun check-stream-state-ok (connection http-stream ok-states bad-state-error)
+  (when ok-states
+    (unless (member (get-state http-stream) ok-states)
+      (http2-error connection
+                   bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ok-states))))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -100,7 +155,7 @@ that is set to T if it is in FLAGS and appropriate bit is set in the read flags.
                                 new-stream-state
                                 (bad-state-error +stream-closed+)
                                 has-reserved)
-                             writer-body
+                             (writer-pars &body writer-body)
                              (&body reader))
   "This specification defines a number of frame types, each identified by a unique
 8-bit TYPE CODE.  Each frame type serves a distinct purpose in the establishment
@@ -138,45 +193,25 @@ The macro defining FRAME-TYPE-NAME :foo defines
                                 &key ,@(when has-reserved '(reserved))
                                   ,@flags)
              ;; reserved parameter is a key and implicit
-             ,@(when has-reserved (push '(reserved t) parameters)
-                     nil)
              ,documentation
-             (declare ,@(loop for par in parameters
-                              collect `(,(if (integerp (second par))
-                                             `(unsigned-byte ,(second par))
-                                             (second par)
-                                             )
-                                        ,(first par))))
+             ,(collect-parameter-declarations parameters has-reserved)
              (let ((,stream-name (get-network-stream http-connection-or-stream)))
-               (flet ((write-bytes (n value) (write-bytes ,stream-name n value))
-                      (write-vector (vector) (write-sequence vector ,stream-name))
-                      (write-31 (value)
-                        (declare (ignorable value))
-                        ,(if has-reserved
-                             `(write-31-bits ,stream-name value reserved)
-                             `(error "write-31 is not allowed here"))))
-                 (declare (ignorable #'write-vector #'write-bytes #'write-vector
-                                     #'write-31))
-                 (write-frame-header ,stream-name
-                                     (+ ,length
-                                        ,@(when (find 'padded flags)
-                                            `((if padded (1+ (length padded)) 0))))
-                                     ,type-code
-                                     (+ ,@(flags-to-code flags))
-                                     http-connection-or-stream
-                                     nil)
-                 ,@(when (find 'padded flags)
-                     `((when padded
-                         (write-bytes 1 (length padded)))))
-                 ,@writer-body
-                 ,@(when (find 'padded flags)
-                     '((when padded (write-vector padded))))
-                 ,@(when (find 'end-stream flags)
-                     '((when end-stream
-                         (with-slots (state) http-connection-or-stream
-                             (ecase state
-                               (open (setf state 'half-closed/local))
-                               (half-closed/remote (close-http2-stream http-connection-or-stream))))))))))
+               (write-frame-header ,stream-name
+                                   (padded-length ,length
+                                                  ,(when (find 'padded flags) 'padded))
+                                   ,type-code
+                                   (+ ,@(flags-to-code flags))
+                                   http-connection-or-stream
+                                   nil)
+               (possibly-padded-body ,stream-name
+                                     (load-time-value
+                                      ,(make-writer-fn writer-body
+                                                       writer-pars
+                                                       has-reserved))
+                                     ,(when (find 'padded flags) 'padded)
+                                     ,@writer-pars))
+             (when ,(when (find 'end-stream flags) 'end-stream)
+               (change-state-on-write-end http-connection-or-stream)))
 
            (defun ,reader-name (connection http-stream length flags)
              ,documentation
@@ -190,19 +225,9 @@ The macro defining FRAME-TYPE-NAME :foo defines
                       (protocol-error (text)
                         (http2-error connection 'protocol-error text)))
                  (declare (ignorable #'read-bytes #'read-vector #'protocol-error))
-                 ,@(cond (must-have-stream-in
-                          `(
-                            (unless (member (get-state http-stream)
-                                            ',must-have-stream-in)
-                              (http2-error connection ',bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ',must-have-stream-in))))
-                         (must-not-have-stream
-                          '((unless (eq connection http-stream)
-                              ;; Frame MUST NOT be associated with a stream.  If
-                              ;; a frame is received whose stream identifier
-                              ;; field is 0x0, the recipient MUST respond with a
-                              ;; connection error (Section 5.4.1) of type
-                              ;; PROTOCOL_ERROR.
-                              (protocol-error "Frame must not be associated with a stream")))))
+                 (check-stream-state-ok connection http-stream
+                                        ',must-have-stream-in
+                                        ',bad-state-error)
                  ,@reader
                  (when end-stream
                    (ecase (get-state http-stream)
@@ -236,8 +261,12 @@ passed to the make-instance"
 (defun write-31-bits (stream value reserved)
   "Write 31 bits of VALUE to a STREAM. Set first bit if RESERVED is set."
   (declare (optimize speed))
-  (declare (type (unsigned-byte 31) value))
+  (declare (type stream-id value))
   (write-bytes stream 4 (logior value (if reserved #x80000000 0))))
+
+(defun write-stream-id (stream value reserved)
+  "Write STREAM-ID to the binary stream"
+  (write-31-bits stream value reserved))
 
 (defun write-frame-header (stream length type flags http-stream R)
   "All frames begin with a fixed 9-octet header followed by a variable-
@@ -283,12 +312,12 @@ passed to the make-instance"
   (let ((http-stream-id (get-stream-id http-stream)))
     (declare (type (unsigned-byte 24) length)
              (type (unsigned-byte 8) type flags)
-             (type (unsigned-byte 31) http-stream-id)
+             (type stream-id http-stream-id)
              (optimize speed))
     (write-bytes stream 3 length)
     (write-byte type stream)
     (write-byte flags stream)
-    (write-31-bits stream http-stream-id R)))
+    (write-stream-id stream http-stream-id R)))
 
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
@@ -298,18 +327,20 @@ stop as soon as we can see lower value. The list part needed to be searched is
 assumed to be pretty short.
 
 Also do some checks on the stream id based on the frame type."
+  (declare (optimize speed (safety 1) (debug 0))
+           (type frame-type frame-type))
   (with-slots (streams last-id-seen) connection
+    (declare (type stream-id id last-id-seen))
     (let ((new-stream-state (frame-type-new-stream-state frame-type))
           (our-id (is-our-stream-id connection id)))
       (cond
-        ((and (frame-type-connection-ok frame-type)
-              (zerop id))
-         connection)
         ((zerop id)
-         (http2-error connection 'protocol-error
-                      "Frame MUST be associated with a stream. If a frame is received whose
+         (if (frame-type-connection-ok frame-type)
+             connection
+             (http2-error connection 'protocol-error
+                          "Frame MUST be associated with a stream. If a frame is received whose
         stream identifier field is 0x0, the recipient MUST respond with a
-        connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
+        connection error (Section 5.4.1) of type PROTOCOL_ERROR.")))
         ((and (not our-id) (> id last-id-seen) new-stream-state)
          (peer-opens-http-stream-really-open connection id new-stream-state))
         ((and our-id (>= id (get-id-to-use connection)))
@@ -319,7 +350,7 @@ Also do some checks on the stream id based on the frame type."
         ;; should throw an error eventually elsewhere.
         ((frame-type-old-stream-ok frame-type)
          (loop for item in streams
-               for key-val = (get-stream-id item)
+               for key-val of-type stream-id = (get-stream-id item)
                while (<= id key-val)
                when (= key-val id)
                  do (return item)
@@ -370,6 +401,7 @@ Also do some checks on the stream id based on the frame type."
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
   ;; first flush anything we should have send to prevent both sides waiting
+  (declare (optimize speed))
   (force-output stream)
   (let* ((length (read-bytes stream 3))
          (type (read-byte stream))
@@ -379,21 +411,10 @@ Also do some checks on the stream id based on the frame type."
          (R (ldb (byte 1 31) http-stream+R)))
     (declare ((unsigned-byte 24) length)
              ((unsigned-byte 8) type flags)
-             ((unsigned-byte 31) http-stream)
+             (stream-id http-stream)
              (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
     (maybe-lock-for-write connection)
-    ;;  A frame
-    ;; size error in a frame that could alter the state of the entire connection
-    ;; MUST be treated as a connection error (Section 5.4.1); this includes any
-    ;; frame carrying a header block (Section 4.3) (that is, HEADERS, PUSH_PROMISE,
-    ;; and CONTINUATION), SETTINGS, and any frame with a stream identifier of 0.
-    ;; Endpoints are not obligated to use all available space in a frame.
-    ;; Responsiveness can be improved by using frames that are smaller than the
-    ;; permitted maximum size.  Sending large frames can result in delays in sending
-    ;; time-sensitive frames (such as RST_STREAM, WINDOW_UPDATE, or PRIORITY),
-    ;; which, if blocked by the transmission of a large frame, could affect
-    ;; performance.
     (unwind-protect
          (progn
            (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
@@ -425,13 +446,15 @@ Also do some checks on the stream id based on the frame type."
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
   for instance, to carry HTTP request or response payloads."
-    ((data (or cons vector)))
+    ((data (or cons vector null)))
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    ((if (consp data)
-         (map nil #'write-vector data)
-         (write-vector data)))
+    ((data)
+      (typecase data
+        (null)
+        (cons (map nil #'write-vector data))
+        (t (write-vector data))))
 
     ((when (minusp length)
         ;; 0 is ok, as there was one more byte in payload.
@@ -468,13 +491,14 @@ PROTOCOL_ERROR"))
                     ;;
                     ;; Priority is a list (e+stream-dependency weight)
                     priority)
-     :must-have-stream-in (idle reserved/remote open half-closed/local)
+     :must-have-stream-in (open idle reserved/remote half-closed/local)
      :new-stream-state 'open)
 
     ;; writer
-    ((when priority ;; this is obsoleted, but still in place
-       (write-bytes 4 (first priority))
-       (write-bytes 1 (second priority)))
+    ((headers priority)
+      (when priority ;; this is obsoleted, but still in place
+        (write-bytes 4 (first priority))
+        (write-bytes 1 (second priority)))
      (map nil #'write-vector headers))
 
     ;; reader
@@ -485,8 +509,8 @@ PROTOCOL_ERROR"))
         (protocol-error "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
       (read-and-add-headers connection http-stream length end-headers)
       (if end-headers
-        ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-        ;; another CONTINUATION frame.
+          ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+          ;; another CONTINUATION frame.
           (process-end-headers connection http-stream))))
 
 (defun read-and-add-headers (connection http-stream length end-headers)
@@ -537,10 +561,11 @@ PROTOCOL_ERROR"))
     (:length 5
      :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed)
      :new-stream-state 'idle)
-    ((let ((e+strdep stream-dependency))
-       (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
-       (write-bytes 4 e+strdep)
-       (write-bytes 1 weight)))
+    ((exclusive stream-dependency weight)
+      (let ((e+strdep stream-dependency))
+        (setf (ldb (byte 1 31) e+strdep) (if exclusive 1 0))
+        (write-bytes 4 e+strdep)
+        (write-bytes 1 weight)))
     ((unless (= length 5)
        ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
        ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
@@ -578,7 +603,8 @@ PROTOCOL_ERROR"))
      ;;    type PROTOCOL_ERROR.
      :must-have-stream-in (reserved/remote reserved/local open half-closed/local half-closed/remote closed)
      :bad-state-error protocol_error)
-    ((write-bytes 4 error-code))
+    ((error-code)
+      (write-bytes 4 error-code))
     ((assert (zerop flags))
       (unless (= length 4)
         (http2-error connection 'frame-size-error
@@ -605,11 +631,12 @@ PROTOCOL_ERROR"))
      :flags (ack)
      :must-not-have-stream t)
     ;; writer
-    ((dolist (setting settings)
-       #-ecl(declare ((cons (or (unsigned-byte 16) symbol) (unsigned-byte 32)) setting))
-       (write-bytes 2 (if (numberp (car setting)) (car setting)
-                          (find-setting-code (car setting))))
-       (write-bytes 4 (cdr setting))))
+    ((settings)
+      (dolist (setting settings)
+        #-ecl(declare ((cons (or (unsigned-byte 16) symbol) (unsigned-byte 32)) setting))
+        (write-bytes 2 (if (numberp (car setting)) (car setting)
+                           (find-setting-code (car setting))))
+        (write-bytes 4 (cdr setting))))
     ;;reader
     ((cond
         (ack
@@ -700,7 +727,8 @@ PROTOCOL_ERROR"))
      :bad-state-error protocol-error
      :has-reserved t)
     ;;writer
-    ((write-31 promised-stream-id)
+    ((headers promised-stream-id reserved)
+      (write-stream-id promised-stream-id)
      (map nil #'write-vector headers))
     ;; reader
     ((error "Reading promise N/A")))
@@ -740,7 +768,8 @@ PROTOCOL_ERROR"))
     (:length 8 :flags (ack)
      :must-not-have-stream t)
     ;; writer
-    ((write-bytes 8 opaque-data))
+    ((opaque-data)
+      (write-bytes 8 opaque-data))
     ((unless (= length 8)
        (http2-error connection 'frame-size-error
                     "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
@@ -772,7 +801,8 @@ PROTOCOL_ERROR"))
      :must-not-have-stream t
      :has-reserved t)
 
-    ((write-31 last-stream-id)
+    ((last-stream-id error-code debug-data reserved)
+      (write-stream-id last-stream-id)
      (write-bytes 4 error-code)
      (write-vector debug-data))
 
@@ -795,7 +825,8 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
     ((window-size-increment 31))
     (:length 4
      :has-reserved t)
-    ((write-31 window-size-increment))
+    ((window-size-increment reserved)
+      (write-31-bits window-size-increment))
 
     (;;reader
      (unless (zerop flags)
@@ -825,7 +856,7 @@ CONTINUATION frame without the END_HEADERS flag set."
     ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
      :flags (end-headers))
-    ((map nil #'write-vector headers))
+    ((headers) (map nil #'write-vector headers))
 
     ;; reader
     ;; If we needed continuation frame, we would be in READ-BYTE*.
@@ -870,7 +901,8 @@ CONTINUATION frame without the END_HEADERS flag set."
      (alt-svc-field-value string))
     (:length (+ 2 (length origin) (length alt-svc-field-value)))
 
-    ((write-bytes 2 (length origin))
+    ((origin alt-svc-field-value)
+      (write-bytes 2 (length origin))
      (when origin (write-vector (map '(vector unsigned-byte 8)
                                      'char-code origin)))
      (write-vector (map '(vector unsigned-byte 8)

@@ -65,8 +65,6 @@ the first parameter.
 
 In addition to the behaviour described below, all callback log the behaviour
 when relevant stream or connection has logging-object as superclass."
-  (peer-opens-http-stream)
-  (peer-sends-push-promise)
   (apply-data-frame)
   (apply-stream-priority)
   (apply-window-size-increment)
@@ -82,6 +80,7 @@ when relevant stream or connection has logging-object as superclass."
 (cz.zellerin.doc:define-section @server
   ""
   (handler cz.zellerin.doc::macro)
+  (constant-handler cz.zellerin.doc::macro)
   (scheduling-handler cz.zellerin.doc::macro)
   (send-text-handler)
   (redirect-handler)

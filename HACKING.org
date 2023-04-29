@@ -152,7 +152,7 @@ File [[./server/dispatch.lisp][dispatch.lisp]] provides basic functionality to c
 responds based on the path of the request.
 
 The [[./server/server.lisp][sample server]] show how to:
-- register several handlers (HANDLER, SCHEDULING-HANDLER, SEND-TEXT-HANDLER or
+- register several handlers (HANDLER, CONSTANT-HANDLER, SCHEDULING-HANDLER, SEND-TEXT-HANDLER or
   REDIRECT-HANDLER to create them, DEFINE-EXACT-HANDLER and
   DEFINE-PREFIX-HANDLER to bind to paths),
 - calls SEND-HEADERS in handlers to send response headers, including status
@@ -177,7 +177,15 @@ The [[./server/server.lisp][sample server]] show how to:
    The ~SEND-GOAWAY~ sends go away frame to the client to close connection.
 
    Lambda list:
-     : (FLEXI-STREAM-NAME CHARSET GZIP) &BODY BODY
+     :
+
+- =CONSTANT-HANDLER= (macro)
+   Run ~BODY~ to print the output to ~FLEXI-STREAM-NAME~ in compile time. This
+   constant (static) page is served every time as-is.
+
+   Lambda list:
+     :
+
 - =SCHEDULING-HANDLER= (macro)
    Version of ~HANDLER~ that is to be used for scheduled (or otherwise processed in
    another thread) responses:
@@ -185,34 +193,37 @@ The [[./server/server.lisp][sample server]] show how to:
    - It makes accessible in ~BODY~ function ~SCHEDULE~ that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage.
 
    Lambda list:
-     : (FLEXI-STREAM-NAME ENCODING GZIP) &BODY BODY
+     :
+
 - =SEND-TEXT-HANDLER= (function)
    A handler that returns ~TEXT~ as content of ~CONTENT-TYPE~.
    ~ADDITIONAL-HEADERS~ are sent along with :status and content-type
    headers.
 
    Lambda list:
-     : TEXT &KEY (CONTENT-TYPE "text/html; charset=UTF-8") (GZIP T)
-     : ADDITIONAL-HEADERS
+     :
+
 - =REDIRECT-HANDLER= (function)
    A handler that emits redirect response with http status being ~CODE~, and
    optionally provided ~CONTENT~ wit ~CONTENT-TYPE~.
 
    Lambda list:
-     : TARGET &KEY (CODE "301") (CONTENT-TYPE "text/html; charset=UTF-8")
-     : CONTENT
+     :
+
 - =DEFINE-EXACT-HANDLER= (macro)
    Define function to run when peer closes http stream on ~CONNECTION~ (or any
    server defined in future) if the path of the stream is ~PATH~.
 
    Lambda list:
-     : PATH FN &OPTIONAL CONNECTION
+     :
+
 - =DEFINE-PREFIX-HANDLER= (macro)
    Define function to run when peer closes http stream on ~CONNECTION~ (or any
    server defined in future) if the path of the stream starts with ~PREFIX~.
 
    Lambda list:
-     : PREFIX FN &OPTIONAL CONNECTION
+     :
+
 - =PROCESS-SERVER-STREAM= (function)
    Make a HTTP2 connection of ~CONNECTION-CLASS~ on the underlying ~STREAM~ (that is a
    stream in Common Lisp sense, so either network stream or even standard io) and
@@ -221,7 +232,8 @@ The [[./server/server.lisp][sample server]] show how to:
    signalled.
 
    Lambda list:
-     : STREAM &KEY (CONNECTION-CLASS 'VANILLA-SERVER-CONNECTION) CONNECTION
+     :
+
 - =DISPATCHER-MIXIN= (class)
    Server with behaviour that is defined by two sets of handlers, exact and
    prefix. Appropriate handler is run to process the request when peer closes the
@@ -244,14 +256,14 @@ The [[./server/server.lisp][sample server]] show how to:
    optionally prints activities.
 
      Superclasses:
-     : SERVER-HTTP2-CONNECTION DISPATCHER-MIXIN HISTORY-PRINTING-OBJECT
+     : SERVER-HTTP2-CONNECTION DISPATCHER-MIXIN THREADED-SERVER-MIXIN
 
 - =VANILLA-SERVER-STREAM= (class)
    A server-side stream that can be used as a binary output stream, optionally
    prints activities, and reads full body from client if clients sends one.
 
      Superclasses:
-     : SERVER-STREAM BODY-COLLECTING-MIXIN HISTORY-PRINTING-OBJECT
+     : SERVER-STREAM BODY-COLLECTING-MIXIN
 
 - =KILL-SERVER= (restart)
    Kill server and close its underlying network stream. Bound in
@@ -268,18 +280,6 @@ the first parameter.
 In addition to the behaviour described below, all callback log the behaviour
 when relevant stream or connection has logging-object as superclass.
 
-- =PEER-OPENS-HTTP-STREAM= (function)
-   Unknown stream ID was sent by the other side - i.e., from headers frame. Should
-    return an object representing new stream.
-
-   Lambda list:
-     : CONNECTION STREAM-ID FRAME-TYPE
-- =PEER-SENDS-PUSH-PROMISE= (function)
-   This should be called on push promise (FIXME: and maybe it is not, and maybe
-   the parameters should be different anyway). By default throws an error.
-
-   Lambda list:
-     : STREAM
 - =APPLY-DATA-FRAME= (function)
    Data frame is received by a stream.
     By default does nothing; there are several mixins that implement reading the
@@ -287,18 +287,21 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : STREAM PAYLOAD
+
 - =APPLY-STREAM-PRIORITY= (function)
    Called when priority frame - or other frame with priority settings set -
    arrives. Does nothing, as priorities are deprecated in RFC9113 anyway.
 
    Lambda list:
      : STREAM EXCLUSIVE WEIGHT STREAM-DEPENDENCY
+
 - =APPLY-WINDOW-SIZE-INCREMENT= (function)
    Called on window update frame. By default, increases ~PEER-WINDOW-SIZE~ slot of
    the strem or connection.
 
    Lambda list:
      : OBJECT INCREMENT
+
 - =PEER-RESETS-STREAM= (function)
    The RST_STREAM frame fully terminates the referenced stream and
       causes it to enter the "closed" state.  After receiving a RST_STREAM
@@ -310,49 +313,57 @@ when relevant stream or connection has logging-object as superclass.
 
    Lambda list:
      : STREAM ERROR-CODE
+
 - =SET-PEER-SETTING= (function)
    Process received information about peers setting.
 
    The setting relates to the ~CONNECTION~. ~NAME~ is a keyword symbol (see
-   *SETTINGS-ALIST*, subject to possible change to 16bit number in future) and ~VALUE~ is
+   *~SETTINGS~*, subject to possible change to 16bit number in future) and ~VALUE~ is
    32bit number.
 
    Lambda list:
      : CONNECTION NAME VALUE
+
 - =PEER-EXPECTS-SETTINGS-ACK= (function)
    Called when settings-frame without ~ACK~ is received, after individual
    ~SET-PEER-SETTING~ calls. By default, send ~ACK~ frame.
 
    Lambda list:
      : CONNECTION
+
 - =PEER-ACKS-SETTINGS= (function)
    Called when SETTINGS-FRAME with ~ACK~ flag is received. By default does nothing.
 
    Lambda list:
      : CONNECTION
+
 - =PEER-ENDS-HTTP-STREAM= (function)
    Do relevant state changes when closing http stream (as part of received ~HEADERS~ or
    ~PAYLOAD~).
 
    Lambda list:
      : STREAM
+
 - =HANDLE-UNDEFINED-FRAME= (function)
    Callback that is called when a frame of unknown type is received - see
    extensions.
 
    Lambda list:
      : TYPE FLAGS LENGTH
+
 - =DO-PONG= (function)
    Called when ping-frame with ~ACK~ is received. By default warns about unexpected ping response; see also ~TIMESHIFT-PINGING-CONNECTION~ mixin.
 
    Lambda list:
      : CONNECTION DATA
+
 - =DO-GOAWAY= (function)
    Called when a go-away frame is received. By default throws ~GO-AWAY~ condition if
    error was reported.
 
    Lambda list:
      : CONNECTION ERROR-CODE LAST-STREAM-ID DEBUG-DATA
+
 
 #+END:
 * Low level Debugging

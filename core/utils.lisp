@@ -209,3 +209,13 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   (if (< 0 id (length *settings*))
       (car (aref *settings* id))
       (format nil "ID#~d" id)))
+
+(deftype stream-id ()
+  "Streams are identified with an unsigned 31-bit  integer."
+  `(unsigned-byte 31))
+
+(deftype http2-stream-state ()
+  "HTTP2 state. Currently a list, might be a number in future."
+  '(member idle open closed
+    half-closed/local half-closed/remote
+    reserved/local reserved/remote))
