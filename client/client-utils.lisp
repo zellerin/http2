@@ -124,7 +124,7 @@ Guess encoding and need to gunzip from headers:
   (let* ((transport (make-instance 'payload-input-stream :base-http2-stream http2-stream)))
     (when encoded
       (setf transport (gzip-stream:make-gzip-input-stream transport)))
-    (awhen charset
+    (when charset
       (setf transport
             (flexi-streams:make-flexi-stream transport :external-format charset)))
     transport))
