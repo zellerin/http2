@@ -64,8 +64,8 @@ several ways (workers, polling...) with customizing ~*dispatch-fn*~ but for now
 out of scope of this project.
 
 #+begin_src lisp
-  (ql:quickload 'http2/server)
-  (http2::create-server 1234 "key.pem" "cert.pem")
+  (ql:quickload 'http2/server/example)
+  (http2/server-example::run-demo-server :port 1234)
 #+end_src
 
 Then point your browser (not eww nor drakma, of course - must support http2) to
