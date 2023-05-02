@@ -108,15 +108,17 @@ server can use anything else.
 Additionally, fiasco is used for testing (and Javascript for browser-side testing).
 
 ** Speed & scaling
-The code was not written with speed as primary concern.
+The code was not written with speed as primary concern. Measurements depend on
+many tunable factor both on the client and the server.
 
-Having said that, rough test shows that the server (on sbcl, my machine, trivial
-page, single requestor, 10k requests, over TLS) seems to be a bit less than
-twice the speed of Hunchentoot based on h2load tool, more than twice when
-multiple requests are allowed in parallel. In other words, it is about 80% of
-Woo speed (with pipelining).
+Having said that, rough test shows that the server on trivial page, single
+requestor, 10k requests, over TLS) seems to be about 2-3x faster than
+Hunchentoot and a bit slower than Woo. However, when multiple requests are sent
+in parallel, it is much faster than Woo.
 
-Run or modify the [[file:scaffolding/speed-test.lisp][speed test code]] for your results:
+What is currently relatively slow is conversion between (utf-8) text and binary data.
+
+Anyway, run or modify the [[file:scaffolding/speed-test.lisp][speed test code]] for your results:
 : sbcl --script scaffolding/speed-test.lisp
 
 The server should handle any number of requests on one connection (until stream

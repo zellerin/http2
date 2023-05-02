@@ -16,24 +16,43 @@
                        :additional-headers '(("refresh" "3; url=/"))
                        :gzip nil))
 
+(define-exact-handler "/slow"
+    (handler (foo :utf-8 nil)
+      (send-headers
+       '((:status "200")
+         ("content-type" "text/html; charset=utf-8")))
+      (princ "Hello World" foo)))
+
+
 (define-exact-handler "/"
-    (handler (out :utf-8 nil)
-      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")))
-      (with-html-output (out)
-        (:h1 "Hello World")
-        (:p "This server is for testing http2 protocol implementation")
-        (:ul
-         (:li (:a :href "/redir" "Redirect test")) " "
-         (:li (:a :href "/long" "Long page test")) " "
-         (:li (:a :href "/test" "A test page") ""))
-        (:form :action "/body" :method "post"
-               (:input :type :submit :name "xxx" :value "POST query test"))
-        (:p "UTF8 test: Příliš žluťoučký kůň... 😎"))))
+    (constant-handler
+     (out :utf-8 nil
+          `((:status "200")
+            ("content-type" "text/html; charset=utf-8")))
+     (with-html-output (out)
+       (:h1 "Hello World")
+       (:p "This server is for testing http2 protocol implementation")
+       (:ul
+        (:li (:a :href "/redir" "Redirect test")) " "
+        (:li (:a :href "/long" "Long page test")) " "
+                         (:li (:a :href "/test" "A test page") ""))
+       (:form :action "/body" :method "post"
+              (:input :type :submit :name "xxx" :value "POST query test"))
+       (:p "UTF8 test: Příliš žluťoučký kůň... 😎"))))
 
 (define-exact-handler "/long"
     (handler (out :utf-8 nil)
       (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
+      (with-html-output (out)
+        (:h1 "Test long body")
+        (dotimes (i 100000)
+          (htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
+
+(define-exact-handler "/long2"
+    (constant-handler (out :utf-8 t
+                               `((:status "200") ("content-type" "text/html; charset=utf-8")
+                                                                ("refresh" "30; url=/")))
       (with-html-output (out)
         (:h1 "Test long body")
         (dotimes (i 100000)
@@ -87,7 +106,7 @@
                       ("refresh" "3; url=/")))
       (princ (get-body stream) out)))
 
-(defmethod http2::add-header (connection (stream http2::server-stream) name value)
+(defmethod add-header (connection (stream server-stream) name value)
   (handler-bind ((warning #'muffle-warning))
     (call-next-method)))
 
@@ -235,10 +254,9 @@ longer than PASS text and table width changes on fly.")
   "Helper functions for ")
 
 (define-exact-handler "/test"
-    (handler (out :utf-8 t)
-      (send-headers `((:status "200")
-                      ("content-type" "text/html; charset=utf-8")
-                      ("content-encoding" "gzip")))
+    (constant-handler (out :utf-8 t
+                               `((:status "200")
+                                 ("content-type" "text/html; charset=utf-8")))
       (with-html-output (out out :prologue "<!DOCTYPE html>")
         (:html
          (:header (:style (esc *test-stylesheet*)))

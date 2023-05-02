@@ -10,8 +10,6 @@
 
 (in-package :http2/server-example)
 
-(declaim (optimize speed (safety 1) (debug 1)))
-
 (bt:make-thread (lambda () (ignore-errors
                             (http2/server-example::run-demo-server :port 1237)))
                 :name "Our server thread")

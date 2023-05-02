@@ -33,11 +33,11 @@
            #:encode-header
            #:http-stream-to-vector
 
-           #:connection #:stream
+           #:connection #:stream #:server-stream
            #:with-http-connection ; obsolete
            #:with-http2-connection
            #:get-finished
-           #:send-headers
+           #:send-headers #:add-header
            #:send-ping
            #:send-payload
            #:wait-for-responses
@@ -67,7 +67,7 @@
            #:*dispatch-fn*
            #:define-prefix-handler
            #:define-exact-handler
-           #:handler
+           #:handler #:constant-handler
            #:scheduling-handler
            #:schedule-task
            #:get-lock #:get-scheduler

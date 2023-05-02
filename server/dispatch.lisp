@@ -60,6 +60,18 @@ The SEND-GOAWAY sends go away frame to the client to close connection."
          (declare (ignorable #'send-goaway))
          ,@body))))
 
+(defmacro constant-handler ((flexi-stream-name charset gzip headers) &body body)
+  "Run BODY to print the output to FLEXI-STREAM-NAME in compile time. This
+constant (static) page is served every time as-is."
+  `(let ((headers ,headers)
+         (res (compile-payload-from-stream (,flexi-stream-name ,charset ,gzip)
+                                           ,@body)))
+     (when ,gzip
+       (setf headers (append headers '(("content-encoding" "gzip")))))
+     (lambda (connection stream)
+       (send-headers stream headers)
+       (write-binary-payload connection stream res))))
+
 (defmacro scheduling-handler ((flexi-stream-name encoding gzip) &body body)
   "Version of HANDLER that is to be used for scheduled (or otherwise processed in
 another thread) responses:
