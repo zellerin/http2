@@ -2,14 +2,19 @@
 
 [[https://github.com/zellerin/http2/actions/workflows/test.yml/badge.svg]]
 
-This is a (work in progress) implementation of HTTP/2 protocol as described in
+This is an implementation of HTTP/2 protocol as described in
 RFC9113 (and RFC7540 before) and RFC7541 (HPACK).
 
-The core part of the library is implementing writing http2 frames, reading them,
-and reacting on read frames. What to do with the frames is managed by classes
-~CONNECTION~ and ~HTTP2-STREAM~ that are supposed to be extended by application to
-do something reasonable with headers and payload; see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]
-for an example.
+The core part of the library implements writing http2 frames, reading them, and
+reacting on read frames. What to do with the frames is managed by application
+specific classes derived from ~CONNECTION~ and ~HTTP2-STREAM~. This part should be
+relatively fixed.
+
+In addition, helper functions to create server and to make client calls is
+provided.  Based on these helpers, demo client and demo server is also provided,
+see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]. The best way to make servers and clients
+includes decisions on how to handle asynchronicity, window management, etc, and may
+be still subject to change.
 
 ** Status and quick start
 In quicklisp. Tested primarily on sbcl, occasionally on ecl.
@@ -25,7 +30,7 @@ The bundled client requests remote page and returns values of body (converted to
 string), result status, and response headers.
 
 Improvements to allow for cookie management, ... are out of scope of this
-library, as they would probably be better taken over from some existing http/1.x
+library, as they would probably be better taken over from some existing HTTP/1.x
 library or incorporated there.
 
 Improvements to query several resources on one server, and to receive pushes are
@@ -113,8 +118,9 @@ many tunable factor both on the client and the server.
 
 Having said that, rough test shows that the server on trivial page, single
 requestor, 10k requests, over TLS) seems to be about 2-3x faster than
-Hunchentoot and a bit slower than Woo. However, when multiple requests are sent
-in parallel, it is much faster than Woo.
+Hunchentoot and a bit slower than [[https://github.com/fukamachi/woo][Woo]]. However, when multiple requests are sent
+in parallel from one client, it is much faster than Woo (even with the
+Hunchentoot-style request handling).
 
 What is currently relatively slow is conversion between (utf-8) text and binary data.
 
@@ -133,8 +139,6 @@ contributors. I read the copyright licenses for RFC that this is allowed.
 ** Related software
 There is an Akamai code on https://github.com/akamai/cl-http2-protocol that
 supported bigger parts of the drafted HTTP/2 protocol in 2014; apparently hard
-to run now, used NPN instead of ALPN. It might be reasonable to pilfer some
-pieces and ideas (especially interface level) from that one, but I have not done
-so (yet).
+if not impossible to run now. It used NPN instead of ALPN.
 
 #  LocalWords:  HPACK

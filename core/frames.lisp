@@ -45,14 +45,22 @@
 (defstruct (frame-type (:constructor make-frame-type
                            (name documentation receive-fn
                             old-stream-ok new-stream-state connection-ok)))
-  "Description of a frame type"
+  "Description of a frame type.
+
+Apart from name and documentation, each frame type keeps this:
+- RECEIVE-FN :: How to handle reading of received frames
+- NEW-STREAM-STATE :: whether it can be used to create new streams (i.e., is allowed on streams in
+  IDLE state) and if so what is new state of such stream
+- OLD-STREAM-OK :: in what stream states the frame can be received
+- CONNECTION-OK :: whether the frame can have STREAM-ID equal to zero, that is, act on connections.
+"
   (documentation nil :type (or null string))
   (name nil :type symbol)
   (receive-fn (constantly nil) :type function)
   old-stream-ok new-stream-state connection-ok)
 
 (defconstant +known-frame-types-count+ 256
-  "Number of frame types we know.")
+  "Frame types are indexed by an octet.")
 
 (defvar *frame-types*
   (let ((res
@@ -72,10 +80,13 @@
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
 (defun read-padding (stream padding-size)
-  "Read the padding if padding-size is not NIL."
-  ;; Padding octets MUST be set to zero when sending.  A receiver is
-  ;; not obligated to verify padding but MAY treat non-zero padding as
-  ;; a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+  "Read the padding from the stream if padding-size is not NIL.
+
+Padding is used by some frame types.
+
+A receiver is not obligated to verify padding but MAY treat non-zero padding as
+a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
+padding."
   (when padding-size (dotimes (i padding-size) (read-bytes stream 1))))
 
 (eval-when (:compile-toplevel :load-toplevel)
@@ -118,11 +129,6 @@ that is set to T if it is in FLAGS and appropriate bit is set in the read flags.
                            ,@(when has-reserved
                                '(#'write-stream-id #'write-31-bits))))
        ,@writer-body))))
-
-(declaim
-#+nil (inline possibly-padded-body change-state-on-write-end padded check-stream-state-ok
-         write-31-bits)
-(optimize (safety 1) (speed 1) (debug 0)))
 
 (defun possibly-padded-body (stream fn padded &rest pars)
   "Add padding code to BODY if needed."
