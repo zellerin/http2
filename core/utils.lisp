@@ -219,3 +219,5 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   '(member idle open closed
     half-closed/local half-closed/remote
     reserved/local reserved/remote))
+
+(defstruct priority exclusive stream-dependency weight)
