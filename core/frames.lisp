@@ -189,29 +189,17 @@ where it is used.")
                                 has-reserved)
                              writer
                              (&body reader))
-  "This specification defines a number of frame types, each identified by a unique
-8-bit TYPE CODE.  Each frame type serves a distinct purpose in the establishment
-and management either of the connection as a whole or of individual streams.
+  "Define:
+- A frame type object that allows to read frame of given type,
+- a constant named `+foo+` that translates to TYPE-CODE,
+- a writer function WRITE-FOO that takes CONNECTION or HTTP-STREAM and possibly
+  other PARAMETERS and FLAGSs and writes appropriate frame.
 
-The macro defining FRAME-TYPE-NAME :foo defines
-- A frame type object
-- A constant named `+foo+` that translates to TYPE-CODE,
-- A writer function WRITE-FOO that takes CONNECTION, HTTP-STREAM and possibly
-  other PARAMETERS, sends frame header for given frame type with FLAGS and
-  LENGTH expressions, and then executes WRITER-BODY with functions write-bytes
-  and write-vector bound to writing to the transport stream. Each PARAMETER is
-  a list of name, size in bits (or :variable) and documentation.
-- A reader function named READ-FOO that takes CONNECTION, HTTP-STREAM, payload
-  LENGTH and FLAGS and reads the payload of the frame: it runs READER-BODY with
-  read-bytes and read-vector bound to reading from the transport stream. This
-  function is supposed to be called from READ-FRAME that has already read the
-  header and determined the appropriate http stream."
+Each PARAMETER is a list of name, size in bits or type specifier and documentation."
   (declare ((unsigned-byte 8) type-code)
            (keyword frame-type-name))
   (let (key-parameters
-        (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
-        (flag-keywords (mapcar (lambda (a) (intern (symbol-name a) :keyword))
-                               flags)))
+        (writer-name (intern (format nil "WRITE-~a" frame-type-name))))
     ;; Reserved is used rarely so no need to force always specifying it
     (when has-reserved  (push '(reserved t) key-parameters))
     ;; Priority is both a flag to set and value to store if this flags is set.
@@ -244,7 +232,9 @@ The macro defining FRAME-TYPE-NAME :foo defines
                               :new-stream-state ',new-stream-state
                               :connection-ok ,(or may-have-connection must-have-connection)
                               :bad-state-error ,bad-state-error
-                              :flag-keywords ',flag-keywords)))))
+                              :flag-keywords
+                              ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
+                                        flags))))))
 
 (defun write-frame (http-connection-or-stream length type-code keys
                   writer &rest pars)
@@ -459,7 +449,8 @@ pretty short so we do not care."
                  (http2-error connection +protocol-error+
                               "Length of the padding is the length of the frame payload or greater."))
                (funcall (frame-type-receive-fn frame-type-object)
-                        stream connection stream-or-connection (if padded (- length 1 padding-size) length) flags)
+                        stream connection stream-or-connection
+                        (if padded (- length 1 padding-size) length) flags)
                (when padded (read-padding stream padding-size)))
 
              (when (has-flag flags :end-stream flag-keywords)
@@ -499,6 +490,7 @@ pretty short so we do not care."
         (t (write-sequence data stream))))
 
     (lambda (stream connection http-stream length flags)
+      "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
       (declare (ignore connection flags))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
         (loop while (plusp length)
@@ -530,9 +522,7 @@ pretty short so we do not care."
     ((headers list))                    ;  &key dependency weight
     (:length (+ (if priority 5 0) (reduce '+ (mapcar 'length headers)))
      :flags (padded end-stream end-headers
-                    ;; PRIORITY: When set, bit 5 indicates that the Exclusive
-                    ;; Flag (E), Stream Dependency, and Weight fields are
-                    ;; present.
+                    ;; PRIORITY is both flag and prio content  to write
                     priority)
      :must-have-stream-in (open idle reserved/remote half-closed/local)
      :new-stream-state open)
@@ -755,8 +745,7 @@ pretty short so we do not care."
       followed by a CONTINUATION frame for the same stream.  A receiver
       MUST treat the receipt of any other type of frame or a frame on a
       different stream as a connection error (Section 5.4.1) of type
-      PROTOCOL_ERROR.
-"
+      PROTOCOL_ERROR."
     ((headers list)
      (promised-stream-id 31))
     (:length (+ 4 (reduce '+ (mapcar 'length headers)))
