@@ -15,7 +15,11 @@ other conditions."
   (handler-case
       (loop
         initially (force-output (get-network-stream connection))
-        while (or (null just-pending) (listen (get-network-stream connection)))
+        while (or (null just-pending)
+                  (handler-case (listen (get-network-stream connection))
+                    (cl+ssl::ssl-error ()
+                      ;; peer may close connection and strange things happen
+                      )))
         do (read-frame connection))
     (end-of-file () nil)))
 
