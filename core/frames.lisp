@@ -111,8 +111,10 @@ padding."
 
 Return the HTTP-STREAM."
   (unless (member (get-state http-stream) ok-states)
-    (http2-error connection
-                 bad-state-error "Frame can be applied only to streams in states ~{~A~^, ~}" ok-states))
+    (connection-error 'bad-stream-state  connection
+                      :code bad-state-error
+                      :actual (get-state http-stream)
+                      :allowed ok-states))
   http-stream)
 
 (defvar *flag-codes-keywords*
@@ -138,8 +140,7 @@ where it is used.")
   (if padded
       (let ((padding-size (read-byte stream)))
         (when (> (+ padding-size 1) length)
-          (http2-error connection +protocol-error+
-                       "Length of the padding is the length of the frame payload or greater."))
+          (connection-error 'too-big-padding connection))
         (funcall fn stream connection http-stream (- length 1 padding-size) flags)
         (read-padding stream padding-size))
       (funcall fn stream connection http-stream length flags)))
@@ -314,14 +315,11 @@ Also do some checks on the stream id based on the frame type."
         ((zerop id)
          (if (frame-type-connection-ok frame-type)
              connection
-             (http2-error connection 'protocol-error
-                          "Frame MUST be associated with a stream. If a frame is received whose
-        stream identifier field is 0x0, the recipient MUST respond with a
-        connection error (Section 5.4.1) of type PROTOCOL_ERROR.")))
+             (connection-error 'frame-type-needs-stream connection)))
         ((and (not our-id) (> id last-id-seen) new-stream-state)
          (peer-opens-http-stream-really-open connection id new-stream-state))
         ((and our-id (>= id (get-id-to-use connection)))
-         (http2-error connection +protocol-error+ "~a ID expected" our-id))
+         (connection-error 'our-id-created-by-peer connection))
         ((and (not our-id) (> id last-id-seen)) :idle)
         ;; stream not seen yet is in idle state. This should not happen much and
         ;; should throw an error eventually elsewhere.
@@ -400,8 +398,7 @@ pretty short so we do not care."
          (progn
            (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
              ;; fixme: sometimes connection error.
-             (http2-error connection +frame-size-error+
-                          "An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE"))
+             (connection-error 'too-big-frame connection))
            (if (plusp R) (warn "R is set, we should ignore it"))
            (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
                   (stream-or-connection
@@ -409,9 +406,8 @@ pretty short so we do not care."
                   (flag-keywords (frame-type-flag-keywords frame-type-object))
                   (padded (has-flag flags :padded flag-keywords)))
              (let ((padding-size (when padded (read-byte stream))))
-               (when (and padded (> (+ padding-size 1) length))
-                 (http2-error connection +protocol-error+
-                              "Length of the padding is the length of the frame payload or greater."))
+               (when (and padded (>= padding-size length))
+                 (connection-error 'too-big-padding connection))
                (funcall (frame-type-receive-fn frame-type-object)
                         stream connection stream-or-connection
                         (if padded (- length 1 padding-size) length) flags)
@@ -502,9 +498,6 @@ pretty short so we do not care."
       (when (get-flag flags :priority)
         (decf length 5)
         (read-priority stream http-stream))
-      (when (minusp length)
-        (http2-error connection +protocol-error+
-                     "Padding that exceeds the size remaining for the header block fragment MUST be treated as a PROTOCOL_ERROR."))
       (read-and-add-headers connection http-stream length (get-flag flags :end-headers))
       (if (get-flag flags :end-headers)
           ;; If the END_HEADERS bit is not set, this frame MUST be followed by
@@ -566,13 +559,11 @@ pretty short so we do not care."
      :new-stream-state idle)
     #'write-priority
     (lambda (stream connection http-stream length flags)
+      (declare (ignore connection flags))
       (unless (= length 5)
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-        (http2-error connection 'frame-size-error
-                     "A PRIORITY frame with a length other than 5 octets MUST be treated as a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-"))
-      (assert (= flags 0))
+        (http-stream-error 'frame-size-error stream))
       (read-priority stream http-stream)))
 
 (define-frame-type 3 :rst-stream-frame
@@ -603,8 +594,7 @@ pretty short so we do not care."
     (lambda (stream connection http-stream length flags)
       (assert (zerop flags))
       (unless (= length 4)
-        (http2-error connection 'frame-size-error
-                     "A RST_STREAM frame with a length other than 4 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+        (connection-error 'incorrect-rst-frame-size connection))
       (peer-resets-stream http-stream (read-bytes stream 4))))
 
 
@@ -644,8 +634,7 @@ pretty short so we do not care."
          (peer-acks-settings connection))
         (t
          (unless (zerop (mod length 6))
-           (http2-error connection +frame-size-error+
-                        "A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+           (connection-error 'incorrect-settings-frame-size connection))
          (loop
            for i from length downto 1 by 6
            for identifier = (read-bytes stream 2)
@@ -773,8 +762,7 @@ pretty short so we do not care."
     (lambda (stream connection http-stream length flags)
       (declare (ignore http-stream))
       (unless (= length 8)
-        (http2-error connection 'frame-size-error
-                     "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+        (connection-error 'incorrect-ping-frame-size connection))
       (let ((data (read-bytes stream 8)))
         (if (get-flag flags :ack)
             (do-pong connection data)
@@ -825,7 +813,9 @@ pretty short so we do not care."
     +-+-------------------------------------------------------------+
   #+end_src
 
-The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Section 5.2 for an overview.  Flow control operates at two levels: on each individual stream and on the entire connection."
+The WINDOW_UPDATE frame (type=0x8) is used to implement flow control; see
+Section 5.2 for an overview.  Flow control operates at two levels: on each
+individual stream and on the entire connection."
     ((window-size-increment 31))
     (:length 4
      :has-reserved t
@@ -837,10 +827,10 @@ The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;  see Secti
       (write-31-bits stream  window-size-increment reserved))
 
     (lambda (stream connection http-stream length flags)
-      (declare (ignore connection))
       (unless (zerop flags)
         (warn "Flags for windows size set: ~x/~b" flags flags))
-      (unless (= 4 length) (error "A WINDOW_UPDATE frame with a length other than 4 octets MUST be  treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+      (unless (= 4 length)
+        (connection-error 'incorrect-window-update-frame-size connection))
       (let ((window-size-increment (read-bytes stream 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
@@ -872,11 +862,7 @@ CONTINUATION frame without the END_HEADERS flag set."
     ;; If we needed continuation frame, we would be in READ-BYTE*.
     (lambda (stream-name connection http-stream length)
       (declare (ignore stream-name http-stream length))
-      (http2-error connection +protocol-error+
-                   "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
-   CONTINUATION frame without the END_HEADERS flag set.  A recipient that
-   observes violation of this rule MUST respond with a connection error (Section
-   5.4.1) of type PROTOCOL_ERROR.")))
+      (connection-error 'unexpected-continuation-frame connection)))
 
 (defun set-when-no-bytes-left-fn (http2-stream-id end-headers)
   "Read a header of continuation frame if continuation expected. Set

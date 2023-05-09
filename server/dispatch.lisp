@@ -220,6 +220,8 @@ signalled."
            (handler-case
                (loop (read-frame connection))
              (end-of-file () nil)
+             (connection-error ()
+               (sleep 1)) ; FIXME: why tests fail w/o it? finish-output helps not...
              (go-away ())
              (http-stream-error (e)
                (logger "Stream ~s closed, ~a" connection

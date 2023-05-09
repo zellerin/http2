@@ -634,50 +634,6 @@ ACK and same data.")
   (:method ((connection timeshift-pinging-connection) data)
     (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second))))
 
-(define-condition peer-should-go-away (serious-condition)
-  ((error-code     :accessor get-error-code     :initarg :error-code)
-   (debug-data     :accessor get-debug-data     :initarg :debug-data)
-   (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
-
-(define-condition http-stream-error (serious-condition)
-  ((error-code :accessor get-error-code :initarg :error-code)
-   (stream     :accessor get-stream     :initarg :stream)))
-
-(defmethod print-object ((err http-stream-error) out)
-  (with-slots (error-code debug-data stream) err
-      (print-unreadable-object (err out :type t)
-        (format out "~a: ~a" stream (get-error-name error-code)))))
-
-(defun http2-error (connection error-code debug-code &rest args)
-  "Signal to the peer the ERROR CODE and kill connection.
-
-For a client, raise error to signal we are done with connection.
-For a server, close the connection by invoking the restart."
-  (let ((formatted (apply #'format nil debug-code args)))
-    (write-goaway-frame connection
-                        0 ; fixme: last processed stream
-                        error-code
-                        (map 'vector 'char-code formatted) )
-    (finish-output (get-network-stream connection))
-    (typecase connection
-      (server-http2-connection
-       (sleep 1.0)
-       (invoke-restart 'close-connection))
-      (client-http2-connection
-       (error 'peer-should-go-away :error-code error-code
-                                   :debug-data formatted)))
-    nil))
-
-(define-condition go-away (serious-condition)
-  ((error-code     :accessor get-error-code     :initarg :error-code)
-   (debug-data     :accessor get-debug-data     :initarg :debug-data)
-   (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id)))
-
-(defmethod print-object ((err go-away) out)
-  (with-slots (error-code debug-data last-stream-id) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a (~s)" error-code (map 'string 'code-char debug-data)))))
-
 (defgeneric do-goaway (connection error-code last-stream-id debug-data)
   (:documentation
    "Called when a go-away frame is received. By default throws GO-AWAY condition if

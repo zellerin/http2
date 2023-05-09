@@ -16,12 +16,12 @@ other conditions."
       (loop
         initially (force-output (get-network-stream connection))
         while (or (null just-pending)
-                  (handler-case (listen (get-network-stream connection))
-                    (cl+ssl::ssl-error ()
-                      ;; peer may close connection and strange things happen
-                      )))
+                  (listen (get-network-stream connection)))
         do (read-frame connection))
-    (end-of-file () nil)))
+    (end-of-file () nil)
+    (cl+ssl::ssl-error ()
+      ;; peer may close connection and strange things happen
+      nil)))
 
 (defmacro with-http2-connection ((name class &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters.
@@ -30,7 +30,9 @@ other conditions."
      (unwind-protect
           (progn ,@body)
        (process-pending-frames ,name t)
-       (close ,name))))
+       (handler-case
+           (close ,name)
+         (cl+ssl::ssl-error-zero-return ())))))
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))

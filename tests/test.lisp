@@ -22,9 +22,9 @@
 
   (test-a-frame from-closed #'write-data-frame '(#(1 2 3 4 5))
                 :init-state 'closed
-                :expected-log-stream '((:payload #(1 2 3 4 5)))
-                :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 0
-                                                 :ERROR-CODE +STREAM-CLOSED+)))
+                :expected-log-stream nil
+                :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 0 :ERROR-CODE +STREAM-CLOSED+))
+                :expected-receiver-error 'bad-stream-state)
 
   (test-a-frame padded #'write-data-frame '(#(1 2 3 4 5)
                                             :padded #(0 1 2 3  6 7))

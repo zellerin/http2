@@ -11,6 +11,7 @@
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")
+                             (:file "errors")
                              (:file "frames")
                              (:file "classes")
                              (:file "hpack")
@@ -81,6 +82,7 @@
                (:file "test")
                (:file "tests-hpack")
                (:file "client-server-test")
+               (:file "errors-lowlevel")
                (:file "threaded-tests")
                (:file "errors")
                (:file "streams")))
