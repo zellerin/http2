@@ -86,42 +86,6 @@ a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
 padding."
   (dotimes (i padding-size) (read-bytes stream 1)))
 
-(eval-when (:compile-toplevel :load-toplevel)
-  (defvar *flag-codes*
-    '(padded 3 end-stream 0 ack 0 end-headers 2 priority 5)
-    "Property list of flag names and their bit index.
-
-This makes use of the fact that same flag name has same index in all headers
-where it is used.")
-
-  (defun flags-to-vars-code (flags)
-    "Create code to extract variables named as each member of *flag-codes*
-that is set to T if it is in FLAGS and appropriate bit is set in the read flags."
-    (loop for flag in *flag-codes* by #'cddr
-          collect `(,flag ,(when (member flag flags)
-                             `(plusp (ldb (byte 1 ,(getf *flag-codes* flag)) flags))))))
-
-  (defun collect-parameter-declarations (parameters)
-    `(declare ,@(loop for par in parameters
-                      collect `(,(if (integerp (second par))
-                                     `(unsigned-byte ,(second par))
-                                     (second par))
-                                ,(first par)))))
-
-  (defun make-writer-fn (writer-body writer-pars has-reserved)
-  `(lambda (stream-name ,@writer-pars)
-     (flet ((write-bytes (n value) (write-bytes stream-name n value))
-            (write-vector (vector) (write-sequence vector stream-name))
-            ,@(when has-reserved
-                `((write-31-bits (value)
-                                 (write-31-bits stream-name value reserved))
-                  (write-stream-id (value)
-                                   (write-stream-id stream-name value reserved)))))
-       (declare (ignorable #'write-vector #'write-bytes #'write-vector
-                           ,@(when has-reserved
-                               '(#'write-stream-id #'write-31-bits))))
-       ,@writer-body))))
-
 (defun possibly-padded-body (stream fn padded pars)
   "Add padding code to BODY if needed."
   (cond
