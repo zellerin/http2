@@ -39,6 +39,18 @@
                   (:header "baz" "bah")
                   (:end-headers)))
 
+  (test-a-frame header+prio #'write-headers-frame
+                `((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104))
+                  :end-headers t
+                  :priority ,(make-priority :exclusive t :stream-dependency 12
+                                     :weight 34))
+                :expected-log-stream
+                '((:new-prio :exclusive t :weight 34 :dependency 12)
+                  (:header "foo" "bar")
+                  (:header :path "/")
+                  (:header "baz" "bah")
+                  (:end-headers)))
+
   (test-a-frame no-end-headers #'write-headers-frame
                 '((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104)))
                 :expected-log-stream
