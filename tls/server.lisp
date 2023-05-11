@@ -3,16 +3,12 @@
 (in-package http2)
 
 (defun threaded-dispatch (fn tls-stream &rest pars)
-  "When used as *dispatch-fn* callback, open a new thread for a connection and
-handle it there.
+  "Apply FN on the TLS-STREAM and PARS in a new thread and return true value.
 
-Technically, apply FN-AND-PARS in a new thread."
+To be used as *dispatch-fn* callback for thread-per-connection request handling."
   (bt:make-thread (lambda ()
-                    (logger "Dispatching thread for ~s~%" tls-stream)
-                    (apply fn tls-stream pars)
-                    (close tls-stream))
-                  :name "HTTP/2 connection handler")
-  t) ; stream should be kept open here
+                    (apply fn tls-stream pars))
+                  :name "HTTP/2 connection handler"))
 
 (defvar *dispatch-fn* #'threaded-dispatch
   "How to call process-server-stream. Default is THREADED-DISPATCH.
@@ -38,28 +34,32 @@ Use TLS KEY and CERT for server identity.
 ARGS are passed to PROCESS-SERVER-STREAM that is invoked using *DISPATCH-FN* to
 allow threading, pooling etc.
 
-Wrap call to  with an error handler.
+Wrap call with an error handler for tls-level errors.
 
-Raise error when H2 is not the selected ALPN protocol."
-  (let ((keep-stream-open))
-    (unwind-protect
-         (let ((tls-stream
-                 (handler-case
-                     (cl+ssl:make-ssl-server-stream
-                      raw-stream
-                      :certificate cert
-                      :key key)
-                   (error (err)
-                     (describe err)
-                     (invoke-restart 'close-connection)))))
-           (if (equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-               (setf keep-stream-open
-                     (apply *dispatch-fn*
-                            #'process-server-stream  tls-stream args))
-               (error 'not-http2-stream
-                      :tls-stream tls-stream
-                      :alpn (cl+ssl:get-selected-alpn-protocol tls-stream))))
-      (unless keep-stream-open (close raw-stream)))))
+Raise error when H2 is not the selected ALPN protocol. In this case, the TLS
+stream is kept open and caller is supposed to either use it or close it."
+  (let ((tls-stream
+          (cl+ssl:make-ssl-server-stream
+           raw-stream
+           :certificate cert
+           :key key)))
+    (cond ((equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
+           (apply *dispatch-fn*
+                  (lambda (tls-stream &rest args)
+                    (handler-case
+                        (unwind-protect
+                             (apply #'process-server-stream tls-stream args)
+                          (close tls-stream))
+                      (cl+ssl::ssl-error-ssl (e)
+                        ;; Just ignore it for now, Maybe it should be
+                        ;; logged if not trivial - but what is trivial and
+                        ;; what is to log?
+                        )))
+                  tls-stream args))
+          (t (warn 'not-http2-stream
+                    :tls-stream tls-stream
+                    :alpn (cl+ssl:get-selected-alpn-protocol tls-stream))
+             (close tls-stream)))))
 
 (defun make-http2-tls-context ()
   "Make TLS context suitable for http2.
@@ -107,14 +107,13 @@ thread) to start testing it."
       (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
         (funcall announce-open-fn socket)
         (loop
-          (with-simple-restart (close-connection "Kill connection")
-            (wrap-to-tls-and-process-server-stream
-             (usocket:socket-stream
-              (handler-case
-                  (usocket:socket-accept socket :element-type '(unsigned-byte 8))
-                ;; ignore condition
-                (usocket:connection-aborted-error ())))
-             key cert :connection-class connection-class :connection connection)))))
+          (wrap-to-tls-and-process-server-stream
+           (usocket:socket-stream
+            (handler-case
+                (usocket:socket-accept socket :element-type '(unsigned-byte 8))
+              ;; ignore condition
+              (usocket:connection-aborted-error ())))
+           key cert :connection-class connection-class :connection connection))))
     (kill-server (&optional value)
       :report "Kill server"
       value)))
