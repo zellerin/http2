@@ -325,7 +325,7 @@ automatically, otherwise caller must ensure it."
   (:method (stream error-code)
     (unwind-protect
          (unless (eq error-code '+cancel+)
-           (error 'http-stream-error :stream stream
+           (warn 'http-stream-error :stream stream
                                      :error-code error-code))
       (close-http2-stream stream)))
   (:method :before ((stream logging-object) error-code)
@@ -339,14 +339,6 @@ automatically, otherwise caller must ensure it."
    RST_STREAM, the sending endpoint MUST be prepared to receive and
    process additional frames sent on the stream that might have been
    sent by the peer prior to the arrival of the RST_STREAM."))
-
-(defgeneric send-stream-error (stream error-code note)
-  (:method ((stream http2-stream) error-code note)
-    (with-slots (connection) stream
-      (write-rst-stream-frame stream error-code)
-      (force-output (get-network-stream connection))
-      (warn "Stream error: rst frame sent locally - ~s" note)
-      (close-http2-stream stream))))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)
@@ -519,8 +511,9 @@ PAYLOAD).")
    mandatory pseudo-header fields is malformed (Section 8.1.2.6)."
   ;; fixme: use place expanders
   `(if (,accessor stream)
-       (send-stream-error stream  +protocol-error+
-                          "Duplicated header")
+       (http-stream-error 'duplicate-request-header stream
+                          :name ',accessor
+                          :value ,new-value)
        (setf (,accessor stream) ,new-value)))
 
 (defgeneric add-header (connection stream name value)
@@ -531,9 +524,7 @@ PAYLOAD).")
               ((or string symbol) name)
               ((vector (unsigned-byte 8)) (decode-huffman name)))))
       (when (and (stringp name) (some #'upper-case-p name))
-        (send-stream-error stream  +protocol-error+
-                           "A request or response containing uppercase header field names MUST be treated as malformed. (...) Malformed requests or responses that are detected MUST be
-   treated as a stream error of type PROTOCOL_ERROR. "))
+        (http-stream-error 'lowercase-header-field-name stream))
       (call-next-method connection stream
                         decoded-name
                         (etypecase value
@@ -545,8 +536,9 @@ PAYLOAD).")
 
   (:method (connection (stream server-stream) (name symbol) value)
     (when (get-seen-text-header stream)
-      (send-stream-error stream  +protocol-error+
-                         "Pseudo header follows text header."))
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value))
     (case name
       (:method
        (check-place-empty-and-set-it value get-method))
@@ -557,19 +549,21 @@ PAYLOAD).")
       (:path
        (check-place-empty-and-set-it value get-path))
       (t
-       (send-stream-error stream  +protocol-error+
-                          "Incorrect pseudo header on response"))))
+       (http-stream-error 'incorrect-request-pseudo-header  stream
+                          :name name :value value))))
 
   (:method (connection (stream client-stream) (name symbol) value)
     (when (get-seen-text-header stream)
-      (send-stream-error stream  +protocol-error+
-                         "Pseudo header follows text header."))
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value))
     (case name
       (:status
           (setf (get-status stream) value))
       (t
-       (send-stream-error stream  +protocol-error+
-                          "Incorrect pseudo header on request"))))
+       (http-stream-error 'incorrect-response-pseudo-header stream
+                         :name name
+                         :value value))))
 
   (:method :after (connection (stream log-headers-mixin) name value)
     (format t "~&header: ~a = ~a~%" name value))
@@ -601,8 +595,9 @@ PAYLOAD).")
   (:method (connection (stream client-stream))
     ;; Headers sanity check
     (unless (get-status stream)
-      (send-stream-error stream  +protocol-error+
-                         ":status pseudo-header field MUST be included in all responses"))
+      (http-stream-error 'missing-pseudo-header stream
+                         :name :status
+                         :value 'missing))
     ;; next header section may contain another :status
     (setf (get-seen-text-header stream) nil))
 
@@ -610,10 +605,9 @@ PAYLOAD).")
     ;; Headers sanity check
     (unless (or (equal (get-method stream) "CONNECT")
              (and (get-method stream) (get-scheme stream) (get-path stream)))
-      (send-stream-error stream  +protocol-error+
-                         "All HTTP/2 requests MUST include exactly one valid value for the
-   :method, :scheme, and :path pseudo-header fields, unless it is
-   a CONNECT request"))))
+      (http-stream-error 'missing-pseudo-header stream
+                         :name "One of pseudo headers"
+                         :value 'missing))))
 
 (defgeneric do-ping (connection data)
   (:documentation

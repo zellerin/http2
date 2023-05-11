@@ -83,12 +83,10 @@
                 '((:new-prio :exclusive nil :weight 34 :dependency 12)))
 
   (test-a-frame undefined-code #'write-rst-stream-frame '(#xdeadbeef)
-                :expected-log-stream nil ; closed stream
-                :expected-receiver-error 'http-stream-error)
+                :expected-log-stream nil)  ; closed stream
 
   (test-a-frame protocol-error #'write-rst-stream-frame '(1)
-                :expected-log-stream nil ; closed stream
-                :expected-receiver-error 'http-stream-error)
+                :expected-log-stream nil)  ; closed stream
 
   (test-a-frame nil 'write-settings-frame '(((1 . 2)))
                 :expected-log-connection '((:setting :header-table-size 2)

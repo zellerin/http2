@@ -71,19 +71,22 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
   (:documentation
    "Frame cannot be applied to stream in particular state"))
 
-(define-condition http-stream-error (error)
+(define-condition http-stream-error (warning)
   ((code   :accessor get-code   :initarg :code)
    (stream :accessor get-stream :initarg :stream)))
 
 (defmethod print-object ((err http-stream-error) out)
-  (with-slots (error-code debug-data stream) err
+  (with-slots (stream) err
       (print-unreadable-object (err out :type t)
-        (format out "~a: ~a" stream (get-error-name error-code)))))
+        (format out "on ~a" stream))))
 
-
-
-(defun http-stream-error (e stream)
-  (error (make-instance e :stream stream)))
+(defun http-stream-error (e stream &rest args)
+  "We detected an error on peer stream. So we send a RST frame, warn in case someone in interested, and go on."
+  (let ((e (apply #'make-instance e :stream stream args)))
+    (write-rst-stream-frame stream (get-code e) )
+    (force-output (get-network-stream stream))
+    (warn e)
+    (close-http2-stream stream)))
 
 (define-condition incorrect-frame-size (http-stream-error)
   ()
@@ -123,3 +126,44 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that
    observes violation of this rule MUST respond with a connection error (Section
    5.4.1) of type PROTOCOL_ERROR."))
+
+(define-condition stream-protocol-error (http-stream-error)
+  ()
+  (:default-initargs :code +protocol-error+))
+
+(define-condition header-error (stream-protocol-error)
+  ((name :accessor get-name :initarg :name)
+   (value  :accessor get-value  :initarg :value)))
+
+(define-condition incorrect-pseudo-header (header-error)
+  ())
+
+(define-condition pseudo-header-after-text-header (header-error)
+  ()
+  (:documentation "Pseudo header follows text header."))
+
+(define-condition incorrect-response-pseudo-header (header-error)
+  ())
+
+(define-condition incorrect-request-pseudo-header (header-error)
+  ())
+
+(define-condition duplicate-request-header (header-error)
+  ())
+
+(define-condition lowercase-header-field-name (header-error)
+  ()
+  (:documentation
+   "A request or response containing uppercase header field names MUST be treated as malformed. (...) Malformed requests or responses that are detected MUST be
+   treated as a stream error of type PROTOCOL_ERROR. "))
+
+(define-condition missing-pseudo-header (header-error)
+  ()
+  (:documentation
+   ":status pseudo-header field MUST be included in all responses.
+
+ All HTTP/2 requests MUST include exactly one valid value for the
+   :method, :scheme, and :path pseudo-header fields, unless it is
+   a CONNECT request.")
+
+  )
