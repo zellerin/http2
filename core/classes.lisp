@@ -74,7 +74,7 @@
   ((connection       :accessor get-connection       :initarg :connection)
    (network-stream   :accessor get-network-stream   :initarg :network-stream)
    (stream-id        :accessor get-stream-id        :initarg :stream-id
-                     :type (unsigned-byte 31))
+                     :type stream-id)
    (state            :accessor get-state            :initarg :state
                      :type http2-stream-state)
    (data             :accessor get-data             :initarg :data)
