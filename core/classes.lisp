@@ -391,9 +391,6 @@ the strem or connection.")
     (add-log object `(:window-size-increment ,(get-peer-window-size object) + ,increment)))
 
   (:method (object increment)
-    (when (zerop increment)
-      ;; fixme: why?
-      (http2-error object +protocol-error+ "Zero sized window size increment."))
     (incf (get-window-size object) increment)))
 
 (defgeneric set-peer-setting (connection name value)

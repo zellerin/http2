@@ -30,10 +30,10 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
 (defun connection-error (class connection &rest args)
   (let ((err (apply #'make-instance class :connection connection args)))
     (with-slots (code) err
-        (write-goaway-frame connection
-                            0             ; fixme: last processed stream
-                            code
-                            (map 'vector 'char-code (symbol-name class))))
+      (write-goaway-frame connection
+                          0             ; fixme: last processed stream
+                          code
+                          (map 'vector 'char-code (symbol-name class))))
     (finish-output (get-network-stream connection))
     (error err)))
 
@@ -41,25 +41,26 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
   (print-unreadable-object (ce out :type t)
     (format out "on ~a" (get-connection ce))))
 
+(define-condition protocol-error (connection-error)
+  ()
+  (:default-initargs :code +protocol-error+))
+
 (define-condition too-big-frame (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
 
-(define-condition too-big-padding (connection-error)
+(define-condition too-big-padding (protocol-error)
   ()
-  (:default-initargs :code +protocol-error+)
   (:documentation
    "Length of the padding is the length of the frame payload or greater."))
 
-(define-condition our-id-created-by-peer (connection-error)
-  ()
-  (:default-initargs :code +protocol-error+))
+(define-condition our-id-created-by-peer (protocol-error)
+  ())
 
-(define-condition frame-type-needs-stream (connection-error)
+(define-condition frame-type-needs-stream (protocol-error)
   ()
-  (:default-initargs :code  +protocol-error+)
   (:documentation
    "Frame MUST be associated with a stream. If a frame is received whose
     stream identifier field is 0x0, the recipient MUST respond with a
@@ -118,9 +119,8 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
   (:documentation
    "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
 
-(define-condition unexpected-continuation-frame (connection-error)
+(define-condition unexpected-continuation-frame (protocol-error)
   ()
-  (:default-initargs :code +protocol-error+)
   (:documentation
    "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that
@@ -164,6 +164,15 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
 
  All HTTP/2 requests MUST include exactly one valid value for the
    :method, :scheme, and :path pseudo-header fields, unless it is
-   a CONNECT request.")
+   a CONNECT request."))
 
-  )
+(define-condition null-stream-window-update (http-stream-error)
+  ()
+  (:default-initargs :code +protocol-error+)
+  (:documentation
+   "A receiver MUST treat the receipt of a WINDOW_UPDATE frame with a flow-control window increment of 0 as a stream error."))
+
+(define-condition null-connection-window-update (protocol-error)
+  ()
+  (:documentation
+   "Errors on the connection flow-control window MUST be treated as a connection error."))

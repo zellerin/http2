@@ -834,7 +834,13 @@ individual stream and on the entire connection."
       (let ((window-size-increment (read-bytes stream 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
-        (apply-window-size-increment http-stream (ldb (byte 31 0) window-size-increment)))))
+        (cond
+          ((plusp window-size-increment)
+           (apply-window-size-increment http-stream (ldb (byte 31 0) window-size-increment)))
+          ((eq connection http-stream)
+           (connection-error 'null-connection-window-update connection))
+          (t
+           (http-stream-error 'null-stream-window-update http-stream))))))
 
 (defun account-frame-window-contribution (connection stream length)
   (decf (get-window-size connection) length)
