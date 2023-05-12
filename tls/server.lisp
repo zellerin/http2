@@ -39,10 +39,15 @@ Wrap call with an error handler for tls-level errors.
 Raise error when H2 is not the selected ALPN protocol. In this case, the TLS
 stream is kept open and caller is supposed to either use it or close it."
   (let ((tls-stream
-          (cl+ssl:make-ssl-server-stream
-           raw-stream
-           :certificate cert
-           :key key)))
+          (handler-case
+              (cl+ssl:make-ssl-server-stream
+               raw-stream
+               :certificate cert
+               :key key)
+            (error (e)
+              (print e)
+              (close raw-stream)
+              (return-from wrap-to-tls-and-process-server-stream)))))
     (cond ((equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
            (apply *dispatch-fn*
                   (lambda (tls-stream &rest args)
@@ -50,7 +55,7 @@ stream is kept open and caller is supposed to either use it or close it."
                         (unwind-protect
                              (apply #'process-server-stream tls-stream args)
                           (close tls-stream))
-                      (cl+ssl::ssl-error-ssl (e)
+                      (cl+ssl::ssl-error-ssl ()
                         ;; Just ignore it for now, Maybe it should be
                         ;; logged if not trivial - but what is trivial and
                         ;; what is to log?
