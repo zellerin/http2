@@ -51,13 +51,6 @@
                   (:header "baz" "bah")
                   (:end-headers)))
 
-  (test-a-frame no-end-headers #'write-headers-frame
-                '((#(0 130 148 231 3 98 97 114 132 0 3 98 97 122 3 98 97 104)))
-                :expected-log-stream
-                '((:header "foo" "bar")
-                  (:header :path "/")
-                  (:header "baz" "bah")))
-
 ;;;; this does not fit the test frame at the moment.
   #+nil  (test-a-frame #'write-headers-frame
                        '((("foo" "bar")

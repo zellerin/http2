@@ -320,9 +320,12 @@ Also do some checks on the stream id based on the frame type."
          (peer-opens-http-stream-really-open connection id new-stream-state))
         ((and our-id (>= id (get-id-to-use connection)))
          (connection-error 'our-id-created-by-peer connection))
-        ((and (not our-id) (> id last-id-seen)) :idle)
-        ;; stream not seen yet is in idle state. This should not happen much and
-        ;; should throw an error eventually elsewhere.
+        ((and (not our-id) (> id last-id-seen))
+         (connection-error 'bad-stream-state connection
+                           :actual 'idle
+                           :code +protocol-error+
+                           :allowed '(not idle)
+                           :stream-id id))
         ((frame-type-old-stream-ok frame-type)
          (check-stream-state-ok connection
                                 (find-just-stream-by-id streams id)
@@ -398,7 +401,9 @@ pretty short so we do not care."
          (progn
            (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
              ;; fixme: sometimes connection error.
-             (connection-error 'too-big-frame connection))
+             (connection-error 'too-big-frame connection
+                               :frame-size length
+                               :max-frame-size (get-max-frame-size connection)))
            (if (plusp R) (warn "R is set, we should ignore it"))
            (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
                   (stream-or-connection
@@ -406,6 +411,7 @@ pretty short so we do not care."
                   (flag-keywords (frame-type-flag-keywords frame-type-object))
                   (padded (has-flag flags :padded flag-keywords)))
              (let ((padding-size (when padded (read-byte stream))))
+               (declare ((or null (unsigned-byte 8)) padding-size))
                (when (and padded (>= padding-size length))
                  (connection-error 'too-big-padding connection))
                (funcall (frame-type-receive-fn frame-type-object)
@@ -504,15 +510,22 @@ pretty short so we do not care."
           ;; another CONTINUATION frame.
           (process-end-headers connection http-stream))))
 
+
 (defun read-and-add-headers (connection http-stream length end-headers)
-  (let ((*bytes-left* length)
-        (*when-no-bytes-left-fn* nil))
-    (set-when-no-bytes-left-fn (get-stream-id http-stream) end-headers)
-    (loop while (plusp *bytes-left*)
-          for (name value) = (read-http-header (get-network-stream connection)
-                                               (get-decompression-context connection))
-          when name
-          do (add-header connection http-stream name value))))
+  (loop
+    with http-stream-id = (get-stream-id http-stream)
+    with *bytes-left* = length
+    and  *when-no-bytes-left-fn* =
+                                 (lambda (stream)
+                                   (if end-headers
+                                       (connection-error 'missing-header-octets connection))
+                                   (multiple-value-setq (*bytes-left* end-headers)
+                                     (read-continuation-frame-on-demand stream http-stream-id)))
+    while (or (plusp *bytes-left*) (null end-headers))
+    for (name value) = (read-http-header (get-network-stream connection)
+                                         (get-decompression-context connection))
+    when name
+      do (add-header connection http-stream name value)))
 
 #|
    Prioritization information in a HEADERS frame is logically equivalent
@@ -866,29 +879,25 @@ CONTINUATION frame without the END_HEADERS flag set."
 
     ;; reader
     ;; If we needed continuation frame, we would be in READ-BYTE*.
-    (lambda (stream-name connection http-stream length)
-      (declare (ignore stream-name http-stream length))
+    ;; TODO: Confirm and verify, otherwise require state CONTINUATION-NEEDED.
+    (lambda (stream-name connection http-stream length flags)
+      (declare (ignore stream-name http-stream length flags))
       (connection-error 'unexpected-continuation-frame connection)))
 
-(defun set-when-no-bytes-left-fn (http2-stream-id end-headers)
-  "Read a header of continuation frame if continuation expected. Set
-*when-no-bytes-left-fn* appropriately."
-  (setf *when-no-bytes-left-fn*
-        (if end-headers
-            (lambda (stream) (error "No bytes left in ~a, should raise malformed headers error"
-                                    stream))
-            (lambda (stream)
-              (let ((length (read-bytes stream 3))
-                    (type (read-byte stream))
-                    (flags (read-byte stream))
-                    (stream-identifier (ldb (byte 31 0) (read-bytes stream 4))))
-                (unless (= type +continuation-frame+)
-                  (error "Expected continuation frame and got ~a, should handle this" type))
-                (unless (= http2-stream-id stream-identifier)
-                  (error "Expected continuation for ~d, got ~d" http2-stream-id
-                         stream-identifier))
-                (set-when-no-bytes-left-fn http2-stream-id (plusp (logand flags #x4)))
-                (setf *bytes-left* length))))))
+(defun read-continuation-frame-on-demand (stream http2-stream-id)
+  "Read continuation frame header when it is expected on STREAM.
+
+Return two values, length of the payload and END-HEADERS flag."
+  (let ((length (read-bytes stream 3))
+        (type (read-byte stream))
+        (flags (read-byte stream))
+        (stream-identifier (ldb (byte 31 0) (read-bytes stream 4))))
+    (unless (= type +continuation-frame+)
+      (error "Expected continuation frame and got ~a, should handle this" type))
+    (unless (= http2-stream-id stream-identifier)
+      (error "Expected continuation for ~d, got ~d" http2-stream-id
+             stream-identifier))
+    (values length (get-flag flags :end-headers))))
 
 (define-frame-type 10 :altsvc-frame
     "See RFC 7838.  The ALTSVC HTTP/2 frame advertises the availability of an
@@ -907,13 +916,13 @@ CONTINUATION frame without the END_HEADERS flag set."
 
     (lambda (stream origin alt-svc-field-value)
       (write-bytes stream 2 (length origin))
-     (when origin
-       (write-sequence (map '(vector unsigned-byte 8)
-                            'char-code origin)
-                       stream))
-     (write-sequence (map '(vector unsigned-byte 8)
-                        'char-code alt-svc-field-value)
-                     stream))
+      (when origin
+        (write-sequence (map '(vector unsigned-byte 8)
+                             'char-code origin)
+                        stream))
+      (write-sequence (map '(vector unsigned-byte 8)
+                           'char-code alt-svc-field-value)
+                      stream))
 
     ;; reader
     (lambda (stream connection http-stream length flags)

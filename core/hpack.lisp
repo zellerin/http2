@@ -379,8 +379,13 @@ Neither name of the header nor value is in table, so read both as literals."
   (list (read-string-from-stream stream) (read-string-from-stream stream)))
 
 (defun read-http-header (stream context)
-  "Read header field from network stream associated with the CONNECTION."
-  (let* ((octet0 (read-byte* stream)))
+  "Read header field from network stream associated with the CONNECTION.
+
+Note that we can get missing-header-octets on first octet if we have zero length
+continuation frame."
+  (let* ((octet0 (handler-case (read-byte* stream)
+                   (http2::missing-header-octets ()
+                     (return-from read-http-header)))))
     (cond
       ((plusp (ldb (byte 1 7) octet0))  ;; 1xxx xxxx
        (read-from-tables (get-integer-from-octet stream octet0 7) context))

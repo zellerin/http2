@@ -46,7 +46,8 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
   (:default-initargs :code +protocol-error+))
 
 (define-condition too-big-frame (connection-error)
-  ()
+  ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)
+   (frame-size     :accessor get-frame-size     :initarg :frame-size))
   (:default-initargs :code +frame-size-error+)
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
@@ -66,9 +67,36 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
     stream identifier field is 0x0, the recipient MUST respond with a
     connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
 
+(define-condition new-stream-id-too-low (protocol-error)
+  ((stream-id       :accessor get-stream-id       :initarg :stream-id)
+   (max-seen-so-far :accessor get-max-seen-so-far :initarg :max-seen-so-far))
+  (:documentation
+   "The identifier of a newly established stream MUST be numerically
+      greater than all streams that the initiating endpoint has opened or
+      reserved (max was ~d).  This governs streams that are opened using a
+      HEADERS frame and streams that are reserved using PUSH_PROMISE.  An
+      endpoint that receives an unexpected stream identifier MUST respond with a
+      connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
+
+(define-condition incorrect-enable-push-value (protocol-error)
+  ((value :accessor get-value :initarg :value))
+  (:documentation "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
+
+(define-condition incorrect-frame-size-value (protocol-error)
+  ((value :accessor get-value :initarg :value))
+  (:documentation
+   "Frame size MUST be between the initial value 16384 and the maximum allowed frame
+size (2^24-1 or 16,777,215 octets), inclusive."))
+
+(define-condition incorrect-initial-window-size-value (protocol-error)
+  ((value :accessor get-value :initarg :value))
+  (:documentation
+   "SETTINGS_INITIAL_WINDOW_SIZE must be below 2^31."))
+
 (define-condition bad-stream-state (connection-error)
-  ((allowed :accessor get-allowed :initarg :allowed)
-   (actual  :accessor get-actual  :initarg :actual))
+  ((allowed   :accessor get-allowed   :initarg :allowed)
+   (actual    :accessor get-actual    :initarg :actual)
+   (stream-id :accessor get-stream-id :initarg :stream-id))
   (:documentation
    "Frame cannot be applied to stream in particular state"))
 
@@ -79,13 +107,14 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
 (defmethod print-object ((err http-stream-error) out)
   (with-slots (stream) err
       (print-unreadable-object (err out :type t)
-        (format out "on ~a" stream))))
+      #+nil  (format out "on ~a" stream))))
 
 (defun http-stream-error (e stream &rest args)
   "We detected an error on peer stream. So we send a RST frame, warn in case someone in interested, and go on."
   (let ((e (apply #'make-instance e :stream stream args)))
-    (write-rst-stream-frame stream (get-code e) )
-    (force-output (get-network-stream stream))
+    (unless (eql stream :closed)
+      (write-rst-stream-frame stream (get-code e) )
+      (force-output (get-network-stream stream)))
     (warn e)
     (close-http2-stream stream)))
 
@@ -154,8 +183,9 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
 (define-condition lowercase-header-field-name (header-error)
   ()
   (:documentation
-   "A request or response containing uppercase header field names MUST be treated as malformed. (...) Malformed requests or responses that are detected MUST be
-   treated as a stream error of type PROTOCOL_ERROR. "))
+   "A request or response containing uppercase header field names MUST be treated
+   as malformed. (...) Malformed requests or responses that are detected MUST be
+   treated as a stream error of type PROTOCOL_ERROR."))
 
 (define-condition missing-pseudo-header (header-error)
   ()
@@ -176,3 +206,7 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
   ()
   (:documentation
    "Errors on the connection flow-control window MUST be treated as a connection error."))
+
+(define-condition missing-header-octets (protocol-error)
+  ()
+  (:documentation "We try to process headers, but end up in a middle of one."))

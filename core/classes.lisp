@@ -260,14 +260,9 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
 
 (defun peer-opens-http-stream-really-open (connection stream-id state)
   (unless (> stream-id (get-last-id-seen connection))
-    (http2-error connection +protocol-error+
-                   "The identifier of a newly established stream (~d) MUST be
-                   numerically greater than all streams that the initiating
-                   endpoint has opened or reserved (max was ~d).  This governs streams that
-                   are opened using a HEADERS frame and streams that are
-                   reserved using PUSH_PROMISE.  An endpoint that receives an
-                   unexpected stream identifier MUST respond with a connection
-                   error (Section 5.4.1) of type PROTOCOL_ERROR." stream-id (get-last-id-seen connection)))
+    (connection-error 'new-stream-id-too-low connection
+                      :stream-id stream-id
+                      :max-seen-so-far (get-last-id-seen connection)))
     ;; todo: count and check open streams
   (setf (get-last-id-seen connection) stream-id)
   (push (make-instance (get-stream-class connection)
@@ -419,15 +414,15 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (:method (connection (name (eql :initial-window-size)) value)
     (declare (type (unsigned-byte 32) value))
     (if (> value (1- (expt 2 31)))
-        (http2-error connection +flow-control-error+ "SETTINGS_INITIAL_WINDOW_SIZE must be below 2^31, is ~x." value)
+        (connection-error 'incorrect-initial-window-size-value connection
+                          :value value)
         (setf (get-initial-peer-window-size connection) value)))
 
   (:method (connection (name (eql :max-frame-size)) value)
     (if (>= 16777215 value 16384)
         (setf (get-max-peer-frame-size connection) value)
-        (http2-error +protocol-error+
-                     "Frame size MUST be between the initial value 16384 and the maximum allowed frame
-size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
+        (connection-error 'incorrect-frame-size-value
+         :value value)))
 
   (:method (connection (name (eql :max-header-list-size)) value)
     ;; do something
@@ -435,13 +430,14 @@ size (2^24-1 or 16,777,215 octets), inclusive, and is ~d" value)))
 
   (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
     (declare (type (unsigned-byte 32) value))
-    (unless (= value 0)
-      (http2-error connection +protocol-error+ "Server must have ENABLE-PUSH 0.")))
+    (unless (zerop value)
+      (connection-error 'incorrect-enable-push-value connection
+                        :value value)))
 
   (:method ((connection server-http2-connection) (name (eql :enable-push)) value)
     (declare (type (unsigned-byte 32) value))
     (if (> value 1)
-        (http2-error connection  +protocol-error+ "Client must have ENABLE-PUSH 0 or 1.")
+        (connection-error 'incorrect-enable-push-value connection)
         (setf (get-peer-accepts-push connection) (plusp value))))
 
   (:method (connection (name (eql :max-concurrent-streams)) value)
