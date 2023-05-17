@@ -21,6 +21,12 @@ pipe: writer and reader."
             (make-instance 'pipe-end-for-read :buffer buffer
                                               :index 0))))
 
+(defmethod print-object ((pipe pipe-end-for-read) stream)
+  (print-unreadable-object (pipe stream :type t)))
+
+(defmethod print-object ((pipe pipe-end-for-write) stream)
+  (print-unreadable-object (pipe stream :type t)))
+
 (defun make-full-pipe ()
   "Two values, each representing one end of a full binary pipe: writes to ones are
 read from the other."

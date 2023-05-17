@@ -1,16 +1,17 @@
 (in-package #:http2)
 
 (defun test-bad-headers (headers)
+  "As a client, send (presumably incorrect) HEADERS to server and read the response."
   (fiasco:signals http-stream-error
-      (with-http2-connection
-                       (connection
-                        'vanilla-client-connection
-                        :network-stream (connect-to-tls-server *server-domain* :port *server-port*))
-                     (loop
-                       with stream = (open-http2-stream connection headers)
-                       do
-                          ;; if it does not signal eventually we lose.
-                          (read-frame connection)))))
+    (with-http2-connection
+        (connection
+         'vanilla-client-connection
+         :network-stream (connect-to-tls-server *server-domain* :port *server-port*))
+      (loop
+        with stream = (open-http2-stream connection headers)
+        do
+           ;; if it does not signal eventually we lose.
+           (read-frame connection)))))
 
 (fiasco:deftest empty-headers ()
   (test-bad-headers nil))
@@ -26,13 +27,6 @@
                       (:scheme "https")
                       (:authority "localhost")
                       ("FOO" "bar"))))
-
-(defmacro define-protocol-error-test (name error &body body)
-  `(fiasco:deftest ,name ()
-       (let ((err (fiasco:signals go-away
-                    ,@body)))
-         (fiasco:is (eq ',error (get-error-code err)))
-         err)))
 
 (define-protocol-error-test send-bad-stream-id +protocol-error+
   "Send request with bad stream ID. Should raise a protocol error."
@@ -50,7 +44,7 @@
     (process-pending-frames connection)))
 
 
-(define-protocol-error-test send-too-low-stream-id +stream-closed+
+(define-protocol-error-test send-too-low-stream-id/odd +stream-closed+
   "The low IDs are supposed to be closed when higher number is seen."
   (with-http2-connection
       (connection

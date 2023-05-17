@@ -210,3 +210,10 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 (define-condition missing-header-octets (protocol-error)
   ()
   (:documentation "We try to process headers, but end up in a middle of one."))
+
+(define-condition unsupported-feature (warning)
+  ())
+
+(define-condition reserved-bit-set (unsupported-feature)
+  ()
+  (:documentation "Reserved bit is set in received frame header. We ignore it."))

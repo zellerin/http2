@@ -1,28 +1,17 @@
 (in-package :http2)
 
-(defmacro with-test-harness (&body body)
-  `(multiple-value-bind (write-stream read-stream) (make-full-pipe)
-     (let ((sender (make-instance 'vanilla-client-connection
-                                  :network-stream write-stream))
-            (receiver (make-instance 'vanilla-server-connection
-                                     :network-stream read-stream)))
-       (read-client-preface receiver)
-       (read-frame receiver) ; settings
-       ,@body)))
-
 (fiasco:deftest too-big-frame/test ()
   ;; default max-frame-size is 16384, 0x4000
   (fiasco:signals too-big-frame
-    (with-test-harness
+    (with-test-client-to-server-setup
       (write-frame sender 65536 0 nil
                    (lambda (a) (write-sequence (make-array 65536 :initial-element 0) a)))
-      (read-frame receiver)
-      (break))))
+      (read-frame receiver))))
 
-(fiasco:deftest too-big-padding/test ()
+(fiasco:deftest error/too-big-padding ()
   ;; make payload smaller than padding
   (fiasco:signals too-big-padding
-    (with-test-harness
+    (with-test-client-to-server-setup
       (write-frame
        (create-new-local-stream sender)
        -1 +headers-frame+
@@ -32,24 +21,22 @@
       (read-frame receiver)))
 
   (fiasco:signals too-big-padding
-    (multiple-value-bind (write-stream read-stream) (make-full-pipe)
-      (let ((sender (make-dummy-connection write-stream))
-            (receiver (make-dummy-connection read-stream)))
-        (write-frame
-         (create-new-local-stream sender)
-         -1 +headers-frame+
-         (list :padded (make-array 10 :element-type '(unsigned-byte 8)))
-         (constantly nil) #())
-        (read-frame receiver)))))
+    (with-test-client-to-server-setup
+      (write-frame
+       (create-new-local-stream sender)
+       -1 +headers-frame+
+       (list :padded (make-array 10 :element-type '(unsigned-byte 8)))
+       (constantly nil) #())
+      (read-frame receiver))))
 
-(fiasco:deftest null-window-increments/test ()
+(fiasco:deftest error/null-connection-window-update ()
   (fiasco:signals null-connection-window-update
-    (with-test-harness
-        (write-window-update-frame sender 0)
-        (read-frame receiver)))
+    (with-test-client-to-server-setup
+      (write-window-update-frame sender 0)
+      (read-frame receiver)))
 
   (fiasco:signals null-stream-window-update
-    (with-test-harness
+    (with-test-client-to-server-setup
       (let ((new-stream (create-new-local-stream sender)))
         (write-headers-frame new-stream
                              (http2/hpack:request-headers "GET" "/" "localhost")
@@ -58,8 +45,8 @@
         (read-frame receiver)
         (read-frame receiver)))))
 
-(fiasco:deftest open-implicitly-closed-stream ()
-  (with-test-harness
+(fiasco:deftest error/bad-stream-state ()
+  (with-test-client-to-server-setup
     (write-headers-frame
      (make-instance (get-stream-class sender)
                     :stream-id 3
@@ -80,27 +67,55 @@
     (fiasco:signals bad-stream-state
       (read-frame receiver))))
 
-(fiasco:deftest test-continuation-header ()
-  "Let us take a header and try to split it on all places."
-  (loop with headers = (car (http2/hpack:request-headers "GET" "/" "localhost"))
-        for split-idx from 0 to (length headers)
-        do
-           (with-test-harness
-             (let ((new-stream (create-new-local-stream sender)))
-               (write-headers-frame new-stream
-                                    (list (subseq headers 0 split-idx))
-                                    :end-headers nil)
-               (write-continuation-frame new-stream
-                                         (list (subseq headers split-idx ))
-                                         :end-headers t)
-               (read-frame receiver)
-               (when (listen read-stream)
-                 ;; the frame might have already been consumed
-                 (read-frame receiver))
-               (let ((received-stream (car (get-streams receiver)) ))
-                 (fiasco:is
-                     (equal "/" (get-path received-stream)))
-                 (fiasco:is
-                     (equal "GET" (get-method received-stream)))
-                 (fiasco:is
-                     (eq 'open (get-state received-stream))))))))
+(fiasco:deftest error/bad-stream-state/2 ()
+  (with-test-client-to-server-setup
+    (write-data-frame
+     (make-instance (get-stream-class sender)
+                    :stream-id 1
+                    :connection sender
+                    :network-stream (get-network-stream sender)
+                    :state 'open)
+     #())
+    (fiasco:signals bad-stream-state
+      (read-frame receiver))))
+
+(fiasco:deftest error/frame-type-needs-stream ()
+  (with-test-client-to-server-setup
+    (write-headers-frame
+     sender
+     (http2/hpack:request-headers "GET" "/" "localhost")
+     :end-headers t)
+    (fiasco:signals frame-type-needs-stream
+      (read-frame receiver))))
+
+(fiasco:deftest error/frame-type-needs-connection ()
+  ""
+  (with-test-client-to-server-setup
+    (let ((stream (make-instance (get-stream-class sender)
+                                 :stream-id 1
+                                 :connection sender
+                                 :network-stream (get-network-stream sender)
+                                 :state 'open)))
+      (write-headers-frame
+       stream
+       (http2/hpack:request-headers "GET" "/" "localhost")
+       :end-headers t)
+      (read-frame receiver)
+      (write-settings-frame stream nil))
+    (fiasco:signals frame-type-needs-connection
+      (read-frame receiver))))
+
+(fiasco:deftest error/reserved-bit-set ()
+  ""
+  (with-test-client-to-server-setup
+    (let ((stream (make-instance (get-stream-class sender)
+                                 :stream-id 1
+                                 :connection sender
+                                 :network-stream (get-network-stream sender)
+                                 :state 'open)))
+      ;; we do not allow to write R until we go to the lowest level
+      (write-frame-header write-stream (length (car (http2/hpack:request-headers "GET" "/" "localhost")))
+                          1 (flags-to-code '(:end-headers t)) stream t)
+      (write-sequences write-stream (http2/hpack:request-headers "GET" "/" "localhost"))
+      (fiasco:signals reserved-bit-set
+        (read-frame receiver)))))

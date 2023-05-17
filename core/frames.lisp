@@ -404,7 +404,7 @@ pretty short so we do not care."
              (connection-error 'too-big-frame connection
                                :frame-size length
                                :max-frame-size (get-max-frame-size connection)))
-           (if (plusp R) (warn "R is set, we should ignore it"))
+           (if (plusp R) (warn 'reserved-bit-set))
            (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
                   (stream-or-connection
                     (find-http-stream-by-id connection http-stream frame-type-object))
