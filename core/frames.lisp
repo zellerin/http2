@@ -136,15 +136,6 @@ where it is used.")
   (when (member flag-name allowed)
        (get-flag flags flag-name)))
 
-(defun read-possibly-padded (stream connection http-stream length padded flags fn)
-  (if padded
-      (let ((padding-size (read-byte stream)))
-        (when (> (+ padding-size 1) length)
-          (connection-error 'too-big-padding connection))
-        (funcall fn stream connection http-stream (- length 1 padding-size) flags)
-        (read-padding stream padding-size))
-      (funcall fn stream connection http-stream length flags)))
-
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
                                 must-have-stream-in may-have-connection
@@ -330,7 +321,10 @@ Also do some checks on the stream id based on the frame type."
          (check-stream-state-ok connection
                                 (find-just-stream-by-id streams id)
                                 (frame-type-old-stream-ok frame-type)
-                                (frame-type-bad-state-error frame-type)))))))
+                                (frame-type-bad-state-error frame-type)))
+        (t
+         (connection-error 'frame-type-needs-connection connection
+                           :frame-type frame-type))))))
 
 (defun find-just-stream-by-id (streams id)
   "Find STREAM by ID in STREAMS, or :closed

@@ -67,6 +67,11 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
     stream identifier field is 0x0, the recipient MUST respond with a
     connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
 
+(define-condition frame-type-needs-connection (protocol-error)
+  ((frame-type :accessor get-frame-type :initarg :frame-type))
+  (:documentation
+   "Frame type must be applied on connection."))
+
 (define-condition new-stream-id-too-low (protocol-error)
   ((stream-id       :accessor get-stream-id       :initarg :stream-id)
    (max-seen-so-far :accessor get-max-seen-so-far :initarg :max-seen-so-far))
