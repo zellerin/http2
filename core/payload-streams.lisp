@@ -170,36 +170,38 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
 
 (defmethod trivial-gray-streams:stream-listen ((stream payload-input-stream))
   (with-slots (base-http2-stream index data to-store to-provide) stream
-    (with-slots (connection state network-stream) base-http2-stream
-      (force-output network-stream)
-      (or (caar data)
-          ;; we assume we would not get just part of the frame.
-          (loop while (listen network-stream)
-                do (read-frame connection)
-                when (member state '(closed half-closed/remote))
-                  do (return nil)
-                when (caar data) do (return t))))))
+    (with-slots (connection state) base-http2-stream
+      (with-slots (network-stream) connection
+        (force-output network-stream)
+        (or (caar data)
+            ;; we assume we would not get just part of the frame.
+            (loop while (listen network-stream)
+                  do (read-frame connection)
+                  when (member state '(closed half-closed/remote))
+                    do (return nil)
+                  when (caar data) do (return t)))))))
 
 (defmethod trivial-gray-streams:stream-read-byte ((stream payload-input-stream))
   (with-slots (base-http2-stream index data to-store to-provide) stream
-    (with-slots (connection state network-stream) base-http2-stream
-      (force-output network-stream)
-      (loop for buffer = (caar data)
-            until (or buffer (member state '(closed half-closed/remote)))
-            do
-               ;; read-frame -> push frame to the data or close the buffer
-               (if (listen network-stream)
-                   (read-frame connection)
-                   (sleep 0.1))
-            finally
-               (return
-                 (if (and (null buffer) (member state '(closed half-closed/remote))) :eof
-                     (prog1 (aref buffer index)
-                       (when (= (incf index) (length (caar data)))
-                         (pop-frame data)
-                         (write-window-update-frame connection index)
-                         (write-window-update-frame base-http2-stream index)
-                         (setf index 0)))))))))
+    (with-slots (connection state) base-http2-stream
+      (with-slots (network-stream) connection
+          (force-output network-stream)
+        (loop for buffer = (caar data)
+              until (or buffer (member state '(closed half-closed/remote)))
+              do
+                 ;; read-frame -> push frame to the data or close the buffer
+                 (if (listen network-stream)
+                     (read-frame connection)
+                     (sleep 0.1))
+              finally
+                 (return
+                   (if (and (null buffer) (member state '(closed half-closed/remote))) :eof
+                       (prog1 (aref buffer index)
+                         (when (= (incf index) (length (caar data)))
+                           (pop-frame data)
+                           (write-window-update-frame connection index)
+                           (write-window-update-frame base-http2-stream index)
+                           (setf index 0))))))))))
 
 (defmethod close ((stream payload-input-stream) &key &allow-other-keys)
   ;; do nothing

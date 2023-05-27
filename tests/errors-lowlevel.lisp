@@ -51,7 +51,6 @@
      (make-instance (get-stream-class sender)
                     :stream-id 3
                     :connection sender
-                    :network-stream (get-network-stream sender)
                     :state 'open)
      (http2/hpack:request-headers "GET" "/" "localhost")
      :end-headers t)
@@ -60,7 +59,6 @@
      (make-instance (get-stream-class sender)
                     :stream-id 1
                     :connection sender
-                    :network-stream (get-network-stream sender)
                     :state 'open)
      (http2/hpack:request-headers "GET" "/" "localhost")
      :end-headers t)
@@ -73,7 +71,6 @@
      (make-instance (get-stream-class sender)
                     :stream-id 1
                     :connection sender
-                    :network-stream (get-network-stream sender)
                     :state 'open)
      #())
     (fiasco:signals bad-stream-state
@@ -94,7 +91,6 @@
     (let ((stream (make-instance (get-stream-class sender)
                                  :stream-id 1
                                  :connection sender
-                                 :network-stream (get-network-stream sender)
                                  :state 'open)))
       (write-headers-frame
        stream
@@ -111,7 +107,6 @@
     (let ((stream (make-instance (get-stream-class sender)
                                  :stream-id 1
                                  :connection sender
-                                 :network-stream (get-network-stream sender)
                                  :state 'open)))
       ;; we do not allow to write R until we go to the lowest level
       (write-frame-header write-stream (length (car (http2/hpack:request-headers "GET" "/" "localhost")))

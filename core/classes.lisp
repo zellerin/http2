@@ -3,16 +3,6 @@
 (in-package :http2)
 
 ;;;; Classes
-#|
-                     http2-stream                   http2-connection
-                         /                         /       \
-                        /     client-http2-connection   server-http2-connection
-                       /                      \
-     (stream mixins)  /                        \        (connection mixins)
-               \     /                          \             /
-             vanilla-client-stream     vanilla-client-connection
-|#
-
 (defclass flow-control-mixin ()
   ((window-size      :accessor get-window-size      :initarg :window-size)
    (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size))
@@ -72,7 +62,6 @@
 
 (defclass http2-stream (flow-control-mixin)
   ((connection       :accessor get-connection       :initarg :connection)
-   (network-stream   :accessor get-network-stream   :initarg :network-stream)
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type stream-id)
    (state            :accessor get-state            :initarg :state
@@ -93,6 +82,11 @@
                      :seen-text-header nil)
   (:documentation
    "Representation of HTTP/2 stream. See RFC7540."))
+
+(defgeneric get-network-stream (object)
+  (:documentation "Get network stream for the object.")
+  (:method ((object http2-stream))
+    (get-network-stream (get-connection object))))
 
 (defmethod initialize-instance :after ((stream http2-stream) &key connection)
   (with-slots (peer-window-size window-size) stream
@@ -270,8 +264,7 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
                          :state state
                          :window-size (get-initial-window-size connection)
                          :peer-window-size (get-initial-peer-window-size connection)
-                         :connection connection
-                         :network-stream (get-network-stream connection))
+                         :connection connection)
           (get-streams connection))
   (car (get-streams connection)))
 

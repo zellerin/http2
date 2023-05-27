@@ -129,7 +129,6 @@ expected."
                ((numberp stream)
                 (make-instance 'http2-stream :stream-id stream
                                              :connection sender
-                                             :network-stream (get-network-stream sender)
                                              :window-size (get-initial-peer-window-size sender)))
                ((eq stream :connection) sender)
                (t (error "Stream parameter must be stream id number or :connection")))

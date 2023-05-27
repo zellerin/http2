@@ -218,7 +218,6 @@ passed to the make-instance"
                        :peer-window-size (get-initial-peer-window-size connection)
                        :window-size (get-initial-window-size connection)
                        :connection connection
-                       :network-stream (get-network-stream connection)
                        :state 'open
                        pars)))
     (incf (get-id-to-use connection) 2)
