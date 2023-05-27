@@ -621,7 +621,6 @@ pretty short so we do not care."
    also be referred to as a \"setting\"."
     ((settings list))
     (:length (* (length settings) 6)
-     :flags (ack)
      :must-have-connection t)
     ;; writer
     (lambda (stream settings)
@@ -653,7 +652,7 @@ pretty short so we do not care."
              do (set-peer-setting connection name value)
            finally (peer-expects-settings-ack connection))))))
 
-(defun write-ack-setting-frame (stream)
+(defun write-ack-setting-frame (connection)
   "Write ACK settings frame.
 
    ACK (0x1):  When set, bit 0 indicates that this frame acknowledges
@@ -663,7 +662,8 @@ pretty short so we do not care."
       field value other than 0 MUST be treated as a connection error
       (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
       see Section 6.5.3 (\"Settings Synchronization\")."
-  (write-frame-header stream 0 +settings-frame+ 1 0 nil))
+  (write-frame-header (get-network-stream connection)
+                      0 +settings-frame+ 1 connection nil))
 
 
 (define-frame-type 5 :push-promise-frame

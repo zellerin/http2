@@ -451,7 +451,7 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
 SET-PEER-SETTING calls. By default, send ACK frame.")
 
   (:method (connection)
-    (write-settings-frame connection nil :ack t))
+    (write-ack-setting-frame connection))
 
   (:method :before ((connection logging-object))
     (add-log connection '(:settings-ack-needed))))
