@@ -346,7 +346,7 @@ automatically, otherwise caller must ensure it."
  data.")
 
   (:method (stream payload)
-    (warn "No payload action defined."))
+    (warn 'implement-by-user :format-control "No payload action defined."))
 
   (:method ((stream body-collecting-mixin) data)
     (setf (get-body stream)
@@ -394,7 +394,8 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (:method (connection name value)
     "Fallback."
     (declare (type (unsigned-byte 32) value))
-    (warn "Peer settings not used - ~a ~a." name value))
+    (warn 'unimplemented-feature :format-control "Peer settings not used - ~a ~a."
+                                 :format-arguments (list name value)))
 
   (:method :before ((connection logging-object) name value)
     (declare (type (unsigned-byte 32) value))
@@ -432,7 +433,8 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
   (:method (connection (name (eql :max-header-list-size)) value)
     ;; This is just an advisory setting (10.5.1. Limits on Field Block Size) so
     ;; we ignore it for now
-    (warn "We ignore :max-header-list-size. This is allowed in RFC9113."))
+    (warn 'unimplemented-feature
+          :format-control "We ignore :max-header-list-size. This is allowed in RFC9113."))
 
   (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
     (declare (type (unsigned-byte 32) value))
@@ -531,7 +533,8 @@ PAYLOAD).")
                           ((vector (unsigned-byte 8)) (decode-huffman value))))))
 
   (:method (connection stream name value)
-    (warn "You should overwrite default method for adding new header."))
+    (warn 'implement-by-user
+          :format-control "You should overwrite default method for adding new header."))
 
   (:method (connection (stream server-stream) (name symbol) value)
     (when (get-seen-text-header stream)
@@ -623,7 +626,9 @@ ACK and same data.")
   (:documentation
    "Called when ping-frame with ACK is received. By default warns about unexpected ping response; see also TIMESHIFT-PINGING-CONNECTION mixin.")
   (:method (connection data)
-    (warn "The connection ~a did not expect ping response" connection))
+    (warn 'implement-by-user
+          :format-control "The connection ~a did not expect ping response"
+          :format-arguments (list connection)))
   (:method ((connection timeshift-pinging-connection) data)
     (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second))))
 
@@ -681,7 +686,7 @@ extensions."))
   (let ((preface-buffer (make-array (length +client-preface-start+))))
     (read-sequence preface-buffer (get-network-stream connection))
     (unless (equalp preface-buffer +client-preface-start+)
-      (warn "Client preface mismatch: got ~a" preface-buffer)))
+      (error 'client-preface-mismatch :received preface-buffer)))
   (write-settings-frame connection (get-settings connection)))
 
 (defmethod initialize-instance :after ((connection client-http2-connection) &key &allow-other-keys)

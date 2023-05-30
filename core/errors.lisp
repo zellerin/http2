@@ -14,6 +14,9 @@
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
   (:documentation "Signaleed when GO-AWAY frame received."))
 
+(define-condition client-preface-mismatch (error)
+  ((received :accessor get-received :initarg :received)))
+
 (defmethod print-object ((err go-away) out)
   (with-slots (error-code debug-data last-stream-id) err
     (print-unreadable-object (err out :type t)
@@ -227,3 +230,11 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 (define-condition reserved-bit-set (unsupported-feature)
   ()
   (:documentation "Reserved bit is set in received frame header. We ignore it."))
+
+(define-condition unimplemented-feature (warning simple-condition)
+  ()
+  (:documentation "Something that can be implemented to better match RFC suggestions or that we are obliged to ignore"))
+
+(define-condition implement-by-user (warning simple-condition)
+  ()
+  (:documentation "Something that the HTTP2 library expects to be implemented by server/client."))
