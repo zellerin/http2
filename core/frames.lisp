@@ -278,11 +278,11 @@ passed to the make-instance"
       as an unsigned 31-bit integer.  The value 0x0 is reserved for
       frames that are associated with the connection as a whole as
       opposed to an individual stream."
+  (declare (type (unsigned-byte 24) length)
+           (type (unsigned-byte 8) type flags)
+           (optimize speed))
   (let ((http-stream-id (get-stream-id http-stream)))
-    (declare (type (unsigned-byte 24) length)
-             (type (unsigned-byte 8) type flags)
-             (type stream-id http-stream-id)
-             (optimize speed))
+    (declare (type stream-id http-stream-id))
     (write-bytes stream 3 length)
     (write-byte type stream)
     (write-byte flags stream)
@@ -308,7 +308,7 @@ Also do some checks on the stream id based on the frame type."
              (connection-error 'frame-type-needs-stream connection)))
         ((and (not our-id) (> id last-id-seen) new-stream-state)
          (peer-opens-http-stream-really-open connection id new-stream-state))
-        ((and our-id (>= id (get-id-to-use connection)))
+        ((and our-id (>= id (the stream-id (get-id-to-use connection))))
          (connection-error 'our-id-created-by-peer connection))
         ((and (not our-id) (> id last-id-seen))
          (connection-error 'bad-stream-state connection
