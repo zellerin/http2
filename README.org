@@ -83,16 +83,21 @@ Then define handlers for your paths or prefixes, see the example server for a
 starting point and API documentation for more details.
 
 ** Missing pieces
-- No handling of priorities is implemented. This is OK, as these are only
-  suggestions, and they are more or less dropped in RFC9113 anyway.
+- No handling of priorities is implemented. This is more or lessOK, as these are
+  only suggestions, and they are more or less dropped in RFC9113 anyway. But
+  nothing from RFC9218 is implemented neither (except for the setting).
 - Push promises are not implemented in the client. This is OK, they are disabled
   by default (settings)
 - Option to encode headers to /Literal Header Field Never Indexed/ format is not
   implemented. This is simple to do, but interface would need to be though out.
 - The algorithm to split data being sent out to windows and frames can be
   confused sometimes
-- The MAX-HEADER-LIST-SIZE limit is not enforced.
+- The MAX-HEADER-LIST-SIZE limit is not enforced, but it is declared as an
+  advisory setting anyway.
 - Some checks on behaviour of the peer are not enforced
+- The ping and setting frames are not automatically prioritized (they are
+  replied as soon as processed, but nothing prevent finishing long response
+  before that)
 
 ** Implementation details
 
@@ -122,7 +127,8 @@ Hunchentoot and a bit slower than [[https://github.com/fukamachi/woo][Woo]]. How
 in parallel from one client, it is much faster than Woo (even with the
 Hunchentoot-style request handling).
 
-What is currently relatively slow is conversion between (utf-8) text and binary data.
+What is currently relatively slow is conversion between (utf-8) text and binary
+data, as well as multiple clients.
 
 Anyway, run or modify the [[file:scaffolding/speed-test.lisp][speed test code]] for your results:
 : sbcl --script scaffolding/speed-test.lisp

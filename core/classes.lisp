@@ -425,8 +425,9 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
          :value value)))
 
   (:method (connection (name (eql :max-header-list-size)) value)
-    ;; do something
-    )
+    ;; This is just an advisory setting (10.5.1. Limits on Field Block Size) so
+    ;; we ignore it for now
+    (warn "We ignore :max-header-list-size. This is allowed in RFC9113."))
 
   (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
     (declare (type (unsigned-byte 32) value))

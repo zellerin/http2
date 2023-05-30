@@ -118,7 +118,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   "We detected an error on peer stream. So we send a RST frame, warn in case someone in interested, and go on."
   (let ((e (apply #'make-instance e :stream stream args)))
     (unless (eql stream :closed)
-      (write-rst-stream-frame stream (get-code e) )
+      (write-rst-stream-frame stream (get-code e))
       (force-output (get-network-stream stream)))
     (warn e)
     (close-http2-stream stream)))

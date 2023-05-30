@@ -32,8 +32,8 @@
 (defun write-binary-payload (connection stream payload &key (end-stream t))
   "Write binary PAYLOAD to the http2 STREAM.
 
-The payload is written in chunks of frame size, and if the available window is
-not big enough we wait for confirmation (note that other things may happen
+The payload is written in chunks of peer frame size, and if the available window
+is not big enough we wait for confirmation (note that other things may happen
 during waiting, such as receiving request for another data if we act as the
 server)."
   (loop
@@ -46,6 +46,7 @@ server)."
     do (cond ((>= allowed-window frame-size)
               (write-data-frame stream (subseq payload sent (+ frame-size sent))
                                 :end-stream nil)
+              (force-output (get-network-stream connection))
               (incf sent frame-size))
              (t
               (read-frame connection)))
