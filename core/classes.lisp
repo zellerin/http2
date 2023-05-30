@@ -420,6 +420,15 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
         (connection-error 'incorrect-frame-size-value
          :value value)))
 
+  (:method (connection (name (eql :no-rfc5740-priorities)) value)
+    ;; we must signal if not 0 or 1. We MAY if it changes afterwards, so we do
+    ;; not. (rfc9218)
+    (unless (typep value 'bit)
+      (connection-error 'incorrect-setting-value connection
+                        :setting :no-rfc5740-priorities
+                        :allowed 'bit
+                        :value value)))
+
   (:method (connection (name (eql :max-header-list-size)) value)
     ;; This is just an advisory setting (10.5.1. Limits on Field Block Size) so
     ;; we ignore it for now

@@ -83,6 +83,11 @@ Typically it is signalled from CONNECTION-ERROR function that also sends appropr
       endpoint that receives an unexpected stream identifier MUST respond with a
       connection error (Section 5.4.1) of type PROTOCOL_ERROR."))
 
+(define-condition incorrect-setting-value (protocol-error)
+  ((setting-code :accessor get-setting-code :initarg :setting-code)
+   (value        :accessor get-value        :initarg :value)
+   (allowed      :accessor get-allowed      :initarg :allowed)))
+
 (define-condition incorrect-enable-push-value (protocol-error)
   ((value :accessor get-value :initarg :value))
   (:documentation "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
