@@ -7,8 +7,8 @@
 
 To be used as *dispatch-fn* callback for thread-per-connection request handling."
   (bt:make-thread (lambda ()
-                    (apply fn tls-stream pars))
-                  :name "HTTP/2 connection handler"))
+                           (apply fn tls-stream pars))
+                         :name "HTTP/2 connection handler"))
 
 (defvar *dispatch-fn* #'threaded-dispatch
   "How to call process-server-stream. Default is THREADED-DISPATCH.
@@ -133,19 +133,28 @@ behaviour of the server.
 
 ANNOUNCE-OPEN-FN is called, when set, to inform caller that the server is up and
 running. This is used for testing, when we need to have the server running (in a
-thread) to start testing it.
-
-If VERBOSE is set and CONNECTION-CLASS is derived from LOGGING-CLASS, verbose
-debug is printed."
+thread) to start testing it."
   (usocket:with-server-socket (socket (usocket:socket-listen "127.0.0.1" port
                                                              :reuse-address t
                                                              :backlog 200
                                                              :element-type '(unsigned-byte 8)))
-    (funcall announce-open-fn)
+    (funcall announce-open-fn socket)
     (loop
-      (process-server-stream (usocket:socket-stream
-                              (handler-case
-                                  (usocket:socket-accept socket :element-type '(unsigned-byte 8))
-                                ;; ignore condition
-                                (usocket:connection-aborted-error ())))
-                             :connection-class connection-class))))
+      (funcall *dispatch-fn*
+               #'process-server-stream
+               #+nil(lambda (tls-stream &rest args)
+                      (handler-case
+                          (unwind-protect
+                               (apply #'process-server-stream)
+                            (close tls-stream))
+                        (cl+ssl::ssl-error-ssl ()
+                          ;; Just ignore it for now, Maybe it should be
+                          ;; logged if not trivial - but what is trivial and
+                          ;; what is to log?
+                          )))
+               (usocket:socket-stream
+                (handler-case
+                    (usocket:socket-accept socket :element-type '(unsigned-byte 8))
+                  ;; ignore condition
+                  (usocket:connection-aborted-error ())))
+               :connection-class connection-class))))
