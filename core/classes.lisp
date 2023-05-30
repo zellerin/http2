@@ -321,7 +321,7 @@ automatically, otherwise caller must ensure it."
     (unwind-protect
          (unless (eq error-code '+cancel+)
            (warn 'http-stream-error :stream stream
-                                     :error-code error-code))
+                                    :code error-code))
       (close-http2-stream stream)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
