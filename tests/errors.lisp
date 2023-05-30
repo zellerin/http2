@@ -43,7 +43,6 @@
                        :end-stream t)
     (process-pending-frames connection)))
 
-
 (define-protocol-error-test send-too-low-stream-id/odd +stream-closed+
   "The low IDs are supposed to be closed when higher number is seen."
   (with-http2-connection

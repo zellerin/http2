@@ -620,7 +620,8 @@ pretty short so we do not care."
    also be referred to as a \"setting\"."
     ((settings list))
     (:length (* (length settings) 6)
-     :must-have-connection t)
+     :must-have-connection t
+     :flags (ack))
     ;; writer
     (lambda (stream settings)
       (dolist (setting settings)

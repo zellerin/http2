@@ -46,6 +46,9 @@
   (:documentation
    "A simple connection: promise push not allowed, otherwise reasonable behaviour"))
 
+(defmethod print-object ((connection http2-connection) out)
+  (print-unreadable-object (connection out :type t :identity nil)))
+
 (defclass client-http2-connection (http2-connection)
   ()
   (:default-initargs :id-to-use 1)
