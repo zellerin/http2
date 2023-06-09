@@ -197,7 +197,7 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
   (let (key-parameters
         (writer-name (intern (format nil "WRITE-~a" frame-type-name))))
     ;; Reserved is used rarely so no need to force always specifying it
-    (when has-reserved  (push '(reserved t) key-parameters))
+    (when has-reserved (push '(reserved t) key-parameters))
     ;; Priority is both a flag to set and value to store if this flags is set.
     (when (member 'priority flags) (push '(priority (or null priority)) key-parameters))
     `(progn
@@ -209,28 +209,27 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                             &key
                               ,@(union (mapcar 'first key-parameters)
                                        flags))
-         ;; reserved parameter is a key and implicit
          ,documentation
          (declare (ignore ,@(remove 'priority flags)))
-         (write-frame
-                    http-connection-or-stream
-                    ,length
-                    ,type-code
-                    keys
-                    ,writer
-                    ,@(mapcar 'car (append parameters key-parameters))))
-
-       (setf (aref *frame-types* ,type-code)
-             (make-frame-type :name ,frame-type-name
-                              :documentation ,documentation
-                              :receive-fn #',reader
-                              :old-stream-ok ',must-have-stream-in
-                              :new-stream-state ',new-stream-state
-                              :connection-ok ,(or may-have-connection must-have-connection)
-                              :bad-state-error ,bad-state-error
-                              :flag-keywords
-                              ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
-                                        flags))))))
+         (let ((length ,length))
+           (write-frame
+            http-connection-or-stream
+            length
+            ,type-code
+            keys
+            ,writer
+            ,@(mapcar 'car (append parameters key-parameters)))
+           (setf (aref *frame-types* ,type-code)
+                 (make-frame-type :name ,frame-type-name
+                                  :documentation ,documentation
+                                  :receive-fn #',reader
+                                  :old-stream-ok ',must-have-stream-in
+                                  :new-stream-state ',new-stream-state
+                                  :connection-ok ,(or may-have-connection must-have-connection)
+                                  :bad-state-error ,bad-state-error
+                                  :flag-keywords
+                                  ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
+                                            flags))))))))
 
 (defun write-frame (http-connection-or-stream length type-code keys
                   writer &rest pars)
@@ -487,15 +486,29 @@ handler that calls appropriate callbacks."
       (typecase data
         (null) ; just to close stream
         (cons (write-sequences stream data))
-        (t (write-sequence data stream))))
+        (t (write-sequence data stream)))
+      (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length)
+)
 
     (lambda (stream connection http-stream length flags)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
-      (declare (ignore connection flags))
+      (declare (ignore flags))
       (let* ((data (make-array length :element-type '(unsigned-byte 8))))
+        (account-read-window-contribution connection http-stream length)
         (loop while (plusp length)
               do (decf length (read-sequence data stream))
-                 (apply-data-frame http-stream data)))))
+                 (apply-data-frame http-stream data)
+              ))))
+
+(defun account-read-window-contribution (connection stream length)
+  (decf (get-window-size connection) length)
+  (decf (get-window-size stream) length))
+
+(defun account-write-window-contribution (connection stream length)
+  (decf (get-peer-window-size connection) length)
+  (decf (get-peer-window-size stream) length))
+
+
 
 (defun write-priority (stream priority)
   (write-31-bits stream
@@ -889,10 +902,6 @@ individual stream and on the entire connection."
            (connection-error 'null-connection-window-update connection))
           (t
            (http-stream-error 'null-stream-window-update http-stream))))))
-
-(defun account-frame-window-contribution (connection stream length)
-  (decf (get-window-size connection) length)
-  (decf (get-window-size stream) length))
 
 
 (define-frame-type 9 :continuation-frame

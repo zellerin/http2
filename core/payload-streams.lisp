@@ -106,28 +106,35 @@ Return new START."
     (setf (fill-pointer output-buffer) 0)
     (incf start size)))
 
+(defun wait-for-window-is-at-least-frame-size (connection http-stream)
+  (loop for allowed-window = (min (get-peer-window-size connection)
+                                  (get-peer-window-size http-stream))
+        for frame-size = (get-max-peer-frame-size connection)
+        while (> frame-size allowed-window)
+        do
+           (loop until
+                 (restart-case
+                     (read-frame connection)
+                   (read-again ())))))
+
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream payload-output-stream) sequence start end &key)
   (with-output-payload-slots stream
-          ;; Situations:
-          ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
-          ;; - We do not have enough data (full frame) yet - we wait for more data
-          ;; - We have more than max-peer-frame-size, but window is too small -> we read a frame
+    ;; Situations:
+    ;; - We have more than max-peer-frame-size data, and peer window is above it -> we can send a frame and go on
+    ;; - We do not have enough data (full frame) yet - we wait for more data
+    ;; - We have more than max-peer-frame-size, but window is too small -> we read a frame
     (let ((total-length (- (+ (or end (length sequence))
                               (length (get-output-buffer stream)))
                            start)))
       (loop
-        for allowed-window = (min (get-peer-window-size connection)
-                                  peer-window-size)
-        and frame-size = (get-max-peer-frame-size connection)
+        for frame-size = (get-max-peer-frame-size connection)
         while (and (>= total-length frame-size))
-        do (cond ((>= allowed-window frame-size)
-                  (setf start
-                        (send-data stream
-                                   sequence start (- frame-size (length output-buffer))))
-                  (decf total-length frame-size))
-                 (t
-                  (read-frame connection))))
+        do
+           (wait-for-window-is-at-least-frame-size connection base-http2-stream)
+           (setf start (send-data stream  sequence start
+                                  (- frame-size (length output-buffer))))
+           (decf total-length frame-size))
       (loop for idx from start to (1- end)
             do (vector-push (aref sequence idx) output-buffer)))))
 
@@ -138,10 +145,10 @@ Return new START."
   (:documentation "HTTP2 stream that passes all its DATA frames to PAYLOAD-INPUT-STREAM."))
 
 (defclass payload-input-stream (payload-stream trivial-gray-streams:fundamental-binary-input-stream)
-  ((index      :accessor get-index           :initarg :index)
-   (data       :accessor get-data       :initarg :data
-               :documentation
-               "tlist that of accepted frames and cons of last frame and nil."))
+  ((index :accessor get-index :initarg :index)
+   (data  :accessor get-data  :initarg :data
+          :documentation
+          "tlist of accepted frames"))
   (:default-initargs :index 0 :data (cons nil nil))
   (:documentation
    "Binary stream that reads data from the http stream.
@@ -155,11 +162,11 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
   (null (car data)))
 
 (defun push-frame (data frame)
-  (if (empty-data-p data)
-      (setf (car data) (cons frame nil)
-            (cdr data) (car data))
-      (setf (cddr data) (cons frame nil)
-            (cdr data) (cddr data)))
+  (let ((tail (cons frame nil)))
+    (if (empty-data-p data)
+        (setf (car data) tail)
+        (setf (cddr data) tail))
+    (setf (cdr data) tail))
   data)
 
 (defun pop-frame (data)
@@ -187,6 +194,7 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
       (with-slots (network-stream) connection
           (force-output network-stream)
         (loop for buffer = (caar data)
+              ;; read till either we have the buffer or stream is closed
               until (or buffer (member state '(closed half-closed/remote)))
               do
                  ;; read-frame -> push frame to the data or close the buffer

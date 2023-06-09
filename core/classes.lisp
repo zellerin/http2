@@ -33,7 +33,7 @@
                      :last-id-seen 0
                      :streams nil
                      :acked-settings nil
-                     :window-size 0
+                     :window-size 65535
                      :compression-context (make-instance 'hpack-context)
                      :decompression-context (make-instance 'hpack-context)
                      :stream-class 'http2-stream
@@ -362,8 +362,9 @@ automatically, otherwise caller must ensure it."
 
 (defgeneric apply-data-frame (stream payload)
   (:documentation "Data frame is received by a stream.
- By default does nothing; there are several mixins that implement reading the
- data.")
+ By default it sends window update for connection and stream.")
+
+  ;; FIXME: we should not send small updates
 
   (:method (stream payload)
     (warn 'implement-by-user :format-control "No payload action defined."))
@@ -402,7 +403,7 @@ the strem or connection.")
     (add-log object `(:window-size-increment ,(get-peer-window-size object) + ,increment)))
 
   (:method (object increment)
-    (incf (get-window-size object) increment)))
+    (incf (get-peer-window-size object) increment)))
 
 (defgeneric set-peer-setting (connection name value)
   (:documentation
