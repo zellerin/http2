@@ -333,6 +333,12 @@ stop as soon as we can see lower value. However, we assume the list needed to be
 pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
 
+
+(defstruct (frame-header (:type (vector (unsigned-byte 8))))
+  (length-1 0) (length-2 0) (length-3 0)
+  (type 0) (flags 0)
+  (stream-id-1 0) (stream-id-2 0) (stream-id-3 0) (stream-id-4 0))
+
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
   "All frames begin with a fixed 9-octet header followed by a variable-
    length payload.
@@ -378,17 +384,16 @@ pretty short so we do not care."
   ;; first flush anything we should have send to prevent both sides waiting
   (declare (optimize speed))
   (force-output stream)
-  (let* ((length (read-bytes stream 3))
-         (type (read-byte stream))
-         (flags (read-byte stream))
-         (http-stream+R (read-bytes stream 4))
+  (let* ((header (fully-read-array stream (make-frame-header) 9))
+         (length (join-array-bytes header 0 3))
+         (type (frame-header-type header))
+         (flags (frame-header-flags header))
+         (http-stream+R (join-array-bytes header 5 4))
          (http-stream (ldb (byte 31 0) http-stream+R))
          (R (ldb (byte 1 31) http-stream+R)))
     (declare ((unsigned-byte 24) length)
-             ((unsigned-byte 8) type flags)
              (stream-id http-stream)
              (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
-
     (maybe-lock-for-write connection)
     (unwind-protect
          (progn

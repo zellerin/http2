@@ -36,6 +36,28 @@ setting can have any value between 2^14 (16,384) and 2^24-1
       (setf (ldb (byte 8 (* 8 (- n 1 i))) res) (read-byte stream)))
     res))
 
+(defun join-array-bytes (array start n)
+  "Read N bytes from an array to an integer"
+  (declare ((integer 1 8) n)
+           (optimize speed)
+           ((simple-array (unsigned-byte 8)) array)
+           (fixnum start))
+  (loop with res of-type (unsigned-byte 32) = 0
+        for i from start
+        for idx from 0 to (1- n)
+        do (setf res (logior (ash res 8) (aref array i)))
+        finally (return res)))
+
+(defun fully-read-array (stream VECTOR to-read)
+  "Read TO-READ octets to the octet VECTOR.
+
+The idea is to replace this later by a single thread for reading from several
+sources."
+  (loop with read = 0
+        do (incf read (read-sequence vector stream :start read))
+        until (= read to-read)
+        finally (return vector)))
+
 (defun write-bytes (stream n value)
   "write VALUE as N octets to stream. Maximum length is 64 bits (used by ping)."
   (declare (type (integer 1 8) n)
