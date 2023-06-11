@@ -4,7 +4,7 @@
   ;; default max-frame-size is 16384, 0x4000
   (fiasco:signals too-big-frame
     (with-test-client-to-server-setup
-      (write-frame sender 65536 0 nil
+      (write-frame sender 65536 +settings-frame+ nil
                    (lambda (a) (write-sequence (make-array 65536 :initial-element 0) a)))
       (read-frame receiver))))
 
