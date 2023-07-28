@@ -181,6 +181,26 @@ communication can be debugged or recorded."))
 
 
 ;;;; Callbacks from frame reading functions
+(mgl-pax:defsection @callbacks
+    (:title "Frame read callbacks")
+    "The reader functions for individual frames may call a callback that is supposed
+to handle received frame in some way. All callbacks have stream or connection as
+the first parameter.
+
+In addition to the behaviour described below, all callback log the behaviour
+when relevant stream or connection has logging-object as superclass."
+  (apply-data-frame generic-function)
+  (apply-stream-priority  generic-function)
+  (apply-window-size-increment generic-function)
+  (peer-resets-stream generic-function)
+  (set-peer-setting generic-function)
+  (peer-expects-settings-ack generic-function)
+  (peer-acks-settings generic-function)
+  (peer-ends-http-stream generic-function)
+  (handle-undefined-frame generic-function)
+  (do-pong generic-function)
+  (do-goaway generic-function))
+
 
 #|
 

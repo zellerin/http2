@@ -5,6 +5,22 @@
 ;;;; ports.
 (in-package :http2)
 
+(mgl-pax:defsection @client
+  (:title "Support for creating a client")
+  (connect-to-tls-server function)
+#+nil  (with-http2-connection macro)
+  (send-headers function)
+  (make-transport-output-stream function)
+  (make-transport-input-stream function)
+  (process-pending-frames function)
+  (http-stream-to-vector function)
+  (vanilla-client-stream class)
+  (vanilla-client-connection class)
+  (client-stream class)
+  (header-collecting-mixin class)
+  (client-http2-connection class)
+  (extract-charset-from-content-type function))
+
 (defun process-pending-frames (connection &optional just-pending)
   "Read and process all queued frames. This is to be called on client when the
 initial request was send.
@@ -36,7 +52,7 @@ other conditions."
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))
-  "Client TLS stream to HOST on PORT, created using SNI and with specified ALPN
+  "Return a client TLS stream to HOST on PORT, created using SNI and with specified ALPN
 protocol (H2 by default)."
   (cl+ssl:make-ssl-client-stream
    (usocket:socket-stream

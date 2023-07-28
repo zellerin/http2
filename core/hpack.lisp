@@ -2,7 +2,25 @@
 
 (in-package :http2/hpack)
 
-;;;; See RFC7541
+(mgl-pax:defsection @hpack-api
+    (:title "HPACK - RFC7541")
+  "HTTP2 headers can be compressed - and implementation needs to be able to decompress - by two (or maybe three) ways:
+
+- Headers (with or without value) in static headers table (defined in RFC) can be replaced by appropriate a code,
+
+- Headers being sent out may be cached and after first use in dynamic headers table and later replaced by a code,
+
+- Headers as string can be Huffman compressed."
+  "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
+  from API point considered opaque. Context is needed twice for each connection,
+  once for each direction of communication."
+  (read-http-header function)
+  (compile-headers function)
+  (request-headers function)
+  (update-dynamic-table-size function)
+  (*use-huffman-coding-by-default* variable)
+  (header-writer function))
+
 (defvar static-headers-table
   (vector
    nil
@@ -119,7 +137,8 @@ sizes, including leading : at special header names."
        (length (second header)))))
 
 (defun update-dynamic-table-size (context new-size)
-  "Update dynamic table for new size that is smaller than the previous one.
+  "Update dynamic table for new size that is smaller than the previous one. This is
+called after receiving appropriate settings update.
 
 Zero size means evict completely; in this case the new vector can be cleaned"
   (cond ((zerop new-size)
@@ -199,7 +218,7 @@ huffman encoding."
   (store-string value res huffman))
 
 (defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*))
-  "Encode header consisting of NAME and VALUE.
+  "Encode header consisting of NAME and VALUE to a fillable array RES..
 
 The `never-indexed` format is never generated, use a separate function for
 this (and this function needs to be written).
@@ -258,6 +277,11 @@ Use Huffman when HUFFMAN is true."
       res)))
 
 (defun compile-headers (headers context)
+  "Compile headers with given CONTEXT to an array. Context can be NIL; if it is
+not, the headers are stored in the dynamic table and the CONTEXT it is updated
+appropriately.
+
+Presently returns list of arrays, may return single array in future. In any case, the result should be usable as the appropriate parameter for HTTP2::WRITE-HEADERS-FRAME."
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
     initially (when context
@@ -277,7 +301,7 @@ Use Huffman when HUFFMAN is true."
                           content-type
                           gzip-content
                           additional-headers)
-  "Encode standard request headers that are obligatory."
+  "Encode standard request headers. The obligatory headers are passed as the positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing header name and value."
   (compile-headers
    `((:method, (if (symbolp method) (symbol-name method) method))
      (:scheme ,scheme)
@@ -379,10 +403,10 @@ Neither name of the header nor value is in table, so read both as literals."
   (list (read-string-from-stream stream) (read-string-from-stream stream)))
 
 (defun read-http-header (stream context)
-  "Read header field from network stream associated with the CONNECTION.
+  "Read one header from network stream using READ-BYTE* as two-item list (NAME
+VALUE) using dynamic table CONTEXT. Update CONTEXT appropriately.
 
-Note that we can get missing-header-octets on first octet if we have zero length
-continuation frame."
+Can also return NIL if no header is available if it is not detected earlier; this can happen, e.g., when there is a zero sized continuation header frame.."
   (let* ((octet0 (handler-case (read-byte* stream)
                    (http2::missing-header-octets ()
                      (return-from read-http-header)))))

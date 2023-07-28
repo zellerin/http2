@@ -2,7 +2,7 @@
 
 ;;;; package.lisp
 
-(cl:defpackage :http2/hpack
+(mgl-pax:define-package :http2/hpack
   (:use :cl #:anaphora)
   (:export #:compile-headers #:decode-huffman
            #:dynamic-table-value
@@ -10,7 +10,7 @@
            ;; used by it
            #:read-byte*
            ;; reexported from http2
-           #:ENCODE-HEADER #:REQUEST-HEADERS #:UPDATE-DYNAMIC-TABLE-SIZE))
+           #:encode-header #:request-headers #:update-dynamic-table-size))
 
 (cl:defpackage :http2
   (:use :cl :http2/hpack)
@@ -19,7 +19,6 @@
                 #:read-stream-content-into-string #:read-stream-content-into-byte-vector)
   (:export #:logging-object
            #:*do-print-log*
-           #:*use-huffman-coding-by-default*
 
            #:connect-to-tls-server
            #:vanilla-client-connection

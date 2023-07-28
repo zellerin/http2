@@ -1,10 +1,16 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(defpackage :http2/client
+(mgl-pax:define-package :http2/client
   (:use :cl :http2 :alexandria)
   (:export #:retrieve-url))
 
 (in-package :http2/client)
+
+(mgl-pax:defsection @client
+  ()
+  ""
+  (retrieve-url-using-connection function)
+  (retrieve-url function))
 
 (defun http-stream-to-vector (http2-stream)
   "Read HTTP2 raw stream payload data, do guessed conversions and return either
@@ -16,10 +22,14 @@ this."
           (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
                                              :test 'string-equal)))))
     (with-open-stream (response-stream
-                       (make-transport-stream http2-stream charset encoded))
+                       (make-instance 'http2::payload-input-stream :base-http2-stream http2-stream))
+      ;; FIXME: this duplicates HTTP2::MAKE-TRANSPORT-STREAM a lot.
+      (when encoded
+        (setf response-stream (gzip-stream:make-gzip-input-stream response-stream)))
       (if charset
-          (read-stream-content-into-string response-stream)
-          (read-stream-content-into-byte-vector response-stream)))))
+          (read-stream-content-into-string
+           (flexi-streams:make-flexi-stream response-stream :external-format charset))
+       (read-stream-content-into-byte-vector response-stream)))))
 
 (defun maybe-send-pings (connection ping)
   (typecase ping
@@ -45,13 +55,18 @@ headers after the end of headers is signalled (callback END-HEADERS-FN is
 called) and until END-STREAM-FN is called, any reading of body may block.
 
 - PARSED-URL is a parsed URL to provide (used for autority header and path)
+
 - METHOD is a http method to use, as a symbol or string
+
 - CONTENT-FN, if not null, should be a function of one argument, a stream, that
   sends data to the stream.
+
 - providing CONTENT is a shorthand to provide CONTENT-FN that sends a sequence (string or binary)
+
 - if CONTENT-TYPE is set, it is send in headers, and the stream for CONTENT-FN is of type derived from its associated charset as per EXTRACT-CHARSET-FROM-CONTENT-TYPE.
+
 - if GZIP-CONTENT is set, the appropriate header is send, and the stream for
-  CONTENT-FN is encrypted transparently."
+  CONTENT-FN is compressed transparently."
   (let ((raw-stream
           (http2::open-http2-stream connection
                         (request-headers method
@@ -102,14 +117,16 @@ called) and until END-STREAM-FN is called, any reading of body may block.
    "HTTP2 does not provide reason phrases"))
 
 (defun retrieve-url (url &rest pars
-                     &key &allow-other-keys)
-  "Retrieve URL through http/2 over TLS.
+                     &key
+                       method content content-fn additional-headers
+                       content-type charset gzip-content
+                     &allow-other-keys)
+  "Retrieve URL (a string) through HTTP/2 over TLS.
 
-Ping peer and print round trip time if PING is set, repeatedly if this is a
-number.
-
-Send CONTENT if not NIL as payload that fits one frame, or call
-CONTENT-FN (function of one parameter - output binary stream)."
+See RETRIEVE-URL-USING-CONNECTION for documentation of the keywordparameters."
+  ;; parameters are just for documentation purposes
+  (declare (ignore method content content-fn additional-headers
+                   content-type charset gzip-content))
   (let ((parsed-url (puri:parse-uri url)))
     (apply #'retrieve-url-using-network-stream
            (connect-to-tls-server (puri:uri-host parsed-url)

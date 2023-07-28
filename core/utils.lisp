@@ -2,14 +2,21 @@
 
 (in-package :http2)
 
+(mgl-pax:defsection @utils (:title "Utilities")
+  (read-bytes function)
+  (write-bytes function)
+  (read-byte* function)
+
+  (get-error-name function)
+  (find-setting-code function)
+  (find-setting-by-id function)
+
+  (stream-id type)
+  (http2-stream-state type))
+
 (defvar *bytes-left* nil "Number of bytes left in frame")
 
 (defvar *when-no-bytes-left-fn* nil "Function to call when no bytes are left. Either errors or calls continuations.")
-
-(defvar *bytes-to-possibly-reuse* (make-array 0 :element-type '(unsigned-byte 8)
-                                              :adjustable t
-                                                :fill-pointer 0))
-(defvar *bytes-to-reuse* nil)
 
 #|
 The size of a frame payload is limited by the maximum size that a
@@ -20,6 +27,12 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 (declaim ((or null (unsigned-byte 24)) *bytes-read*))
 
 (defun read-byte* (stream)
+  "Read an octet from STREAM, making sure to read additional octets when needed or
+applicable.
+
+This is meant to be used for reading header bytes that might be possibly supplemented in an additional continuation frame.
+
+More precisely, the stream that is read from contains known number of octets that can be read, and when they are exhausted, either continuation frame header is read in and count of available octets updated, or MISSING-HEADER-OCTETS condition signalled."
   (cond
     ((plusp *bytes-left*)
      (decf *bytes-left*)
@@ -46,12 +59,6 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 
 (defvar *log-stream* (make-broadcast-stream)
   "Stream for logging output send by LOGGER.")
-
-(defun logger (fmt &rest pars)
-  "Send a format message to *LOG-STREAM*."
-  (apply #'format *log-stream* fmt pars)
-  (car pars)
-  (terpri *log-stream*))
 
 (defun vector-from-hex-text (text)
   ""
@@ -91,6 +98,7 @@ setting can have any value between 2^14 (16,384) and 2^24-1
    semantics in the other context.")
 
 (defun get-error-name (code)
+  "Get HTTP/2 error name from the error code."
   (if (<= 0 code #xd)
       (aref *error-codes* code)
       (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
@@ -215,7 +223,7 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   `(unsigned-byte 31))
 
 (deftype http2-stream-state ()
-  "HTTP2 state. Currently a list, might be a number in future."
+  "HTTP2 state. Currently a symbol from fixed list, might be a number in future."
   '(member idle open closed
     half-closed/local half-closed/remote
     reserved/local reserved/remote))

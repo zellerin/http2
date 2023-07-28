@@ -7,7 +7,8 @@
   :version "1.1"
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams"
-                                      "anaphora"  "gzip-stream" "alexandria")
+                                      "anaphora"  "gzip-stream" "alexandria"
+                                      "mgl-pax")
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")

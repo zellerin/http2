@@ -3,37 +3,77 @@
 ;;;; http2.lisp
 
 (in-package :http2)
-#|
-   client:  The endpoint that initiates an HTTP/2 connection.  Clients
-      send HTTP requests and receive HTTP responses.
 
-   connection:  A transport-layer connection between two endpoints.
+(mgl-pax:defsection @terms
+    (:export nil
+     :title "Glossary terms")
+  (http2-client mgl-pax:glossary-term)
+  (connection-term mgl-pax:glossary-term)
+  (connection-error mgl-pax:glossary-term)
+  (peer mgl-pax:glossary-term)
+  (receiver mgl-pax:glossary-term)
+  (sender mgl-pax:glossary-term)
+  (server mgl-pax:glossary-term)
+  (http2-stream mgl-pax:glossary-term)
+  (http2-stream-error mgl-pax:glossary-term))
 
-   connection error:  An error that affects the entire HTTP/2
-      connection.
+(mgl-pax:define-glossary-term  http2-client
+    (:title "HTTP/2 client")
+    "The endpoint that initiates an HTTP/2 connection.  Clients send HTTP
+      requests and receive HTTP responses.")
 
-   endpoint:  Either the client or server of the connection.
+(mgl-pax:define-glossary-term  connection-term (:title "HTTP/2 connection")
+                               "A transport-layer connection between two endpoints.")
 
-   frame:  The smallest unit of communication within an HTTP/2
+(mgl-pax:define-glossary-term connection-error (:title "Connection error")
+                              "An error that affects the entire HTTP/2 connection.")
+
+(mgl-pax:define-glossary-term connection-endpoint ()
+"Either the client or server of the connection.")
+
+(mgl-pax:define-glossary-term frame ()
+  "The smallest unit of communication within an HTTP/2
       connection, consisting of a header and a variable-length sequence
-      of octets structured according to the frame type.
+      of octets structured according to the frame type.")
 
-   peer:  An endpoint.  When discussing a particular endpoint, "peer"
-      refers to the endpoint that is remote to the primary subject of
-      discussion.
+(mgl-pax:define-glossary-term peer ()  "An endpoint.  When discussing a particular endpoint, peer refers to the endpoint that is remote to the primary subject of discussion.")
 
-   receiver:  An endpoint that is receiving frames.
+(mgl-pax:define-glossary-term receiver () "An endpoint that is receiving frames.")
 
-   sender:  An endpoint that is transmitting frames.
+(mgl-pax:define-glossary-term sender () "An endpoint that is transmitting frames.")
 
-   server:  The endpoint that accepts an HTTP/2 connection.  Servers
-      receive HTTP requests and send HTTP responses.
+(mgl-pax:define-glossary-term server () "The endpoint that accepts an HTTP/2 connection.  Servers
+      receive HTTP requests and send HTTP responses.")
 
-   stream:  A bidirectional flow of frames within the HTTP/2 connection.
+(mgl-pax:define-glossary-term http2-stream () "A bidirectional flow of frames within the HTTP/2 connection.")
 
-   stream error:  An error on the individual HTTP/2 stream.
+(mgl-pax:define-glossary-term http2-stream-error () "An error on the individual HTTP/2 stream.")
 
-|#
+(mgl-pax:defsection @frames-api
+  (:title "Sending and receiving frames")
+  "Lowest level interace deals with sending and receiving individual frames. For
+each frame type there is an anonymous read function called by READ-FRAME based
+on the type, and write function (WRITE-DATA-FRAME, ...) The only exception is
+continuations frame that are not expected when read-frame is called - they are
+processed as part of processing preceding header frame.
+
+The write function are expected to be called individually and each calls
+WRITE-FRAME-HEADER to send common parts; you should not need to call it, but
+it is a good one to trace to debug low level problems. Each write function takes
+object identifying the http stream or connection that the frame affects,
+additional parameters, and optional parameters that usually relate to the known
+flags."
+
+  (read-frame function)
+  (write-frame-header function)
+  (write-ack-setting-frame function))
+
+(mgl-pax:defsection @frames-implementation
+  (:title "Sending and receiving frames"
+   :export nil)
+
+  (frame-type class)
+  (*frame-types* variable))
 
 
 (defstruct (frame-type
@@ -238,46 +278,47 @@ passed to the make-instance"
   (write-31-bits stream value reserved))
 
 (defun write-frame-header (stream length type flags http-stream R)
-  "All frames begin with a fixed 9-octet header followed by a variable-
-   length payload.
-
-  #+begin_src artist
-    +-----------------------------------------------+
-    |                 Length (24)                   |
-    +---------------+---------------+---------------+
-    |   Type (8)    |   Flags (8)   |
-    +-+-------------+---------------+-------------------------------+
-    |R|                 Stream Identifier (31)                      |
-    +=+=============================================================+
-    |                   Frame Payload (0...)                      ...
-    +---------------------------------------------------------------+
-  #+end_src
-
-   Length:  The length of the frame payload expressed as an unsigned
-      24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
-      sent unless the receiver has set a larger value for
-      SETTINGS_MAX_FRAME_SIZE.
-
-      The 9 octets of the frame header are not included in this value.
-
-   Type:  The 8-bit type of the frame.  The frame type determines the
-      format and semantics of the frame.
-
-   Flags:  An 8-bit field reserved for boolean flags specific to the
-      frame type.
-
-      Flags are assigned semantics specific to the indicated frame type.
-      Flags that have no defined semantics for a particular frame type
-      MUST be ignored and MUST be left unset (0x0) when sending.
-
-   R: A reserved 1-bit field.  The semantics of this bit are undefined,
-      and the bit MUST remain unset (0x0) when sending and MUST be
-      ignored when receiving.
-
-   Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
-      as an unsigned 31-bit integer.  The value 0x0 is reserved for
-      frames that are associated with the connection as a whole as
-      opposed to an individual stream."
+  "Write a frame header to STREAM."
+;;; All frames begin with a fixed 9-octet header followed by a variable-
+;;; length payload.
+;;;
+;;; +begin_src artist
+;;;  +-----------------------------------------------+
+;;;  |                 Length (24)                   |
+;;;  +---------------+---------------+---------------+
+;;;  |   Type (8)    |   Flags (8)   |
+;;;  +-+-------------+---------------+-------------------------------+
+;;;  |R|                 Stream Identifier (31)                      |
+;;;  +=+=============================================================+
+;;;  |                   Frame Payload (0...)                      ...
+;;;  +---------------------------------------------------------------+
+;;; +end_src
+;;;
+;;; Length:  The length of the frame payload expressed as an unsigned
+;;;    24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
+;;;    sent unless the receiver has set a larger value for
+;;;    SETTINGS_MAX_FRAME_SIZE.
+;;;
+;;;    The 9 octets of the frame header are not included in this value.
+;;;
+;;; Type:  The 8-bit type of the frame.  The frame type determines the
+;;;    format and semantics of the frame.
+;;;
+;;; Flags:  An 8-bit field reserved for boolean flags specific to the
+;;;    frame type.
+;;;
+;;;    Flags are assigned semantics specific to the indicated frame type.
+;;;    Flags that have no defined semantics for a particular frame type
+;;;    MUST be ignored and MUST be left unset (0x0) when sending.
+;;;
+;;; R: A reserved 1-bit field.  The semantics of this bit are undefined,
+;;;    and the bit MUST remain unset (0x0) when sending and MUST be
+;;;    ignored when receiving.
+;;;
+;;; Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
+;;;    as an unsigned 31-bit integer.  The value 0x0 is reserved for
+;;;    frames that are associated with the connection as a whole as
+;;;    opposed to an individual stream."
   (declare (type (unsigned-byte 24) length)
            (type (unsigned-byte 8) type flags)
            (optimize speed))
@@ -328,55 +369,55 @@ Also do some checks on the stream id based on the frame type."
 (defun find-just-stream-by-id (streams id)
   "Find STREAM by ID in STREAMS, or :closed
 
-The list of streams should already be sorted from high number to low number, so we caould
+The list of streams should already be sorted from high number to low number, so we could
 stop as soon as we can see lower value. However, we assume the list needed to be searched is
 pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
 
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
-  "All frames begin with a fixed 9-octet header followed by a variable-
-   length payload.
+  "Read one frame related to the CONNECTION from STREAM. All frames begin with a
+fixed 9-octet header followed by a variable-length payload. The function reads
+and processes the header, and then dispatches to a frame type specific
+handler that calls appropriate callbacks."
+;;;  +-----------------------------------------------+
+;;;  |                 Length (24)                   |
+;;;  +---------------+---------------+---------------+
+;;;  |   Type (8)    |   Flags (8)   |
+;;;  +-+-------------+---------------+-------------------------------+
+;;;  |R|                 Stream Identifier (31)                      |
+;;;  +=+=============================================================+
+;;;  |                   Frame Payload (0...)                      ...
+;;;  +---------------------------------------------------------------+
+;;;
+;;; Length:  The length of the frame payload expressed as an unsigned
+;;;    24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
+;;;    sent unless the receiver has set a larger value for
+;;;    SETTINGS_MAX_FRAME_SIZE.
+;;;
+;;;    The 9 octets of the frame header are not included in this value.
+;;;
+;;; Type:  The 8-bit type of the frame.  The frame type determines the
+;;;    format and semantics of the frame.  Implementations MUST ignore
+;;;    and discard any frame that has a type that is unknown.
+;;;
+;;; Flags:  An 8-bit field reserved for boolean flags specific to the
+;;;    frame type.
+;;;
+;;;    Flags are assigned semantics specific to the indicated frame type.
+;;;    Flags that have no defined semantics for a particular frame type
+;;;    MUST be ignored and MUST be left unset (0x0) when sending.
+;;;
+;;; R: A reserved 1-bit field.  The semantics of this bit are undefined,
+;;;    and the bit MUST remain unset (0x0) when sending and MUST be
+;;;    ignored when receiving.
+;;;
+;;; Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
+;;;    as an unsigned 31-bit integer.  The value 0x0 is reserved for
+;;;    frames that are associated with the connection as a whole as
+;;;    opposed to an individual stream."
 
-  #+begin_src artist
-    +-----------------------------------------------+
-    |                 Length (24)                   |
-    +---------------+---------------+---------------+
-    |   Type (8)    |   Flags (8)   |
-    +-+-------------+---------------+-------------------------------+
-    |R|                 Stream Identifier (31)                      |
-    +=+=============================================================+
-    |                   Frame Payload (0...)                      ...
-    +---------------------------------------------------------------+
-  #+end_src
-
-   Length:  The length of the frame payload expressed as an unsigned
-      24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
-      sent unless the receiver has set a larger value for
-      SETTINGS_MAX_FRAME_SIZE.
-
-      The 9 octets of the frame header are not included in this value.
-
-   Type:  The 8-bit type of the frame.  The frame type determines the
-      format and semantics of the frame.  Implementations MUST ignore
-      and discard any frame that has a type that is unknown.
-
-   Flags:  An 8-bit field reserved for boolean flags specific to the
-      frame type.
-
-      Flags are assigned semantics specific to the indicated frame type.
-      Flags that have no defined semantics for a particular frame type
-      MUST be ignored and MUST be left unset (0x0) when sending.
-
-   R: A reserved 1-bit field.  The semantics of this bit are undefined,
-      and the bit MUST remain unset (0x0) when sending and MUST be
-      ignored when receiving.
-
-   Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
-      as an unsigned 31-bit integer.  The value 0x0 is reserved for
-      frames that are associated with the connection as a whole as
-      opposed to an individual stream."
-  ;; first flush anything we should have send to prevent both sides waiting
   (declare (optimize speed))
+  ;; first flush anything we should have send to prevent both sides waiting
   (force-output stream)
   (let* ((length (read-bytes stream 3))
          (type (read-byte stream))
