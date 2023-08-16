@@ -218,18 +218,18 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
             ,type-code
             keys
             ,writer
-            ,@(mapcar 'car (append parameters key-parameters)))
-           (setf (aref *frame-types* ,type-code)
-                 (make-frame-type :name ,frame-type-name
-                                  :documentation ,documentation
-                                  :receive-fn #',reader
-                                  :old-stream-ok ',must-have-stream-in
-                                  :new-stream-state ',new-stream-state
-                                  :connection-ok ,(or may-have-connection must-have-connection)
-                                  :bad-state-error ,bad-state-error
-                                  :flag-keywords
-                                  ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
-                                            flags))))))))
+            ,@(mapcar 'car (append parameters key-parameters)))))
+       (setf (aref *frame-types* ,type-code)
+             (make-frame-type :name ,frame-type-name
+                              :documentation ,documentation
+                              :receive-fn #',reader
+                              :old-stream-ok ',must-have-stream-in
+                              :new-stream-state ',new-stream-state
+                              :connection-ok ,(or may-have-connection must-have-connection)
+                              :bad-state-error ,bad-state-error
+                              :flag-keywords
+                              ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
+                                        flags))))))
 
 (defun write-frame (http-connection-or-stream length type-code keys
                   writer &rest pars)
