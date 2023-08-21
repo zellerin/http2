@@ -6,13 +6,18 @@
   (:title "Vector backed streams and (buffered) octet pipes")
 
 "In tests we need to send data between client and server as if using a
-stream. For this, we implement pipes that allow to send data to one stream and receive them from another (MAKE-PIPE), and possibly also vice versa (MAKE-FULL-PIPE).
+stream. For this, we implement pipes that allow to send data to one stream and
+receive them from another (MAKE-PIPE), and possibly also vice
+versa (MAKE-FULL-PIPE).
 
-The pipe streams are backed by vectors.
+The pipe streams are backed by vectors - that is, one vector shared by both pipe
+ends.
 
 This should probably be some existing library, but I failed to find it.
 
-No synchronization, usage in concurrently running processes not expected."
+At the moment, it is strictly for the purpose of testing, so not generally usable:
+- no synchronization, usage in concurrently running processes not expected,
+- performance satisfying but not optimized"
   (make-pipe function)
   (make-full-pipe function)
   (pipe-end-for-read class)
@@ -20,7 +25,7 @@ No synchronization, usage in concurrently running processes not expected."
   (@buffer-stream-and-pipes-impl mgl-pax:section))
 
 (mgl-pax:defsection @buffer-stream-and-pipes-impl
-    (:title "Gray stream classes for vector backed stream"
+    (:title "Vector backed streams - impementation"
      :export nil)
   (trivial-gray-streams:stream-read-byte (mgl-pax:method () (pipe-end-for-read)))
   (trivial-gray-streams:stream-listen (mgl-pax:method () (pipe-end-for-read)))
@@ -39,7 +44,7 @@ assumed that whole the buffer can be read."))
 
 (defun make-pipe (&key (buffer-size 4096))
   "Two values, each representing one end of a freshly created one-way binary
-pipe: writer and reader."
+pipe: writer and reader. They share the buffer."
   (let ((buffer (make-array buffer-size :adjustable t
                                         :fill-pointer 0)))
     (values (make-instance 'pipe-end-for-write
