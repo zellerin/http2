@@ -2,13 +2,18 @@
 
 (in-package http2)
 
-(defun threaded-dispatch (fn tls-stream &rest pars)
-  "Apply FN on the TLS-STREAM and PARS in a new thread and return true value.
 
-To be used as *dispatch-fn* callback for thread-per-connection request handling."
+(mgl-pax:defsection @server/threaded
+    (:title "Threaded server")
+  (threaded-dispatch function))
+
+(defun threaded-dispatch (fn tls-stream &rest pars)
+  "Apply FN on the TLS-STREAM and PARS in a new thread
+
+To be used as *DISPATCH-FN* callback for thread-per-connection request handling."
   (bt:make-thread (lambda ()
-                           (apply fn tls-stream pars))
-                         :name "HTTP/2 connection handler"))
+                    (apply fn tls-stream pars))
+                  :name "HTTP/2 connection handler"))
 
 (defvar *dispatch-fn* #'threaded-dispatch
   "How to call process-server-stream. Default is THREADED-DISPATCH.

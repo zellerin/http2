@@ -12,7 +12,7 @@
            ;; reexported from http2
            #:encode-header #:request-headers #:update-dynamic-table-size))
 
-(cl:defpackage :http2
+(mgl-pax:define-package :http2
   (:use :cl :http2/hpack)
   (:import-from :anaphora #:awhen #:acond #:it)
   (:import-from :alexandria
