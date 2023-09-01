@@ -704,7 +704,7 @@ extensions."))
  \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
 (defun read-client-preface (connection)
-  (let ((preface-buffer (make-array (length +client-preface-start+))))
+  (let ((preface-buffer (make-octet-buffer (length +client-preface-start+))))
     (read-sequence preface-buffer (get-network-stream connection))
     (unless (equalp preface-buffer +client-preface-start+)
       (error 'client-preface-mismatch :received preface-buffer)))

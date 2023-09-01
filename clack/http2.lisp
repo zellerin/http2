@@ -66,7 +66,7 @@
               (vector
                (write-sequence body out))
               (pathname
-               (let ((buffer (make-array 4096 :element-type '(unsigned-byte 8))))
+               (let ((buffer (make-octet-buffer 4096)))
                  (with-open-file (in body :element-type '(unsigned-byte 8))
                    (loop for len = (read-sequence buffer in)
                          while (plusp len)

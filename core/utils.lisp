@@ -14,6 +14,10 @@
   (stream-id type)
   (http2-stream-state type))
 
+(declaim (inline make-octet-buffer))
+(defun make-octet-buffer (size)
+  (make-array size :element-type '(unsigned-byte 8)))
+
 (defvar *bytes-left* nil "Number of bytes left in frame")
 
 (defvar *when-no-bytes-left-fn* nil "Function to call when no bytes are left. Either errors or calls continuations.")
@@ -40,6 +44,16 @@ More precisely, the stream that is read from contains known number of octets tha
     (t
      (funcall *when-no-bytes-left-fn* stream)
      (read-byte* stream))))
+
+(defun aref/wide (sequence start size)
+  "Same as read-bytes, but from a sequence"
+  (declare ((integer 1 8) size))
+  (loop with res = 0
+        for i from 0 to (+ -1 size)
+        do
+           (setf (ldb (byte 8 (* 8 (- size 1 i))) res)
+                 (aref sequence (+ start i)))
+        finally (return res)))
 
 (defun read-bytes (stream n)
   "Read N bytes from stream to an integer"

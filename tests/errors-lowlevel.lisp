@@ -15,7 +15,7 @@
       (write-frame
        (create-new-local-stream sender)
        -1 +headers-frame+
-       (list :padded (make-array 10 :element-type '(unsigned-byte 8)))
+       (list :padded (make-octet-buffer 10))
        (constantly nil) #())
       (read-frame receiver)
       (read-frame receiver)))
@@ -25,7 +25,7 @@
       (write-frame
        (create-new-local-stream sender)
        -1 +headers-frame+
-       (list :padded (make-array 10 :element-type '(unsigned-byte 8)))
+       (list :padded (make-octet-buffer 10))
        (constantly nil) #())
       (read-frame receiver))))
 

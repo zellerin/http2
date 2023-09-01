@@ -72,7 +72,7 @@
                                     :utf-8 t))
                        "Žába"))
 
-    (let ((res-array (make-array 4 :element-type '(unsigned-byte 8))))
+    (let ((res-array (make-octet-buffer 4)))
       (read-sequence res-array  (@ #(1 2 3 4) nil nil))
       (fiasco:is (equalp res-array
                          #(1 2 3 4)))
