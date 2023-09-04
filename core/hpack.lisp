@@ -360,7 +360,8 @@ Return the fillable vector."
 
 (defun read-huffman (stream len)
   "Read Huffman coded text of length LEN from STREAM."
-  (loop with res = (make-array len :element-type '(unsigned-byte 8))
+  ;; FIXME: split out http2 utils so that we can have package hierarchy
+  (loop with res = (http2::make-octet-buffer len)
         for i from 0 to (1- len)
         do (setf (aref res i) (read-byte* stream))
         finally (return (decode-huffman res))))
