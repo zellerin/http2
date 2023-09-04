@@ -374,6 +374,18 @@ pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
 
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
+    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+write, read the header and process it."
+  (declare (inline make-octet-buffer))
+  (force-output stream)
+  (let ((buffer (make-octet-buffer 9)))
+    (declare (dynamic-extent buffer))
+    (read-sequence buffer stream)
+    (maybe-lock-for-write connection)
+    (process-frame-header buffer connection stream)
+    (maybe-unlock-for-write connection)))
+
+(defun process-frame-header (header connection stream)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
 and processes the header, and then dispatches to a frame type specific
@@ -415,13 +427,14 @@ handler that calls appropriate callbacks."
 ;;;    frames that are associated with the connection as a whole as
 ;;;    opposed to an individual stream."
 
-  (declare (optimize speed))
+  (declare
+   (optimize speed)
+   ((simple-array (unsigned-byte 8) *) header))
   ;; first flush anything we should have send to prevent both sides waiting
-  (force-output stream)
-  (let* ((length (read-bytes stream 3))
-         (type (read-byte stream))
-         (flags (read-byte stream))
-         (http-stream+R (read-bytes stream 4))
+  (let* ((length (aref/wide header 0 3))
+         (type (aref header 3))
+         (flags (aref header 4))
+         (http-stream+R (aref/wide header 5 4))
          (http-stream (ldb (byte 31 0) http-stream+R))
          (R (ldb (byte 1 31) http-stream+R)))
     (declare ((unsigned-byte 24) length)
@@ -429,7 +442,9 @@ handler that calls appropriate callbacks."
              (stream-id http-stream)
              (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
-    (maybe-lock-for-write connection)
+    ;; FIXME:
+    ;; - for most frame types, read full data then
+    ;; - for data and maybe headers frame read as it goes
     (unwind-protect
          (progn
            (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
@@ -459,8 +474,7 @@ handler that calls appropriate callbacks."
                (peer-ends-http-stream stream-or-connection))
              (values
               (frame-type-name frame-type-object)
-              (or stream-or-connection http-stream))))
-      (maybe-unlock-for-write connection))))
+              (or stream-or-connection http-stream)))))))
 
 (defun write-sequences (stream headers)
   "Write a list of sequences to stream."
@@ -487,20 +501,19 @@ handler that calls appropriate callbacks."
         (null) ; just to close stream
         (cons (write-sequences stream data))
         (t (write-sequence data stream)))
-      (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length)
-)
+      (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length))
 
     (lambda (stream connection http-stream length flags)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
       (declare (ignore flags))
-      (let* ((data (make-array length :element-type '(unsigned-byte 8))))
+      (let* ((data (make-octet-buffer length)))
         (account-read-window-contribution connection http-stream length)
         (loop while (plusp length)
               do (decf length (read-sequence data stream))
-                 (apply-data-frame http-stream data)
-              ))))
+                 (apply-data-frame http-stream data)))))
 
 (defun account-read-window-contribution (connection stream length)
+  ;; TODO: throw an error when this goes below zero
   (decf (get-window-size connection) length)
   (decf (get-window-size stream) length))
 
