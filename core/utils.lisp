@@ -2,7 +2,7 @@
 
 (in-package :http2)
 
-(mgl-pax:defsection @utils (:title "Utilities")
+(defsection @utils (:title "Utilities")
   (read-bytes function)
   (write-bytes function)
   (read-byte* function)

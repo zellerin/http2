@@ -2,8 +2,8 @@
 
 (in-package :http2/hpack)
 
-(mgl-pax:defsection @hpack-api
-    (:title "HPACK - RFC7541")
+(defsection @hpack-api
+    (:title "HPACK - RFC7541 implementation.")
   "HTTP2 headers can be compressed - and implementation needs to be able to decompress - by two (or maybe three) ways:
 
 - Headers (with or without value) in static headers table (defined in RFC) can be replaced by appropriate a code,

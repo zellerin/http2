@@ -87,7 +87,7 @@ protocol (H2 by default)."
 (defmethod process-end-headers :after (connection (stream vanilla-client-stream))
   (funcall (get-end-headers-fn stream) stream))
 
-(defmethod peer-ends-http-stream :after ((stream vanilla-client-stream))
+(defmethod peer-ends-http-stream ((stream vanilla-client-stream))
   (funcall (get-end-stream-fn stream) stream))
 
 (defvar *charset-names*

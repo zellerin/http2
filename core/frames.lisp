@@ -4,53 +4,53 @@
 
 (in-package :http2)
 
-(mgl-pax:defsection @terms
+(defsection @terms
     (:export nil
      :title "Glossary terms")
-  (http2-client mgl-pax:glossary-term)
-  (connection-term mgl-pax:glossary-term)
-  (connection-error mgl-pax:glossary-term)
-  (peer mgl-pax:glossary-term)
-  (receiver mgl-pax:glossary-term)
-  (sender mgl-pax:glossary-term)
-  (server mgl-pax:glossary-term)
-  (http2-stream mgl-pax:glossary-term)
-  (http2-stream-error mgl-pax:glossary-term))
+  (http2-client glossary-term)
+  (connection-term glossary-term)
+  (connection-error glossary-term)
+  (peer glossary-term)
+  (receiver glossary-term)
+  (sender glossary-term)
+  (server glossary-term)
+  (http2-stream glossary-term)
+  (http2-stream-error glossary-term))
 
-(mgl-pax:define-glossary-term  http2-client
+(define-glossary-term  http2-client
     (:title "HTTP/2 client")
     "The endpoint that initiates an HTTP/2 connection.  Clients send HTTP
       requests and receive HTTP responses.")
 
-(mgl-pax:define-glossary-term  connection-term (:title "HTTP/2 connection")
+(define-glossary-term  connection-term (:title "HTTP/2 connection")
                                "A transport-layer connection between two endpoints.")
 
-(mgl-pax:define-glossary-term connection-error (:title "Connection error")
+(define-glossary-term connection-error (:title "Connection error")
                               "An error that affects the entire HTTP/2 connection.")
 
-(mgl-pax:define-glossary-term connection-endpoint ()
+(define-glossary-term connection-endpoint ()
 "Either the client or server of the connection.")
 
-(mgl-pax:define-glossary-term frame ()
+(define-glossary-term frame ()
   "The smallest unit of communication within an HTTP/2
       connection, consisting of a header and a variable-length sequence
       of octets structured according to the frame type.")
 
-(mgl-pax:define-glossary-term peer ()  "An endpoint.  When discussing a particular endpoint, peer refers to the endpoint that is remote to the primary subject of discussion.")
+(define-glossary-term peer ()  "An endpoint.  When discussing a particular endpoint, peer refers to the endpoint that is remote to the primary subject of discussion.")
 
-(mgl-pax:define-glossary-term receiver () "An endpoint that is receiving frames.")
+(define-glossary-term receiver () "An endpoint that is receiving frames.")
 
-(mgl-pax:define-glossary-term sender () "An endpoint that is transmitting frames.")
+(define-glossary-term sender () "An endpoint that is transmitting frames.")
 
-(mgl-pax:define-glossary-term server () "The endpoint that accepts an HTTP/2 connection.  Servers
+(define-glossary-term server () "The endpoint that accepts an HTTP/2 connection.  Servers
       receive HTTP requests and send HTTP responses.")
 
-(mgl-pax:define-glossary-term http2-stream () "A bidirectional flow of frames within the HTTP/2 connection.")
+(define-glossary-term http2-stream () "A bidirectional flow of frames within the HTTP/2 connection.")
 
-(mgl-pax:define-glossary-term http2-stream-error () "An error on the individual HTTP/2 stream.")
+(define-glossary-term http2-stream-error () "An error on the individual HTTP/2 stream.")
 
-(mgl-pax:defsection @frames-api
-  (:title "Sending and receiving frames")
+(defsection @frames-api
+  (:title "API for sending and receiving frames")
   "Lowest level interace deals with sending and receiving individual frames. For
 each frame type there is an anonymous read function called by READ-FRAME based
 on the type, and write function (WRITE-DATA-FRAME, ...) The only exception is
@@ -68,7 +68,7 @@ flags."
   (write-frame-header function)
   (write-ack-setting-frame function))
 
-(mgl-pax:defsection @frames-implementation
+(defsection @frames-implementation
   (:title "Sending and receiving frames"
    :export nil)
 

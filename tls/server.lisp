@@ -3,7 +3,7 @@
 (in-package http2)
 
 
-(mgl-pax:defsection @server/threaded
+(defsection @server/threaded
     (:title "Threaded server")
   (threaded-dispatch function))
 

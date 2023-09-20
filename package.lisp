@@ -4,6 +4,8 @@
 
 (mgl-pax:define-package :http2/hpack
   (:use :cl #:anaphora)
+  (:import-from #:mgl-pax #:defsection #:glossary-term #:section
+                #:define-glossary-term)
   (:export #:compile-headers #:decode-huffman
            #:dynamic-table-value
            #:get-bytes-left-in-table #:get-deleted-items #:get-dynamic-table #:get-dynamic-table-size #:get-integer-from-octet #:get-updates-needed #:integer-to-array #:read-http-header #:hpack-context
@@ -15,6 +17,8 @@
 (mgl-pax:define-package :http2
   (:use :cl :http2/hpack)
   (:import-from :anaphora #:awhen #:acond #:it)
+  (:import-from #:mgl-pax #:defsection #:glossary-term #:section
+                #:define-glossary-term)
   (:import-from :alexandria
                 #:read-stream-content-into-string #:read-stream-content-into-byte-vector)
   (:export #:logging-object
@@ -97,13 +101,4 @@
            #:CLIENT-STREAM #:TIMESHIFT-PINGING-CONNECTION
            #:WRITE-GOAWAY-FRAME #:WRITE-ACK-SETTING-FRAME
            #:HANDLE-UNDEFINED-FRAME #:WRITE-WINDOW-UPDATE-FRAME
-           #:DO-GOAWAY #:WRITE-CONTINUATION-FRAME)
-  (:documentation "HTTP2 API on several levels.
-
-First, it has some high level interface to facilitate making HTTP2 client and
-server with some vanilla behaviour. The communication is done mostly by writing to and reading from (Lisp) streams and sending/parsing/receiving headers.
-
-Then, there is an object oriented interface that allows to customize details on
-how the client or server acts in some situations. This allows things such as sending pushes on the server side.
-
-Then there is a low level frame oriented interface to read and write frames."))
+           #:DO-GOAWAY #:WRITE-CONTINUATION-FRAME))

@@ -7,8 +7,7 @@
 (in-package :http2/client)
 
 (mgl-pax:defsection @client
-  ()
-  ""
+  (:title "Client sample implementation")
   (retrieve-url-using-connection function)
   (retrieve-url function))
 
@@ -55,16 +54,11 @@ headers after the end of headers is signalled (callback END-HEADERS-FN is
 called) and until END-STREAM-FN is called, any reading of body may block.
 
 - PARSED-URL is a parsed URL to provide (used for autority header and path)
-
 - METHOD is a http method to use, as a symbol or string
-
 - CONTENT-FN, if not null, should be a function of one argument, a stream, that
   sends data to the stream.
-
 - providing CONTENT is a shorthand to provide CONTENT-FN that sends a sequence (string or binary)
-
 - if CONTENT-TYPE is set, it is send in headers, and the stream for CONTENT-FN is of type derived from its associated charset as per EXTRACT-CHARSET-FROM-CONTENT-TYPE.
-
 - if GZIP-CONTENT is set, the appropriate header is send, and the stream for
   CONTENT-FN is compressed transparently."
   (let ((raw-stream

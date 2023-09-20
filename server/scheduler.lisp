@@ -1,5 +1,12 @@
 (in-package :http2)
 
+(defsection @scheduling
+    (:title "Scheduled tasks in server")
+  (scheduled-task class)
+  (scheduler class)
+  (schedule-task function)
+  (run-scheduler-in-thread function)
+  (threaded-server-mixin class))
 
 (defclass scheduled-task ()
   ((internal-time-to-run :accessor get-internal-time-to-run :initarg :internal-time-to-run)

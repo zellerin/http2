@@ -181,22 +181,36 @@ communication can be debugged or recorded."))
 
 
 ;;;; Callbacks from frame reading functions
-(mgl-pax:defsection @callbacks
+(defsection @data-received
+  (:title "Processing data frames")
+  (apply-data-frame generic-function)
+  (apply-data-frame (method nil (t t)))
+  (body-collecting-mixin class)
+  (apply-data-frame (method nil (body-collecting-mixin t))))
+
+
+(defsection @stream-closed
+    (:title "Processing end of data")
+  (peer-ends-http-stream generic-function)
+  (peer-ends-http-stream (method nil (vanilla-server-stream)))
+  (peer-ends-http-stream (method nil (vanilla-client-stream))))
+
+(defsection @callbacks
     (:title "Frame read callbacks")
-    "The reader functions for individual frames may call a callback that is supposed
+  "The reader functions for individual frames may call a callback that is supposed
 to handle received frame in some way. All callbacks have stream or connection as
 the first parameter.
 
 In addition to the behaviour described below, all callback log the behaviour
 when relevant stream or connection has logging-object as superclass."
-  (apply-data-frame generic-function)
+  (@data-received section)
+  (@stream-closed section)
   (apply-stream-priority  generic-function)
   (apply-window-size-increment generic-function)
   (peer-resets-stream generic-function)
   (set-peer-setting generic-function)
   (peer-expects-settings-ack generic-function)
   (peer-acks-settings generic-function)
-  (peer-ends-http-stream generic-function)
   (handle-undefined-frame generic-function)
   (do-pong generic-function)
   (do-goaway generic-function))
@@ -361,15 +375,16 @@ automatically, otherwise caller must ensure it."
   (:documentation "This is called when a new frame is ready "))
 
 (defgeneric apply-data-frame (stream payload)
-  (:documentation "Data frame is received by a stream.
- By default it sends window update for connection and stream.")
+  (:documentation "HTTP-STREAM should process received PAYLOAD from the data frame. Presently it is called once per data frame, but this can change in future to improve performance.")
 
   ;; FIXME: we should not send small updates
 
   (:method (stream payload)
+    "Just ignore the data and warn about it."
     (warn 'implement-by-user :format-control "No payload action defined."))
 
   (:method ((stream body-collecting-mixin) data)
+    "Concatenate received data to the BODY slot of the object."
     (setf (get-body stream)
           (concatenate 'string (get-body stream)
                        (map 'string 'code-char  data)))
@@ -520,8 +535,8 @@ SET-PEER-SETTING calls. By default, send ACK frame.")
 
 (defgeneric peer-ends-http-stream (stream)
   (:documentation
-   "Do relevant state changes when closing http stream (as part of received HEADERS or
-PAYLOAD).")
+   "Do relevant state changes when peer closes HTTP-STREAM (as part of received HEADERS or
+PAYLOAD). Does nothing by default; client and server would want to specialize it to send response or process it.")
   (:method :after ((stream logging-object))
     (add-log stream '(:closed-remotely)))
   (:method (stream)))

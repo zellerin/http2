@@ -17,7 +17,8 @@
                              (:file "classes")
                              (:file "hpack")
                              (:file "binary-payload")
-                             (:file "payload-streams"))))
+                             (:file "payload-streams")))
+               (:file "overview"))
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (defsystem "http2/tls"
