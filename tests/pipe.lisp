@@ -2,7 +2,7 @@
 
 (in-package :http2)
 
-(mgl-pax:defsection  @buffer-stream-and-pipes
+(defsection  @buffer-stream-and-pipes
   (:title "Vector backed streams and (buffered) octet pipes")
 
 "In tests we need to send data between client and server as if using a
@@ -16,20 +16,21 @@ ends.
 This should probably be some existing library, but I failed to find it.
 
 At the moment, it is strictly for the purpose of testing, so not generally usable:
+
 - no synchronization, usage in concurrently running processes not expected,
 - performance satisfying but not optimized"
   (make-pipe function)
   (make-full-pipe function)
   (pipe-end-for-read class)
   (pipe-end-for-write class)
-  (@buffer-stream-and-pipes-impl mgl-pax:section))
+  (@buffer-stream-and-pipes-impl section))
 
 (mgl-pax:defsection @buffer-stream-and-pipes-impl
     (:title "Vector backed streams - impementation"
      :export nil)
-  (trivial-gray-streams:stream-read-byte (mgl-pax:method () (pipe-end-for-read)))
-  (trivial-gray-streams:stream-listen (mgl-pax:method () (pipe-end-for-read)))
-  (trivial-gray-streams:stream-write-byte (mgl-pax:method () (pipe-end-for-write))))
+  (trivial-gray-streams:stream-read-byte (method () (pipe-end-for-read)))
+  (trivial-gray-streams:stream-listen (method () (pipe-end-for-read)))
+  (trivial-gray-streams:stream-write-byte (method () (pipe-end-for-write t))))
 
 (defclass pipe-end-for-read (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((buffer :accessor get-buffer :initarg :buffer)

@@ -24,7 +24,8 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
   (@scheduling section)
   (#:http2 asdf/system:system)
   (@frames-api section)
-  (http2/hpack::@hpack-api section))
+  (http2/hpack::@hpack-api section)
+  (http2::@buffer-stream-and-pipes section))
 
 ; (mgl-pax:update-asdf-system-html-docs http2::@index :http2)
 

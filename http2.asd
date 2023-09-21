@@ -17,8 +17,7 @@
                              (:file "classes")
                              (:file "hpack")
                              (:file "binary-payload")
-                             (:file "payload-streams")))
-               (:file "overview"))
+                             (:file "payload-streams"))))
   :in-order-to ((test-op (test-op "http2/test"))))
 
 (defsystem "http2/tls"
@@ -90,4 +89,5 @@
                (:file "streams")))
 
 (defsystem "http2/all"
-  :depends-on (http2 http2/test http2/client http2/server http2/server/example http2/tls))
+  :depends-on (http2 http2/test http2/client http2/server http2/server/example http2/tls)
+  :components ((:file "overview")))
