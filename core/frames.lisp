@@ -521,8 +521,6 @@ handler that calls appropriate callbacks."
   (decf (get-peer-window-size connection) length)
   (decf (get-peer-window-size stream) length))
 
-
-
 (defun write-priority (stream priority)
   (write-31-bits stream
                  (priority-stream-dependency priority)
@@ -898,7 +896,8 @@ individual stream and on the entire connection."
                                 reserved/local reserved/remote)
      :may-have-connection t)
     (lambda (stream window-size-increment reserved)
-      (write-31-bits stream  window-size-increment reserved))
+      (write-31-bits stream  window-size-increment reserved)
+      (incf (get-window-size http-connection-or-stream) window-size-increment))
 
     (lambda (stream connection http-stream length flags)
       (unless (zerop flags)
