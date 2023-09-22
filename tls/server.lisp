@@ -59,7 +59,9 @@ stream is kept open and caller is supposed to either use it or close it."
                     (handler-case
                         (unwind-protect
                              (apply #'process-server-stream tls-stream args)
-                          (close tls-stream))
+                          ;; TODO: do closing properly. This is sometimes second
+                          ;; close and fails, why?
+                          (ignore-errors (close tls-stream)))
                       (cl+ssl::ssl-error-ssl ()
                         ;; Just ignore it for now, Maybe it should be
                         ;; logged if not trivial - but what is trivial and
