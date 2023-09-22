@@ -1,18 +1,19 @@
 (in-package :http2)
 
-#+deleteme
-(define-condition peer-should-go-away (serious-condition)
-  ((error-code     :accessor get-error-code     :initarg :error-code)
-   (debug-data     :accessor get-debug-data     :initarg :debug-data)
-   (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
-  (:documentation
-   "Signalled when we have sent goaway frame and want to close connection."))
+(defsection @errors
+  (:title "Errors handling")
+  (connection-error condition)
+  (connection-error function)
+  (http-stream-error condition)
+  (http-stream-error function)
+  (go-away condition)
+  (do-goaway generic-function))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
-  (:documentation "Signaleed when GO-AWAY frame received."))
+  (:documentation "Signaled when GO-AWAY frame is received."))
 
 (define-condition client-preface-mismatch (error)
   ((received :accessor get-received :initarg :received)))
@@ -28,9 +29,13 @@
   (:documentation
    "A connection error is signalled when we detect an illegal frame content.
 
-Typically it is signalled from CONNECTION-ERROR function that also sends appropriate GOAWAY frame. After that it should be handled by server or client as needed - server may close connection, client may retry the request."))
+Use [CONNECTION-ERROR][function] function to signal it or its
+subclasses. Application must handle it, including closing associated
+NETWORK-STREAM."))
 
 (defun connection-error (class connection &rest args)
+  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
+NETWORK-STREAM used."
   (let ((err (apply #'make-instance class :connection connection args)))
     (with-slots (code) err
       (write-goaway-frame connection
@@ -123,7 +128,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
       #+nil  (format out "on ~a" stream))))
 
 (defun http-stream-error (e stream &rest args)
-  "We detected an error on peer stream. So we send a RST frame, warn in case someone in interested, and go on."
+  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise appropriate warning in case someone is interested, close affected stream, and continue."
   (let ((e (apply #'make-instance e :stream stream args)))
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))

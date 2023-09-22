@@ -8,8 +8,10 @@
 
 (mgl-pax:defsection @client
   (:title "Client sample implementation")
-  (retrieve-url-using-connection function)
-  (retrieve-url function))
+  "There is a simple client in the package http2/client."
+  (retrieve-url function)
+  (drakma-style-stream-values function)
+  (retrieve-url-using-http-connection function))
 
 (defun http-stream-to-vector (http2-stream)
   "Read HTTP2 raw stream payload data, do guessed conversions and return either
@@ -36,22 +38,22 @@ this."
     (null)
     (t (send-ping connection))))
 
-(defun retrieve-url-using-connection (connection parsed-url
-                                      &key
-                                        (method "GET")
-                                        content
-                                        (content-fn (when content (curry #'write-sequence content)))
-                                        additional-headers
-                                        (content-type "text/plain; charset=utf-8")
-                                        (charset (extract-charset-from-content-type content-type))
-                                        gzip-content
-                                        end-headers-fn
-                                      &allow-other-keys)
-  "HTTP2 stream object that represent a request sent on CONNECTION.
+(defun retrieve-url-using-http-connection
+    (http-connection parsed-url
+     &key
+       (method "GET")
+       content additional-headers
+       (content-fn (when content (curry #'write-sequence content)))
+       (content-type "text/plain; charset=utf-8")
+       (charset (extract-charset-from-content-type content-type))
+       gzip-content end-headers-fn &allow-other-keys)
+  "Return HTTP-STREAM object that represent a request sent on HTTP-CONNECTION.
 
 The stream does not necessarily contain response when returned. You can read its
 headers after the end of headers is signalled (callback END-HEADERS-FN is
 called) and until END-STREAM-FN is called, any reading of body may block.
+
+Parameters:
 
 - PARSED-URL is a parsed URL to provide (used for autority header and path)
 - METHOD is a http method to use, as a symbol or string
@@ -62,7 +64,7 @@ called) and until END-STREAM-FN is called, any reading of body may block.
 - if GZIP-CONTENT is set, the appropriate header is send, and the stream for
   CONTENT-FN is compressed transparently."
   (let ((raw-stream
-          (http2::open-http2-stream connection
+          (http2::open-http2-stream http-connection
                         (request-headers method
                                          (puri:uri-path parsed-url)
                                          (puri:uri-host parsed-url)
@@ -87,18 +89,20 @@ called) and until END-STREAM-FN is called, any reading of body may block.
   (with-http2-connection (connection connection-class
                                      :network-stream network-stream)
     (maybe-send-pings connection ping)
-    (apply #'retrieve-url-using-connection connection parsed-url args)
+    (apply #'retrieve-url-using-http-connection connection parsed-url args)
     (http2::process-pending-frames connection nil)
     (error "The stream never finished")))
 
 
 (defun drakma-style-stream-values (raw-stream &key close-stream)
-  "Return first few values as from DRAKMA:HTTP-REQUEST
+  "Return values as from DRAKMA:HTTP-REQUEST. Some of the values are meaningless,
+but kept for compatibility purposes.
+
 - body of the reply
 - status code as integer
 - alist of headers
 - the URL the reply came from (bogus value)
-- the connection the reply comes from (not network stream)
+- the connection the reply comes from (not network stream as in Drakma, but same purpose - can be reused for ruther queries.)
 - whether connection is closed (passed as parameter)
 - reason phrase (bogus value)"
   (values
@@ -117,7 +121,36 @@ called) and until END-STREAM-FN is called, any reading of body may block.
                      &allow-other-keys)
   "Retrieve URL (a string) through HTTP/2 over TLS.
 
-See RETRIEVE-URL-USING-CONNECTION for documentation of the keywordparameters."
+See RETRIEVE-URL-USING-CONNECTION for documentation of the keyword parameters.
+
+Example:
+
+```
+(http2/client:retrieve-url \"https://example.com\")
+==> \"<!doctype html>
+... <html>
+... <head>
+...     <title>Example Domain</title>
+...
+...     <meta charset=\"utf-8\" />
+...     <meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\" />
+...     <meta name=\"viewport\" conten...[sly-elided string of length 1256]\"
+==> 200 (8 bits, #xC8, #o310, #b11001000)
+==> ((\"content-length\" . \"1256\") (\"x-cache\" . \"HIT\") (\"vary\" . \"Accept-Encoding\")
+...  (\"server\" . \"ECS (bsb/27E0)\")
+...  (\"last-modified\" . \"Thu, 17 Oct 2019 07:18:26 GMT\")
+...  (\"expires\" . \"Thu, 28 Sep 2023 19:38:44 GMT\")
+...  (\"etag\" . \"\\\"3147526947+ident\\\"\") (\"date\" . \"Thu, 21 Sep 2023 19:38:44 GMT\")
+...  (\"content-type\" . \"text/html; charset=UTF-8\")
+...  (\"cache-control\" . \"max-age=604800\") (\"age\" . \"151654\"))
+==> \"/\"
+==> #<HTTP2:VANILLA-CLIENT-CONNECTION >
+==> NIL
+==> \"HTTP2 does not provide reason phrases\"
+```
+
+See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values
+"
   ;; parameters are just for documentation purposes
   (declare (ignore method content content-fn additional-headers
                    content-type charset gzip-content))

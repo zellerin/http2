@@ -2,6 +2,11 @@
 
 (in-package :http2)
 
+(defsection @base-classes
+    (:title "Classes")
+  (http2-connection class)
+  (flow-control-mixin class))
+
 ;;;; Classes
 (defclass flow-control-mixin ()
   ((window-size      :accessor get-window-size      :initarg :window-size)
@@ -182,7 +187,7 @@ communication can be debugged or recorded."))
 
 ;;;; Callbacks from frame reading functions
 (defsection @data-received
-  (:title "Processing data frames")
+    (:title "Processing data frames")
   (apply-data-frame generic-function)
   (apply-data-frame (method nil (t t)))
   (body-collecting-mixin class)

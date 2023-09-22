@@ -6,7 +6,7 @@
 (in-package :http2)
 
 (mgl-pax:defsection @client
-  (:title "Support for creating a client")
+  (:title "Creating a client")
   (connect-to-tls-server function)
 #+nil  (with-http2-connection macro)
   (send-headers function)
