@@ -1,7 +1,20 @@
 (in-package :http2)
 
+(defsection @tests
+    (:title "Tests overview")
+  (@test-server section))
+
+(defsection @test-server
+    (:title "Tests server")
+  "For tests, there is a test server running in a separate thread *TEST-SERVER-THREAD* on port *SERVER-PORT*."
+  (*test-server-thread* variable)
+  (*server-port* variable)
+  (kill-background-server function)
+  (to-srv-port function))
+
 (defvar *server-domain* "localhost")
-(defvar *server-port* nil)
+(defvar *server-port* nil
+  "Port with running test server. This is set dynamically when the server starts.")
 (defvar *test-server-thread*
   (bt:make-thread
    (lambda ()
@@ -24,9 +37,12 @@
              until *server-port*
              do (sleep 0.1))
 
-(defun to-srv-port (uri)
-  "URI moved to the *SERVER-PORT*"
-  (puri:copy-uri (puri:parse-uri uri) :port *server-port*))
+(defun to-srv-port (uri &optional (port *server-port*))
+  "Return PURI representation of URI (that can be a string) with port number
+changed to the PORT.
+
+This is to be used for testing, where the port can vary between tests."
+  (puri:copy-uri (puri:parse-uri uri) :port port))
 
 (fiasco:deftest test-self-compatible ()
   (test-webs `((,(to-srv-port "https://localhost/foo")
