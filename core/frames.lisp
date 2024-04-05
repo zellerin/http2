@@ -20,8 +20,7 @@
   (sender glossary-term)
   (connection-error glossary-term)
   (http2-stream-error glossary-term)
-  (network-stream-term glossary-term)
-)
+  (network-stream-term glossary-term))
 
 (define-glossary-term http2-standard
     (:title "standard")
@@ -319,7 +318,7 @@ passed to the make-instance"
   "Write STREAM-ID to the binary stream"
   (write-31-bits stream value reserved))
 
-(defun write-frame-header (stream length type flags http-stream R)
+(defun write-frame-header-to-vector (vector start length type flags stream-id R)
   "Write a frame header to STREAM."
 ;;; All frames begin with a fixed 9-octet header followed by a variable-
 ;;; length payload.
@@ -363,13 +362,27 @@ passed to the make-instance"
 ;;;    opposed to an individual stream."
   (declare (type (unsigned-byte 24) length)
            (type (unsigned-byte 8) type flags)
+           (type (simple-array (unsigned-byte 8)) vector)
+           (type stream-id stream-id)
            (optimize speed))
-  (let ((http-stream-id (get-stream-id http-stream)))
-    (declare (type stream-id http-stream-id))
-    (write-bytes stream 3 length)
-    (write-byte type stream)
-    (write-byte flags stream)
-    (write-stream-id stream http-stream-id R)))
+  (setf (aref vector start) (ldb (byte 8 16) length))
+  (setf (aref vector (incf start)) (ldb (byte 8 8) length))
+  (setf (aref vector (incf start)) (ldb (byte 8 0) length))
+  (setf (aref vector (incf start)) type)
+  (setf (aref vector (incf start)) flags)
+  (setf (aref vector (incf start))
+        (logior (if R #x80 0) (ldb (byte 7 23) stream-id)))
+  (setf (aref vector (incf start)) (ldb (byte 8 16) stream-id))
+  (setf (aref vector (incf start))  (ldb (byte 8 8) stream-id))
+  (setf (aref vector (incf start))  (ldb (byte 8 0) stream-id))
+  vector)
+
+(defun write-frame-header (stream length type flags http-stream R)
+  "Write a frame header to STREAM."
+  (write-sequence
+   (write-frame-header-to-vector
+    (make-octet-buffer 9) 0 length type flags (get-stream-id http-stream) R)
+   stream))
 
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
