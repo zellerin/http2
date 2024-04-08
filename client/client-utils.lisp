@@ -21,23 +21,33 @@
   (client-http2-connection class)
   (extract-charset-from-content-type function))
 
+
 (defun process-pending-frames (connection &optional just-pending)
   "Read and process all queued frames. This is to be called on client when the
-initial request was send.
-
-See PROCESS-SERVER-STREAM in dispatch.lisp for a server equivalent that reads
-all; note that that one also handles locking in multithread environment and some
-other conditions."
+initial request was send, or on server to serve requests."
   (handler-case
       (loop
+        with frame-action = #'read-frame-2
+        and size = 9
+        and stream = (get-network-stream connection)
         initially (force-output (get-network-stream connection))
         while (or (null just-pending)
                   (listen (get-network-stream connection)))
-        do (read-frame connection))
+        do
+           (force-output stream)
+           (maybe-lock-for-write connection)
+           (multiple-value-setq (size frame-action)
+             (let ((buffer (make-octet-buffer size)))
+               (declare (dynamic-extent buffer))
+               (if (= size (read-sequence buffer stream))
+                   (funcall frame-action buffer connection)
+                   (error 'end-of-file))))
+          (maybe-unlock-for-write connection))
     (end-of-file () nil)
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
-      nil)))
+      nil)
+    (connection-error ())))
 
 (defmacro with-http2-connection ((name class &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters.

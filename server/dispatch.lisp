@@ -217,9 +217,5 @@ signalled."
     (read-client-preface connection)
     (with-simple-restart (close-connection "Close current connection")
       (unwind-protect
-           (handler-case
-               (loop (read-frame connection))
-             (end-of-file () nil)
-             (connection-error ())
-             (go-away ()))
+           (process-pending-frames connection)
         (cleanup-connection connection)))))

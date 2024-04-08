@@ -441,6 +441,83 @@ write, read the header and process it."
     (process-frame-header buffer connection stream)
     (maybe-unlock-for-write connection)))
 
+(defun read-frame-2 (buffer connection &optional (stream (get-network-stream connection)))
+    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+write, read the header and process it.
+
+Return next action to run on the incoming data"
+  (process-frame-header buffer connection stream)
+  (values 9 #'read-frame-2))
+
+(defun checked-length (length connection)
+  (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
+
+  (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
+    ;; fixme: sometimes connection error.
+    (connection-error 'too-big-frame connection
+                      :frame-size length
+                      :max-frame-size (get-max-frame-size connection)))
+  length)
+
+(defun checked-R-flag (R)
+  (when (plusp R) (warn 'reserved-bit-set))
+  R)
+
+(defun update-stream-state (stream)
+  (ecase (get-state stream)
+    (half-closed/local (close-http2-stream stream))
+    (open (setf (get-state stream) 'half-closed/remote)))
+  (peer-ends-http-stream stream))
+
+(defun process-frame-from-vector (header size connection)
+  "Process frame and return function to call next when data are available."
+  (assert (= size 9))
+  (let* ((length (checked-length (aref/wide header 0 3) connection))
+         (type (aref header 3))
+         (R (checked-R-flag (ldb (byte 1 31) (aref header 5))))
+         (frame-type-object (aref (the simple-vector *frame-types*) type)))
+    (declare ((unsigned-byte 24) length)
+             (ignore R))
+
+    (values (min length) (frame-type-receive-fn frame-type-object) header)))
+
+#+nil(defun read-first-chunk-of-data (data size connection header)
+  (let* ((flags (aref header 4))
+         (start 0))
+    (setf (aref header 3) 0)
+    (when (has-flag flags :padded flag-keywords)
+      (incf start)
+      ;; Kludge: we store padding size in TYPE slot
+      ;; We need to keep it from first chunk read to the last.
+      (setf (aref header 3) (aref data 0))))
+  (read-next-chunk-of-data data size connection header))
+
+#+nil(defun read-next-chunk-of-data (data size connection header)
+  "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
+  (let* ((length (checked-length (aref/wide header 0 3) connection))
+         (flags (aref header 4))
+         (http-stream+R (aref/wide header 5 4))
+         (http-stream (ldb (byte 31 0) http-stream+R))
+         (stream
+           (find-http-stream-by-id connection http-stream
+                                   (aref *frame-types* 0)))
+         (start 0))
+    (account-read-window-contribution connection
+                                      http-stream
+                                      length)
+    (apply-data-frame http-stream
+                      ;; TODO: fix apply-data-frame
+                      (subseq data start (min size (- length (aref header 3)))))
+    (cond
+      ((< size (- length (aref header 3)))
+       ;; we need more data
+       (decf length size)
+       (values 0 #'read-next-chunk-of-data))
+      ((< (aref header 3))))))
+
+
+
+
 (defun process-frame-header (header connection stream)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
