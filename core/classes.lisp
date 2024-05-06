@@ -499,19 +499,13 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
 SET-PEER-SETTING calls. By default, send ACK frame.")
 
   (:method (connection)
-    (write-ack-setting-frame connection))
-
-  (:method :before ((connection logging-object))
-    (add-log connection '(:settings-ack-needed))))
+    (write-ack-setting-frame connection)))
 
 
 (defgeneric peer-acks-settings (connection)
   (:documentation
    "Called when SETTINGS-FRAME with ACK flag is received. By default does nothing.")
-  (:method (connection))
-
-  (:method ((connection logging-object))
-    (add-log connection '(:settings-acked))))
+  (:method (connection)))
 
 
 (defun dynamic-table-entry-size (name value)
