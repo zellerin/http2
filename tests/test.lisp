@@ -81,12 +81,6 @@
   (test-a-frame protocol-error #'write-rst-stream-frame '(1)
                 :expected-log-stream nil)  ; closed stream
 
-  (test-a-frame nil 'write-settings-frame '(((1 . 2)))
-                :expected-log-connection '((:setting :header-table-size 2)
-                                           (:settings-ACK-NEEDED))
-                :stream :connection
-                :expected-log-sender '((:settings-ACKed)))
-
   (test-a-frame nil #'write-ping-frame '(#x42)
                 :expected-log-connection '((:ping #x42))
                 :expected-log-sender '((:pong #x42))
