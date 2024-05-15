@@ -32,8 +32,9 @@
    (max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
    (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size)
    (stream-id                :accessor get-stream-id                :initarg :stream-id
-                             :initform 0
-                             :allocation :class))
+                             :initform      0
+                             :allocation :class)
+   (to-write                 :accessor get-to-write                 :initarg :to-write))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -46,7 +47,8 @@
                      :initial-window-size 65535
                      :max-frame-size 16384
                      :max-peer-frame-size 16384
-                     :peer-window-size 65535)
+                     :peer-window-size 65535
+                     :to-write nil)
 
   (:documentation
    "A simple connection: promise push not allowed, otherwise reasonable behaviour"))

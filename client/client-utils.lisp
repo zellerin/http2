@@ -23,17 +23,22 @@
 
 
 (defun process-pending-frames (connection &optional just-pending)
-  "Read and process all queued frames. This is to be called on client when the
-initial request was send, or on server to serve requests."
+  "Read and process all queued frames. Write everything that accumulates in the
+to-write list.
+
+This is to be called on client when the initial request was send, or on server
+to serve requests."
   (handler-case
       (loop
         with frame-action = #'read-frame-2
         and size = 9
         and stream = (get-network-stream connection)
-        initially (force-output (get-network-stream connection))
+        initially (force-output stream)
         while (or (null just-pending)
-                  (listen (get-network-stream connection)))
+                  (listen stream))
         do
+           (dolist (to-write (get-to-write connection))
+             (write-sequence to-write stream))
            (force-output stream)
            (maybe-lock-for-write connection)
            (multiple-value-setq (size frame-action)
