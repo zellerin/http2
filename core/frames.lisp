@@ -518,7 +518,7 @@ Return next action to run on the incoming data"
 
 
 
-(defun process-frame-header (header connection stream)
+(defun process-frame-header-only (header connection)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
 and processes the header, and then dispatches to a frame type specific
@@ -591,23 +591,41 @@ handler that calls appropriate callbacks."
                     (find-http-stream-by-id connection http-stream frame-type-object))
                   (flag-keywords (frame-type-flag-keywords frame-type-object))
                   (padded (has-flag flags :padded flag-keywords)))
-             (let ((padding-size (when padded (read-byte stream))))
-               (declare ((or null (unsigned-byte 8)) padding-size))
-               (when (and padded (>= padding-size length))
-                 (connection-error 'too-big-padding connection))
-               (funcall (frame-type-receive-fn frame-type-object)
-                        stream connection stream-or-connection
-                        (if padded (- length 1 padding-size) length) flags)
-               (when padded (read-padding stream padding-size)))
+             (values (frame-type-receive-fn frame-type-object)
+                     connection stream-or-connection
+                     length
+                     flags
+                     padded
+                     (has-flag flags :end-stream flag-keywords)))))))
 
-             (when (has-flag flags :end-stream flag-keywords)
-               (ecase (get-state stream-or-connection)
-                 (half-closed/local (close-http2-stream stream-or-connection))
-                 (open (setf (get-state stream-or-connection) 'half-closed/remote)))
-               (peer-ends-http-stream stream-or-connection))
-             (values
-              (frame-type-name frame-type-object)
-              (or stream-or-connection http-stream)))))))
+(defun maybe-end-stream (has-end-flag stream-or-connection)
+    (when has-end-flag
+      (ecase (get-state stream-or-connection)
+        (half-closed/local (close-http2-stream stream-or-connection))
+        (open (setf (get-state stream-or-connection) 'half-closed/remote)))
+      (peer-ends-http-stream stream-or-connection)))
+
+(defun process-frame-header (header connection stream)
+  "Read one frame related to the CONNECTION from STREAM. All frames begin with a
+fixed 9-octet header followed by a variable-length payload. The function reads
+and processes the header, and then dispatches to a frame type specific
+handler that calls appropriate callbacks."
+  (declare
+   (optimize speed)
+   ((simple-array (unsigned-byte 8) *) header))
+  (multiple-value-bind (receive-fn connection stream-or-connection length flags padded end-stream-p)
+      (process-frame-header-only header connection)
+    (declare (compiled-function receive-fn)
+             ((unsigned-byte 24) length))
+    (let ((padding-size (when padded (read-byte stream))))
+      (declare ((or null (unsigned-byte 8)) padding-size))
+      (when (and padded (>= padding-size length))
+        (connection-error 'too-big-padding connection))
+      (funcall receive-fn
+               stream connection stream-or-connection
+               (if padded (- length 1 padding-size) length) flags)
+      (when padded (read-padding stream padding-size)))
+    (maybe-end-stream end-stream-p stream-or-connection)))
 
 (defun write-sequences (stream headers)
   "Write a list of sequences to stream."
