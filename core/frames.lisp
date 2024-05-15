@@ -578,25 +578,23 @@ handler that calls appropriate callbacks."
     ;; FIXME:
     ;; - for most frame types, read full data then
     ;; - for data and maybe headers frame read as it goes
-    (unwind-protect
-         (progn
-           (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
-             ;; fixme: sometimes connection error.
-             (connection-error 'too-big-frame connection
-                               :frame-size length
-                               :max-frame-size (get-max-frame-size connection)))
-           (if (plusp R) (warn 'reserved-bit-set))
-           (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
-                  (stream-or-connection
-                    (find-http-stream-by-id connection http-stream frame-type-object))
-                  (flag-keywords (frame-type-flag-keywords frame-type-object))
-                  (padded (has-flag flags :padded flag-keywords)))
-             (values (frame-type-receive-fn frame-type-object)
-                     connection stream-or-connection
-                     length
-                     flags
-                     padded
-                     (has-flag flags :end-stream flag-keywords)))))))
+    (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
+      ;; fixme: sometimes connection error.
+      (connection-error 'too-big-frame connection
+                        :frame-size length
+                        :max-frame-size (get-max-frame-size connection)))
+    (if (plusp R) (warn 'reserved-bit-set))
+    (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
+           (stream-or-connection
+             (find-http-stream-by-id connection http-stream frame-type-object))
+           (flag-keywords (frame-type-flag-keywords frame-type-object))
+           (padded (has-flag flags :padded flag-keywords)))
+      (values (frame-type-receive-fn frame-type-object)
+              connection stream-or-connection
+              length
+              flags
+              padded
+              (has-flag flags :end-stream flag-keywords)))))
 
 (defun maybe-end-stream (has-end-flag stream-or-connection)
     (when has-end-flag
