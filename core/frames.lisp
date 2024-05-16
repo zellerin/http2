@@ -438,7 +438,7 @@ write, read the header and process it."
     (declare (dynamic-extent buffer))
     (read-sequence buffer stream)
     (maybe-lock-for-write connection)
-    (process-frame-header buffer connection stream)
+    (read-and-process-frame buffer connection stream)
     (maybe-unlock-for-write connection)))
 
 (defun read-frame-2 (buffer connection &optional (stream (get-network-stream connection)))
@@ -446,7 +446,7 @@ write, read the header and process it."
 write, read the header and process it.
 
 Return next action to run on the incoming data"
-  (process-frame-header buffer connection stream)
+  (read-and-process-frame buffer connection stream)
   (values 9 #'read-frame-2))
 
 (defun checked-length (length connection)
@@ -469,56 +469,7 @@ Return next action to run on the incoming data"
     (open (setf (get-state stream) 'half-closed/remote)))
   (peer-ends-http-stream stream))
 
-(defun process-frame-from-vector (header size connection)
-  "Process frame and return function to call next when data are available."
-  (assert (= size 9))
-  (let* ((length (checked-length (aref/wide header 0 3) connection))
-         (type (aref header 3))
-         (R (checked-R-flag (ldb (byte 1 31) (aref header 5))))
-         (frame-type-object (aref (the simple-vector *frame-types*) type)))
-    (declare ((unsigned-byte 24) length)
-             (ignore R))
-
-    (values (min length) (frame-type-receive-fn frame-type-object) header)))
-
-#+nil(defun read-first-chunk-of-data (data size connection header)
-  (let* ((flags (aref header 4))
-         (start 0))
-    (setf (aref header 3) 0)
-    (when (has-flag flags :padded flag-keywords)
-      (incf start)
-      ;; Kludge: we store padding size in TYPE slot
-      ;; We need to keep it from first chunk read to the last.
-      (setf (aref header 3) (aref data 0))))
-  (read-next-chunk-of-data data size connection header))
-
-#+nil(defun read-next-chunk-of-data (data size connection header)
-  "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
-  (let* ((length (checked-length (aref/wide header 0 3) connection))
-         (flags (aref header 4))
-         (http-stream+R (aref/wide header 5 4))
-         (http-stream (ldb (byte 31 0) http-stream+R))
-         (stream
-           (find-http-stream-by-id connection http-stream
-                                   (aref *frame-types* 0)))
-         (start 0))
-    (account-read-window-contribution connection
-                                      http-stream
-                                      length)
-    (apply-data-frame http-stream
-                      ;; TODO: fix apply-data-frame
-                      (subseq data start (min size (- length (aref header 3)))))
-    (cond
-      ((< size (- length (aref header 3)))
-       ;; we need more data
-       (decf length size)
-       (values 0 #'read-next-chunk-of-data))
-      ((< (aref header 3))))))
-
-
-
-
-(defun process-frame-header-only (header connection)
+(defun parse-frame-header (header connection)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
 and processes the header, and then dispatches to a frame type specific
@@ -532,33 +483,6 @@ handler that calls appropriate callbacks."
 ;;;  +=+=============================================================+
 ;;;  |                   Frame Payload (0...)                      ...
 ;;;  +---------------------------------------------------------------+
-;;;
-;;; Length:  The length of the frame payload expressed as an unsigned
-;;;    24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
-;;;    sent unless the receiver has set a larger value for
-;;;    SETTINGS_MAX_FRAME_SIZE.
-;;;
-;;;    The 9 octets of the frame header are not included in this value.
-;;;
-;;; Type:  The 8-bit type of the frame.  The frame type determines the
-;;;    format and semantics of the frame.  Implementations MUST ignore
-;;;    and discard any frame that has a type that is unknown.
-;;;
-;;; Flags:  An 8-bit field reserved for boolean flags specific to the
-;;;    frame type.
-;;;
-;;;    Flags are assigned semantics specific to the indicated frame type.
-;;;    Flags that have no defined semantics for a particular frame type
-;;;    MUST be ignored and MUST be left unset (0x0) when sending.
-;;;
-;;; R: A reserved 1-bit field.  The semantics of this bit are undefined,
-;;;    and the bit MUST remain unset (0x0) when sending and MUST be
-;;;    ignored when receiving.
-;;;
-;;; Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
-;;;    as an unsigned 31-bit integer.  The value 0x0 is reserved for
-;;;    frames that are associated with the connection as a whole as
-;;;    opposed to an individual stream."
 
   (declare
    (optimize speed)
@@ -603,7 +527,7 @@ handler that calls appropriate callbacks."
         (open (setf (get-state stream-or-connection) 'half-closed/remote)))
       (peer-ends-http-stream stream-or-connection)))
 
-(defun process-frame-header (header connection stream)
+(defun read-and-process-frame (header connection stream)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
 and processes the header, and then dispatches to a frame type specific
@@ -612,7 +536,7 @@ handler that calls appropriate callbacks."
    (optimize speed)
    ((simple-array (unsigned-byte 8) *) header))
   (multiple-value-bind (receive-fn connection stream-or-connection length flags padded end-stream-p)
-      (process-frame-header-only header connection)
+      (parse-frame-header header connection)
     (declare (compiled-function receive-fn)
              ((unsigned-byte 24) length))
     (let ((padding-size (when padded (read-byte stream))))

@@ -30,20 +30,6 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
   (http2::@buffer-stream-and-pipes section)
   (@errors section))
 
-(defun make-doc ()
-  (mgl-pax:update-asdf-system-html-docs http2::@index :http2)
-  (mgl-pax:update-asdf-system-html-docs http2::@tests :http2)
-  (mgl-pax:update-asdf-system-readmes http2::@index :http2)
-  ())
-
-#+emacs
-(defun do-doc ()
-  (sly-eval
-   '(http2::make-doc)))
-;(mgl-pax:update-asdf-system-html-docs http2::@index :http2)
-;
-
-
 (defsection @test
     ()
   (foobar foobar))
