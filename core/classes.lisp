@@ -381,26 +381,26 @@ automatically, otherwise caller must ensure it."
   (:method (connection) nil)
   (:documentation "This is called when a new frame is ready "))
 
-(defgeneric apply-data-frame (stream payload)
+(defgeneric apply-data-frame (stream payload start end)
   (:documentation "HTTP-STREAM should process received PAYLOAD from the data frame. Presently it is called once per data frame, but this can change in future to improve performance.")
 
   ;; FIXME: we should not send small updates
 
-  (:method (stream payload)
+  (:method (stream payload start end)
     "Just ignore the data and warn about it."
     (warn 'implement-by-user :format-control "No payload action defined."))
 
-  (:method ((stream body-collecting-mixin) data)
+  (:method ((stream body-collecting-mixin) data start end)
     "Concatenate received data to the BODY slot of the object."
     (setf (get-body stream)
           (concatenate 'string (get-body stream)
-                       (map 'string 'code-char  data)))
+                       (map 'string 'code-char (subseq data start end) )))
     (with-slots (connection) stream
       (write-window-update-frame connection (length data))
       (write-window-update-frame stream (length data))))
 
-  (:method :before ((stream logging-object) payload)
-    (add-log stream `(:payload ,payload))))
+  (:method :before ((stream logging-object) payload start end)
+    (add-log stream `(:payload ,(subseq payload start end)))))
 
 
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)

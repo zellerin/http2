@@ -172,8 +172,9 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
 (defun pop-frame (data)
   (pop (car data)))
 
-(defmethod apply-data-frame ((stream http2-stream-with-input-stream) frame-data)
-  (push-frame (get-data (get-payload-input-stream stream)) frame-data))
+(defmethod apply-data-frame ((stream http2-stream-with-input-stream) frame-data start end)
+  (push-frame (get-data (get-payload-input-stream stream))
+              (subseq  frame-data start end)))
 
 (defmethod trivial-gray-streams:stream-listen ((stream payload-input-stream))
   (with-slots (base-http2-stream index data to-store to-provide) stream

@@ -156,7 +156,7 @@ Apart from name and documentation, each frame type keeps this:
                                        (let ((stream (get-network-stream connection)))
                                          (dotimes (i length) (read-byte stream)))))))))
     res)
-  "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
+  "Array of frame types. It is populated later with DEFINE-FRAME-TYPE-OLD.")
 
 (defun read-padding (stream padding-size)
   "Read the padding from the stream if padding-size is not NIL.
@@ -241,10 +241,8 @@ This is supposed to be a temporary necessity."
       (http2::maybe-end-stream end-of-stream active-stream)
       (rotatef (http2::get-network-stream connection) stream)
       (assert (= (get-index stream) length)) ;; all should have been consumed
-      (write-sequence (print (get-write-buffer stream)) (get-network-stream connection))
+      (write-sequence (get-write-buffer stream) (get-network-stream connection))
       (values #'read-and-process-frame 9))))
-
-
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -255,6 +253,61 @@ This is supposed to be a temporary necessity."
                                 has-reserved)
                              writer
                              (&body reader))
+  "Define:
+- A frame type object that allows to read frame of given type,
+- a constant named `+foo+` that translates to TYPE-CODE,
+- a writer function WRITE-FOO that takes CONNECTION or HTTP-STREAM and possibly
+  other PARAMETERS and FLAGSs and writes appropriate frame.
+
+Each PARAMETER is a list of name, size in bits or type specifier and documentation."
+  (declare ((unsigned-byte 8) type-code)
+           (keyword frame-type-name))
+  (let (key-parameters
+        (writer-name (intern (format nil "WRITE-~a" frame-type-name))))
+    ;; Reserved is used rarely so no need to force always specifying it
+    (when has-reserved (push '(reserved t) key-parameters))
+    ;; Priority is both a flag to set and value to store if this flags is set.
+    (when (member 'priority flags) (push '(priority (or null priority)) key-parameters))
+    `(progn
+       (defconstant ,(intern (format nil "+~a+" frame-type-name)) ,type-code)
+
+       (defun ,writer-name (http-connection-or-stream
+                            ,@(mapcar 'first parameters)
+                            &rest keys
+                            &key
+                              ,@(union (mapcar 'first key-parameters)
+                                       flags))
+         ,documentation
+         (declare (ignore ,@(remove 'priority flags)))
+         (let ((length ,length))
+           (write-frame
+            http-connection-or-stream
+            length
+            ,type-code
+            keys
+            ,writer
+            ,@(mapcar 'car (append parameters key-parameters)))))
+       (setf (aref *frame-types* ,type-code)
+             (make-frame-type :name ,frame-type-name
+                              :documentation ,documentation
+                              :receive-fn #',reader
+                              :old-stream-ok ',must-have-stream-in
+                              :new-stream-state ',new-stream-state
+                              :connection-ok ,(or may-have-connection must-have-connection)
+                              :bad-state-error ,bad-state-error
+                              :flag-keywords
+                              ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
+                                        flags))))))
+
+(defmacro define-frame-type-old (type-code frame-type-name documentation (&rest parameters)
+                                 (&key (flags nil) length
+                                    must-have-stream-in may-have-connection
+                                    must-have-connection
+                                    new-stream-state
+                                    (bad-state-error +stream-closed+)
+                                    has-reserved)
+                                 writer
+                                 (&body reader))
   "Define:
 - A frame type object that allows to read frame of given type,
 - a constant named `+foo+` that translates to TYPE-CODE,
@@ -365,8 +418,7 @@ passed to the make-instance"
   (declare (type (unsigned-byte 24) length)
            (type (unsigned-byte 8) type flags)
            (type (simple-array (unsigned-byte 8)) vector)
-           (type stream-id stream-id)
-           (optimize speed))
+           (type stream-id stream-id))
   (setf (aref vector start) (ldb (byte 8 16) length))
   (setf (aref vector (incf start)) (ldb (byte 8 8) length))
   (setf (aref vector (incf start)) (ldb (byte 8 0) length))
@@ -564,14 +616,24 @@ handler that calls appropriate callbacks."
         (t (write-sequence data stream)))
       (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length))
 
-    (lambda (stream connection http-stream length flags)
+    (lambda (connection data padded active-stream flags end-of-stream)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
-      (declare (ignore flags))
-      (let* ((data (make-octet-buffer length)))
-        (account-read-window-contribution connection http-stream length)
-        (loop while (plusp length)
-              do (decf length (read-sequence data stream))
-                 (apply-data-frame http-stream data)))))
+      (declare (ignorable flags))
+
+      (let* ((stream (make-instance 'pipe-end-for-write
+                                    :write-buffer (make-array 1024 :adjustable t
+                                                                   :fill-pointer 0)))
+             (length (length data))
+             (last-octet (if padded (- length (aref data 0)) length)))
+        (rotatef (http2::get-network-stream connection) stream)
+        (when (and padded (< last-octet 0))
+          (http2:connection-error 'too-big-padding connection))
+        (account-read-window-contribution connection active-stream length)
+        (apply-data-frame active-stream data (if padded 1 0) last-octet)
+        (maybe-end-stream end-of-stream active-stream)
+        (write-sequence stream (get-network-stream connection))
+        (rotatef (http2::get-network-stream connection) stream))
+        (values #'read-and-process-frame 9)))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -588,7 +650,7 @@ handler that calls appropriate callbacks."
                  (priority-exclusive priority))
   (write-byte (priority-weight priority) stream))
 
-(define-frame-type 1 :headers-frame
+(define-frame-type-old 1 :headers-frame
     "#+begin_src artist
 
     +-+-------------+-----------------------------------------------+
@@ -661,7 +723,7 @@ handler that calls appropriate callbacks."
          (stream-dependency (ldb (byte 31 0) e+strdep)))
     (apply-stream-priority http-stream exclusive weight stream-dependency)))
 
-(define-frame-type 2 :priority-frame
+(define-frame-type-old 2 :priority-frame
     "
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
    of a stream (Section 5.3).
@@ -698,7 +760,7 @@ handler that calls appropriate callbacks."
         (http-stream-error 'frame-size-error stream))
       (read-priority stream http-stream)))
 
-(define-frame-type 3 :rst-stream-frame
+(define-frame-type-old 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
    stream.  RST_STREAM is sent to request cancellation of a stream or to
    indicate that an error condition has occurred.
@@ -730,7 +792,7 @@ handler that calls appropriate callbacks."
       (peer-resets-stream http-stream (read-bytes stream 4))))
 
 
-(define-frame-type 4 :settings-frame
+(define-frame-type-old 4 :settings-frame
     "#+begin_src artist
     +-------------------------------+
     |       Identifier (16)         |
@@ -792,7 +854,7 @@ handler that calls appropriate callbacks."
                       0 +settings-frame+ 1 connection nil))
 
 
-(define-frame-type 5 :push-promise-frame
+(define-frame-type-old 5 :push-promise-frame
     "
    The PUSH_PROMISE frame (type=0x5) is used to notify the peer endpoint
    in advance of streams the sender intends to initiate.  The
@@ -856,7 +918,7 @@ handler that calls appropriate callbacks."
       (error "Reading promise N/A")))
 
 
-(define-frame-type 6 :ping-frame
+(define-frame-type-old 6 :ping-frame
     "The PING frame (type=0x6) is a mechanism for measuring a minimal
    round-trip time from the sender, as well as determining whether an
    idle connection is still functional.  PING frames can be sent from
@@ -901,7 +963,7 @@ handler that calls appropriate callbacks."
             (do-pong connection data)
             (do-ping connection data)))))
 
-(define-frame-type 7 :goaway-frame
+(define-frame-type-old 7 :goaway-frame
     "#+begin_src artist
     +-+-------------------------------------------------------------+
     |R|                  Last-Stream-ID (31)                        |
@@ -939,7 +1001,7 @@ handler that calls appropriate callbacks."
         (read-sequence data stream)
         (do-goaway connection (get-error-name error-code) last-id data))))
 
-(define-frame-type 8 :window-update-frame
+(define-frame-type-old 8 :window-update-frame
     "#+begin_src artist
     +-+-------------------------------------------------------------+
     |R|              Window Size Increment (31)                     |
@@ -977,7 +1039,7 @@ individual stream and on the entire connection."
            (http-stream-error 'null-stream-window-update http-stream))))))
 
 
-(define-frame-type 9 :continuation-frame
+(define-frame-type-old 9 :continuation-frame
     "#+begin_src artist
 
     +---------------------------------------------------------------+
@@ -1016,7 +1078,7 @@ Return two values, length of the payload and END-HEADERS flag."
              stream-identifier))
     (values length (get-flag flags :end-headers))))
 
-(define-frame-type 10 :altsvc-frame
+(define-frame-type-old 10 :altsvc-frame
     "See RFC 7838.  The ALTSVC HTTP/2 frame advertises the availability of an
    alternative service to an HTTP/2 client.
 
