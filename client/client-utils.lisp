@@ -1,4 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022, 2024 by Tomáš Zellerin
 
 ;;;; define VANILLA-CLIENT-CONNECTION with relatively sane client side
 ;;;; behaviour. Define WITH-HTTP-CONNECTION macro that allows to talk to other
@@ -30,22 +30,21 @@ This is to be called on client when the initial request was send, or on server
 to serve requests."
   (handler-case
       (loop
-        with frame-action = #'read-and-process-frame
+        with frame-action = #'parse-frame-header
         and size = 9
         and stream = (get-network-stream connection)
         initially (force-output stream)
         while (or (null just-pending)
-                  (typep stream 'rw-pipe)
                   (listen stream))
         do
            (force-output stream)
-           (maybe-lock-for-write connection)
            (let ((buffer (make-octet-buffer size)))
              (declare (dynamic-extent buffer))
              (if (= size (read-sequence buffer stream))
-                 (read-and-process-frame buffer connection stream)
-                 (error 'end-of-file)))
-          (maybe-unlock-for-write connection))
+                 (multiple-value-setq
+                     (frame-action size)
+                     (funcall frame-action connection buffer))
+                 (error 'end-of-file))))
     (end-of-file () nil)
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen

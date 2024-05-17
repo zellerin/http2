@@ -242,7 +242,7 @@ This is supposed to be a temporary necessity."
       (rotatef (http2::get-network-stream connection) stream)
       (assert (= (get-index stream) length)) ;; all should have been consumed
       (write-sequence (get-write-buffer stream) (get-network-stream connection))
-      (values #'read-and-process-frame 9))))
+      (values #'parse-frame-header 9))))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -515,7 +515,7 @@ write, read the header and process it."
     (open (setf (get-state stream) 'half-closed/remote)))
   (peer-ends-http-stream stream))
 
-(defun parse-frame-header (header connection)
+(defun parse-frame-header (connection header)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
 and processes the header, and then dispatches to a frame type specific
@@ -559,12 +559,14 @@ handler that calls appropriate callbacks."
              (find-http-stream-by-id connection http-stream frame-type-object))
            (flag-keywords (frame-type-flag-keywords frame-type-object))
            (padded (has-flag flags :padded flag-keywords)))
-      (values (lambda (connection data)
-                (funcall (frame-type-receive-fn frame-type-object)
-                         connection data padded
-                         stream-or-connection flags
-                         (has-flag flags :end-stream flag-keywords)))
-              length))))
+      (if (zerop length)
+          (values #'parse-frame-header 9)
+          (values (lambda (connection data)
+                    (funcall (frame-type-receive-fn frame-type-object)
+                             connection data padded
+                             stream-or-connection flags
+                             (has-flag flags :end-stream flag-keywords)))
+                  length)))))
 
 (defun maybe-end-stream (has-end-flag stream-or-connection)
     (when has-end-flag
@@ -581,13 +583,14 @@ handler that calls appropriate callbacks."
   (declare
    (optimize speed)
    ((simple-array (unsigned-byte 8) *) header))
+  (warn "Obsolete fn used")
   (multiple-value-bind (receive-fn length)
       (parse-frame-header header connection)
     (declare (compiled-function receive-fn)
              ((unsigned-byte 24) length))
     (let ((frame-content (make-octet-buffer length)))
       (read-sequence frame-content stream)
-      (funcall receive-fn connection frame-content))))
+      (funcall receive-fn frame-content connection))))
 
 (defun write-sequences (stream headers)
   "Write a list of sequences to stream."
@@ -633,7 +636,7 @@ handler that calls appropriate callbacks."
         (maybe-end-stream end-of-stream active-stream)
         (write-sequence stream (get-network-stream connection))
         (rotatef (http2::get-network-stream connection) stream))
-        (values #'read-and-process-frame 9)))
+        (values #'parse-frame-header 9)))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
