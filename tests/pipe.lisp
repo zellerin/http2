@@ -41,7 +41,7 @@ Each instance has a buffer and an index to the first unread element of it. It is
 assumed that whole the buffer can be read."))
 
 (defclass pipe-end-for-write (binary-stream trivial-gray-streams:fundamental-binary-output-stream)
-  ((buffer :accessor get-buffer :initarg :buffer)))
+  ((write-buffer :accessor get-write-buffer :initarg :write-buffer)))
 
 (defun make-pipe (&key (buffer-size 4096))
   "Two values, each representing one end of a freshly created one-way binary
@@ -49,7 +49,7 @@ pipe: writer and reader. They share the buffer."
   (let ((buffer (make-array buffer-size :adjustable t
                                         :fill-pointer 0)))
     (values (make-instance 'pipe-end-for-write
-                           :buffer buffer)
+                           :write-buffer buffer)
             (make-instance 'pipe-end-for-read :buffer buffer
                                               :index 0))))
 
@@ -74,7 +74,7 @@ read from the other."
         (incf (get-index stream)))))
 
 (defmethod trivial-gray-streams:stream-write-byte ((stream pipe-end-for-write) byte)
-  (vector-push-extend byte (get-buffer stream)))
+  (vector-push-extend byte (get-write-buffer stream)))
 
 (defmethod trivial-gray-streams:stream-listen ((stream pipe-end-for-read))
   "If the index is not on end of stream, it can probably be read.
