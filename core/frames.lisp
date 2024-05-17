@@ -218,6 +218,34 @@ where it is used.")
   (when (member flag-name allowed)
        (get-flag flags flag-name)))
 
+(defclass rw-pipe (pipe-end-for-write pipe-end-for-read)
+  ())
+
+(defun next-action-wrapper (fn)
+  "Wrapper for an old frame payload reader to be able to work without a stream.
+
+This is supposed to be a temporary necessity."
+  (lambda (connection data padded active-stream flags end-of-stream)
+    (let* ((stream (make-instance 'rw-pipe  :buffer data :index 0
+                                            :write-buffer (make-array 1024 :adjustable t
+                                                                           :fill-pointer 0)))
+           (length (length data))
+           (padding-size (when padded (aref data 0))))
+      (rotatef (http2::get-network-stream connection) stream)
+      (when (and padded (>= padding-size length))
+        (http2:connection-error 'too-big-padding connection))
+
+      (funcall fn (get-network-stream connection) connection active-stream
+               (if padded (- length 1 padding-size) length)
+               flags)
+      (http2::maybe-end-stream end-of-stream active-stream)
+      (rotatef (http2::get-network-stream connection) stream)
+      (assert (= (get-index stream) length)) ;; all should have been consumed
+      (write-sequence (print (get-write-buffer stream)) (get-network-stream connection))
+      (values #'read-and-process-frame 9))))
+
+
+
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
                                 must-have-stream-in may-have-connection
@@ -264,7 +292,7 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
        (setf (aref *frame-types* ,type-code)
              (make-frame-type :name ,frame-type-name
                               :documentation ,documentation
-                              :receive-fn #',reader
+                              :receive-fn (next-action-wrapper #',reader)
                               :old-stream-ok ',must-have-stream-in
                               :new-stream-state ',new-stream-state
                               :connection-ok ,(or may-have-connection must-have-connection)
@@ -334,32 +362,6 @@ passed to the make-instance"
 ;;;  |                   Frame Payload (0...)                      ...
 ;;;  +---------------------------------------------------------------+
 ;;; +end_src
-;;;
-;;; Length:  The length of the frame payload expressed as an unsigned
-;;;    24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
-;;;    sent unless the receiver has set a larger value for
-;;;    SETTINGS_MAX_FRAME_SIZE.
-;;;
-;;;    The 9 octets of the frame header are not included in this value.
-;;;
-;;; Type:  The 8-bit type of the frame.  The frame type determines the
-;;;    format and semantics of the frame.
-;;;
-;;; Flags:  An 8-bit field reserved for boolean flags specific to the
-;;;    frame type.
-;;;
-;;;    Flags are assigned semantics specific to the indicated frame type.
-;;;    Flags that have no defined semantics for a particular frame type
-;;;    MUST be ignored and MUST be left unset (0x0) when sending.
-;;;
-;;; R: A reserved 1-bit field.  The semantics of this bit are undefined,
-;;;    and the bit MUST remain unset (0x0) when sending and MUST be
-;;;    ignored when receiving.
-;;;
-;;; Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
-;;;    as an unsigned 31-bit integer.  The value 0x0 is reserved for
-;;;    frames that are associated with the connection as a whole as
-;;;    opposed to an individual stream."
   (declare (type (unsigned-byte 24) length)
            (type (unsigned-byte 8) type flags)
            (type (simple-array (unsigned-byte 8)) vector)
@@ -441,14 +443,6 @@ write, read the header and process it."
     (read-and-process-frame buffer connection stream)
     (maybe-unlock-for-write connection)))
 
-(defun read-frame-2 (buffer connection &optional (stream (get-network-stream connection)))
-    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
-write, read the header and process it.
-
-Return next action to run on the incoming data"
-  (read-and-process-frame buffer connection stream)
-  (values 9 #'read-frame-2))
-
 (defun checked-length (length connection)
   (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
@@ -513,12 +507,12 @@ handler that calls appropriate callbacks."
              (find-http-stream-by-id connection http-stream frame-type-object))
            (flag-keywords (frame-type-flag-keywords frame-type-object))
            (padded (has-flag flags :padded flag-keywords)))
-      (values (frame-type-receive-fn frame-type-object)
-              connection stream-or-connection
-              length
-              flags
-              padded
-              (has-flag flags :end-stream flag-keywords)))))
+      (values (lambda (connection data)
+                (funcall (frame-type-receive-fn frame-type-object)
+                         connection data padded
+                         stream-or-connection flags
+                         (has-flag flags :end-stream flag-keywords)))
+              length))))
 
 (defun maybe-end-stream (has-end-flag stream-or-connection)
     (when has-end-flag
@@ -535,19 +529,13 @@ handler that calls appropriate callbacks."
   (declare
    (optimize speed)
    ((simple-array (unsigned-byte 8) *) header))
-  (multiple-value-bind (receive-fn connection stream-or-connection length flags padded end-stream-p)
+  (multiple-value-bind (receive-fn length)
       (parse-frame-header header connection)
     (declare (compiled-function receive-fn)
              ((unsigned-byte 24) length))
-    (let ((padding-size (when padded (read-byte stream))))
-      (declare ((or null (unsigned-byte 8)) padding-size))
-      (when (and padded (>= padding-size length))
-        (connection-error 'too-big-padding connection))
-      (funcall receive-fn
-               stream connection stream-or-connection
-               (if padded (- length 1 padding-size) length) flags)
-      (when padded (read-padding stream padding-size)))
-    (maybe-end-stream end-stream-p stream-or-connection)))
+    (let ((frame-content (make-octet-buffer length)))
+      (read-sequence frame-content stream)
+      (funcall receive-fn connection frame-content))))
 
 (defun write-sequences (stream headers)
   "Write a list of sequences to stream."
