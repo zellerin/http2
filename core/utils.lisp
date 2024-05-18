@@ -30,20 +30,12 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 |#
 (declaim ((or null (unsigned-byte 24)) *bytes-read*))
 
-(defun read-byte* (stream)
-  "Read an octet from STREAM, making sure to read additional octets when needed or
-applicable.
-
-This is meant to be used for reading header bytes that might be possibly supplemented in an additional continuation frame.
-
-More precisely, the stream that is read from contains known number of octets that can be read, and when they are exhausted, either continuation frame header is read in and count of available octets updated, or MISSING-HEADER-OCTETS condition signalled."
-  (cond
-    ((plusp *bytes-left*)
-     (decf *bytes-left*)
-     (read-byte stream))
-    (t
-     (funcall *when-no-bytes-left-fn* stream)
-     (read-byte* stream))))
+(defun read-byte* (source)
+  ""
+  (with-slots (buffer index) source
+    (prog1
+        (aref buffer index)
+      (incf index))))
 
 (defun aref/wide (sequence start size)
   "Same as read-bytes, but from a sequence"

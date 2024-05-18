@@ -221,6 +221,25 @@ where it is used.")
 (defclass rw-pipe (pipe-end-for-write pipe-end-for-read)
   ())
 
+(defmacro with-provisional-write-stream (connection &body body)
+  "Run BODY simulating that the connection has a write stream. Write at the end."
+  (let ((stream-name (gensym "STREAM")))
+    `(let* ((,stream-name (make-instance 'pipe-end-for-write
+                                   :write-buffer (make-array 1024 :adjustable t
+                                                                  :fill-pointer 0))))
+       (rotatef (http2::get-network-stream ,connection) ,stream-name)
+       ,@body
+       (rotatef (http2::get-network-stream ,connection) ,stream-name)
+       (write-sequence (get-write-buffer ,stream-name) (get-network-stream ,connection)))))
+
+(defmacro with-padding-marks ((connection padded start end) &body body)
+  `(let* ((length (length data))
+          (,end (if ,padded (- length (aref data 0)) length))
+          (,start (if ,padded 1 0)))
+     (when (<= ,end 0)
+       (http2:connection-error 'too-big-padding ,connection))
+     ,@body))
+
 (defun next-action-wrapper (fn)
   "Wrapper for an old frame payload reader to be able to work without a stream.
 
@@ -623,20 +642,12 @@ handler that calls appropriate callbacks."
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
       (declare (ignorable flags))
 
-      (let* ((stream (make-instance 'pipe-end-for-write
-                                    :write-buffer (make-array 1024 :adjustable t
-                                                                   :fill-pointer 0)))
-             (length (length data))
-             (last-octet (if padded (- length (aref data 0)) length)))
-        (rotatef (http2::get-network-stream connection) stream)
-        (when (and padded (< last-octet 0))
-          (http2:connection-error 'too-big-padding connection))
-        (account-read-window-contribution connection active-stream length)
-        (apply-data-frame active-stream data (if padded 1 0) last-octet)
-        (maybe-end-stream end-of-stream active-stream)
-        (write-sequence stream (get-network-stream connection))
-        (rotatef (http2::get-network-stream connection) stream))
-        (values #'parse-frame-header 9)))
+      (with-provisional-write-stream connection
+        (with-padding-marks (connection padded start end)
+          (account-read-window-contribution connection active-stream (- end start))
+          (apply-data-frame active-stream data start end))
+        (maybe-end-stream end-of-stream active-stream))
+      (values #'parse-frame-header 9)))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -653,7 +664,7 @@ handler that calls appropriate callbacks."
                  (priority-exclusive priority))
   (write-byte (priority-weight priority) stream))
 
-(define-frame-type-old 1 :headers-frame
+(define-frame-type 1 :headers-frame
     "#+begin_src artist
 
     +-+-------------+-----------------------------------------------+
@@ -684,49 +695,60 @@ handler that calls appropriate callbacks."
       (write-sequences stream headers))
 
     ;; reader
-    (lambda (stream connection http-stream length flags)
-      (when (get-flag flags :priority)
-        (decf length 5)
-        (read-priority stream http-stream))
-      (read-and-add-headers connection http-stream length (get-flag flags :end-headers))
-      (if (get-flag flags :end-headers)
-          ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-          ;; another CONTINUATION frame.
-          (process-end-headers connection http-stream))))
+    (lambda (connection data padded active-stream flags end-of-stream)
+      (declare (ignore padded))
+      ;; FIXME
+      (with-provisional-write-stream connection
+        (let ((start (if (get-flag flags :priority) 5 0)))
+          (when (get-flag flags :priority)
+            (read-priority data active-stream))
+          (read-and-add-headers data active-stream start (get-flag flags :end-headers)))
+        (if (get-flag flags :end-headers)
+            ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+            ;; another CONTINUATION frame.
+            (process-end-headers connection active-stream))
+        (http2::maybe-end-stream end-of-stream active-stream))
+      (values #'parse-frame-header 9)))
 
+(defun read-and-add-headers (data http-stream start end-headers)
+  "Read http headers from payload in DATA, starting at START.
 
-(defun read-and-add-headers (connection http-stream length end-headers)
+Returns next function to call and size of expected data. If the END-HEADERS was
+present, it would be PARSE-FRAME-HEADER, if not a continuation frame is to be
+read."
+  ;; FIXME: add handler for failure to read full header.
   (loop
     with http-stream-id = (get-stream-id http-stream)
-    with *bytes-left* = length
-    and  *when-no-bytes-left-fn* =
-                                 (lambda (stream)
-                                   (if end-headers
-                                       (connection-error 'missing-header-octets connection))
-                                   (multiple-value-setq (*bytes-left* end-headers)
-                                     (read-continuation-frame-on-demand stream http-stream-id)))
-    while (or (plusp *bytes-left*) (null end-headers))
-    for (name value) = (read-http-header (get-network-stream connection)
-                                         (get-decompression-context connection))
+    with connection = (get-connection http-stream)
+    with length = (length data)
+    with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start)
+    for  (name value) =
+                      (read-http-header data-as-stream
+                                        (get-decompression-context connection))
+    while (< (get-index data-as-stream) length)
     when name
-      do (add-header connection http-stream name value)))
+      do (add-header connection http-stream name value))
+  (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
+          9))
 
-#|
-   Prioritization information in a HEADERS frame is logically equivalent
-   to a separate PRIORITY frame, but inclusion in HEADERS avoids the
-   potential for churn in stream prioritization when new streams are
-   created.  Prioritization fields in HEADERS frames subsequent to the
-   first on a stream reprioritize the stream (Section 5.3.3).
-
-|#
-(defun read-priority (stream http-stream)
-  (let* ((e+strdep (read-bytes stream 4))
-         (weight (read-byte stream))
+(defun read-priority (data http-stream)
+  (let* ((e+strdep (aref data 4))
+         (weight (aref/wide data 0 4))
          (exclusive (plusp (ldb (byte 1 31) e+strdep)))
          (stream-dependency (ldb (byte 31 0) e+strdep)))
-    (apply-stream-priority http-stream exclusive weight stream-dependency)))
+    (apply-stream-priority http-stream exclusive weight stream-dependency)
+    (values #'parse-frame-header 9)))
 
-(define-frame-type-old 2 :priority-frame
+
+#|
+Prioritization information in a HEADERS frame is logically equivalent ;
+to a separate PRIORITY frame, but inclusion in HEADERS avoids the ;
+potential for churn in stream prioritization when new streams are ;
+created.  Prioritization fields in HEADERS frames subsequent to the ;
+first on a stream reprioritize the stream (Section 5.3.3). ;
+                                        ;
+|#
+(define-frame-type 2 :priority-frame
     "
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
    of a stream (Section 5.3).
@@ -755,13 +777,13 @@ handler that calls appropriate callbacks."
      :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed)
      :new-stream-state idle)
     #'write-priority
-    (lambda (stream connection http-stream length flags)
-      (declare (ignore connection flags))
-      (unless (= length 5)
+    (lambda (connection data padded http-stream flags end-of-stream)
+      (declare (ignore connection flags padded end-of-stream))
+      (unless (= 5 (length data))
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-        (http-stream-error 'frame-size-error stream))
-      (read-priority stream http-stream)))
+        (http-stream-error 'frame-size-error http-stream))
+      (read-priority data http-stream)))
 
 (define-frame-type-old 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
