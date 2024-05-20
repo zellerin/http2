@@ -15,8 +15,7 @@
            (multiple-value-bind (write read) (make-pipe)
              (write-sequence #(154 10) write)
              (get-integer-from-octet read #x1f 5)))
-        "C.1.2.  Example 2: Encoding 1337 Using a 5-Bit Prefix")
-    (fiasco:is (zerop *bytes-left*) "C.1.2 incorrect number of bytes"))
+        "C.1.2.  Example 2: Encoding 1337 Using a 5-Bit Prefix"))
   (fiasco:is (equalp (integer-to-array 1337 5 0) #(31 154 10))
       "C.1.2 incorrect number of bytes")
 
@@ -31,7 +30,6 @@ C.2.  Header Field Representation Examples
   (multiple-value-bind (write read) (make-pipe)
     (flet ((test-decode (source-text expect-name expect-value &optional dynamic-table)
              (let* ((source (vector-from-hex-text source-text))
-                    (*bytes-left* (length source))
                     (context (make-instance 'hpack-context)))
                (write-sequence source write)
                (destructuring-bind (name value)
@@ -40,7 +38,7 @@ C.2.  Header Field Representation Examples
                  (fiasco:is (equal value expect-value))
                  (fiasco:is (equalp (if dynamic-table (vector `(,name ,value)) #())
                                     (get-dynamic-table context))))
-               (fiasco:is (zerop *bytes-left*)))))
+               (fiasco:is (= (get-index read) (length (get-buffer read)))))))
       ;; C.2.1
       (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
                      "custom-key"  "custom-header" t)

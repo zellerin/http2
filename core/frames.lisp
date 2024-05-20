@@ -228,8 +228,10 @@ where it is used.")
                                    :write-buffer (make-array 1024 :adjustable t
                                                                   :fill-pointer 0))))
        (rotatef (http2::get-network-stream ,connection) ,stream-name)
-       ,@body
-       (rotatef (http2::get-network-stream ,connection) ,stream-name)
+       (unwind-protect
+            (progn
+              ,@body)
+         (rotatef (http2::get-network-stream ,connection) ,stream-name))
        (write-sequence (get-write-buffer ,stream-name) (get-network-stream ,connection)))))
 
 (defmacro with-padding-marks ((connection padded start end) &body body)
@@ -510,9 +512,16 @@ write, read the header and process it."
   (let ((buffer (make-octet-buffer 9)))
     (declare (dynamic-extent buffer))
     (read-sequence buffer stream)
-    (maybe-lock-for-write connection)
-    (read-and-process-frame buffer connection stream)
-    (maybe-unlock-for-write connection)))
+    (multiple-value-bind (receive-fn length)
+        (parse-frame-header connection buffer)
+      (declare (compiled-function receive-fn)
+               ((unsigned-byte 24) length))
+      (loop while (not (equal #'parse-frame-header receive-fn))
+            do
+               (let ((frame-content (make-octet-buffer length)))
+                 (read-sequence frame-content stream)
+                 (multiple-value-setq (receive-fn length)
+                   (funcall receive-fn connection frame-content)))))))
 
 (defun checked-length (length connection)
   (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
@@ -593,23 +602,6 @@ handler that calls appropriate callbacks."
         (half-closed/local (close-http2-stream stream-or-connection))
         (open (setf (get-state stream-or-connection) 'half-closed/remote)))
       (peer-ends-http-stream stream-or-connection)))
-
-(defun read-and-process-frame (header connection stream)
-  "Read one frame related to the CONNECTION from STREAM. All frames begin with a
-fixed 9-octet header followed by a variable-length payload. The function reads
-and processes the header, and then dispatches to a frame type specific
-handler that calls appropriate callbacks."
-  (declare
-   (optimize speed)
-   ((simple-array (unsigned-byte 8) *) header))
-  (warn "Obsolete fn used")
-  (multiple-value-bind (receive-fn length)
-      (parse-frame-header header connection)
-    (declare (compiled-function receive-fn)
-             ((unsigned-byte 24) length))
-    (let ((frame-content (make-octet-buffer length)))
-      (read-sequence frame-content stream)
-      (funcall receive-fn frame-content connection))))
 
 (defun write-sequences (stream headers)
   "Write a list of sequences to stream."
@@ -725,15 +717,16 @@ read."
     for  (name value) =
                       (read-http-header data-as-stream
                                         (get-decompression-context connection))
-    while (< (get-index data-as-stream) length)
     when name
-      do (add-header connection http-stream name value))
+      do (add-header connection http-stream name value)
+    while (< (get-index data-as-stream) length)
+)
   (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
           9))
 
 (defun read-priority (data http-stream)
-  (let* ((e+strdep (aref data 4))
-         (weight (aref/wide data 0 4))
+  (let* ((e+strdep (aref/wide data 0 4))
+         (weight (aref data 4))
          (exclusive (plusp (ldb (byte 1 31) e+strdep)))
          (stream-dependency (ldb (byte 31 0) e+strdep)))
     (apply-stream-priority http-stream exclusive weight stream-dependency)
@@ -1026,7 +1019,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
         (read-sequence data stream)
         (do-goaway connection (get-error-name error-code) last-id data))))
 
-(define-frame-type-old 8 :window-update-frame
+(define-frame-type 8 :window-update-frame
     "#+begin_src artist
     +-+-------------------------------------------------------------+
     |R|              Window Size Increment (31)                     |
@@ -1047,12 +1040,13 @@ individual stream and on the entire connection."
       (write-31-bits stream  window-size-increment reserved)
       (incf (get-window-size http-connection-or-stream) window-size-increment))
 
-    (lambda (stream connection http-stream length flags)
+    (lambda (connection data padded http-stream flags end-of-stream)
+      (declare (ignore padded end-of-stream))
       (unless (zerop flags)
-        (warn "Flags for windows size set: ~x/~b" flags flags))
-      (unless (= 4 length)
+        (warn "Flags for windows size increment set: ~x/~b" flags flags))
+      (unless (= 4 (length data))
         (connection-error 'incorrect-window-update-frame-size connection))
-      (let ((window-size-increment (read-bytes stream 4)))
+      (let ((window-size-increment (aref/wide data 0 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
         (cond
@@ -1061,7 +1055,8 @@ individual stream and on the entire connection."
           ((eq connection http-stream)
            (connection-error 'null-connection-window-update connection))
           (t
-           (http-stream-error 'null-stream-window-update http-stream))))))
+           (http-stream-error 'null-stream-window-update http-stream))))
+      (values #'parse-frame-header 9)))
 
 
 (define-frame-type-old 9 :continuation-frame

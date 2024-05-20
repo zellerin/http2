@@ -1,4 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022, 2024 by Tomáš Zellerin
 
 (in-package :http2)
 
@@ -115,6 +115,13 @@
        (fiasco:is (eq ',error (get-error-code err)))
        err)))
 
+(defun read-intro (sender receiver)
+  (read-client-preface receiver)
+  (read-frame receiver)            ; settings
+  (read-frame sender)              ; settings
+  (read-frame receiver)            ; ACK
+  (read-frame sender))              ; ACK  )
+
 (defmacro with-test-client-to-server-setup (&body body)
   "Run BODY with server and receiver bound to client, respective server connection
 that are connected and initialized."
@@ -124,11 +131,7 @@ that are connected and initialized."
                                   :network-stream (make-synonym-stream 'write-stream)))
            (receiver (make-instance 'vanilla-server-connection
                                     :network-stream read-stream)))
-       (read-client-preface receiver)
-       (read-frame receiver)            ; settings
-       (read-frame sender)              ; settings
-       (read-frame receiver)            ; ACK
-       (read-frame sender)              ; ACK
+       (read-intro sender receiver)
        ,@body)))
 
 (fiasco:deftest with-test-client-to-server-setup/test ()
