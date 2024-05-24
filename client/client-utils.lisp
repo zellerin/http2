@@ -23,19 +23,26 @@
 
 
 (defun process-pending-frames (connection &optional just-pending)
-  "Read and process all queued frames. Write everything that accumulates in the
-to-write list.
+  "Read and process frames on the input.
+
+Finish normally when either
+
+- peer closes connection (END-OF-FILE, CONNECTION-ERROR or SSL-ERROR was signalled), or
+- JUST-PENDING was true, we are at a frame border and there is no additional input on the stream
 
 This is to be called on client when the initial request was send, or on server
-to serve requests."
+to serve requests.
+
+May block."
   (handler-case
       (loop
         with frame-action = #'parse-frame-header
         and size = 9
         and stream = (get-network-stream connection)
         initially (force-output stream)
-        while (or (null just-pending)
-                  (listen stream))
+                  ;; Prevent ending when waiting for payload
+        while (and (or (null just-pending) (listen stream))
+                   (eql #'parse-frame-header frame-action))
         do
            (force-output stream)
            (let ((buffer (make-octet-buffer size)))
