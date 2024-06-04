@@ -17,6 +17,7 @@
                              (:file "classes")
                              (:file "hpack")
                              (:file "binary-payload")
+                             (:file "pipe")
                              (:file "payload-streams"))))
   :in-order-to ((test-op (test-op "http2/test"))))
 
