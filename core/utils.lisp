@@ -33,6 +33,7 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 (defun read-byte* (source)
   ""
   (with-slots (buffer index) source
+    (when (>= index (length buffer)) (error 'end-of-file :stream source))
     (prog1
         (aref buffer index)
       (incf index))))

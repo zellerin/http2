@@ -217,5 +217,7 @@ signalled."
     (read-client-preface connection)
     (with-simple-restart (close-connection "Close current connection")
       (unwind-protect
-           (process-pending-frames connection)
+           (handler-case
+               (process-pending-frames connection)
+             (end-of-file ()))
         (cleanup-connection connection)))))

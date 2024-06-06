@@ -408,25 +408,26 @@ Neither name of the header nor value is in table, so read both as literals."
 VALUE) using dynamic table CONTEXT. Update CONTEXT appropriately.
 
 Can also return NIL if no header is available if it is not detected earlier; this can happen, e.g., when there is a zero sized continuation header frame.."
-  (let* ((octet0 (handler-case (read-byte* stream)
-                   (http2::missing-header-octets ()
-                     (return-from read-http-header)))))
-    (cond
-      ((plusp (ldb (byte 1 7) octet0))  ;; 1xxx xxxx
-       (read-from-tables (get-integer-from-octet stream octet0 7) context))
-      ((= #x40 octet0) ;; 0100 0000 - fig. 7
-       (add-dynamic-header context (read-literal-header-field-new-name stream)))
-      ((plusp (ldb (byte 1 6) octet0)) ;; 01NN NNNN
-       (add-dynamic-header context
-                           (read-literal-header-indexed-name stream octet0 context 6)))
-      ((zerop (logand #xef octet0)) ;; 000x 0000 - fig. 9 and 11
-       (read-literal-header-field-new-name stream))
-      ((zerop (ldb (byte 3 5) octet0))  ;; 000X NNNN
-       (read-literal-header-indexed-name stream octet0 context 4))
-      (t  ; 001x xxxx
-       (update-dynamic-table-size context
-                                  (get-integer-from-octet stream octet0 5))
-       nil))))
+  (let* ((octet0 (read-byte* stream)))
+    (handler-case
+        (cond
+          ((plusp (ldb (byte 1 7) octet0)) ;; 1xxx xxxx
+           (read-from-tables (get-integer-from-octet stream octet0 7) context))
+          ((= #x40 octet0) ;; 0100 0000 - fig. 7
+           (add-dynamic-header context (read-literal-header-field-new-name stream)))
+          ((plusp (ldb (byte 1 6) octet0)) ;; 01NN NNNN
+           (add-dynamic-header context
+                               (read-literal-header-indexed-name stream octet0 context 6)))
+          ((zerop (logand #xef octet0)) ;; 000x 0000 - fig. 9 and 11
+           (read-literal-header-field-new-name stream))
+          ((zerop (ldb (byte 3 5) octet0)) ;; 000X NNNN
+           (read-literal-header-indexed-name stream octet0 context 4))
+          (t                                ; 001x xxxx
+           (update-dynamic-table-size context
+                                      (get-integer-from-octet stream octet0 5))
+           nil))
+      (end-of-file ()
+        (error 'http2::missing-header-octets :connection nil)))))
 
 
 

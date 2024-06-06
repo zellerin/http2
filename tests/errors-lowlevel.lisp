@@ -17,16 +17,21 @@
        -1 +headers-frame+
        (list :padded (make-octet-buffer 10))
        (constantly nil) #())
-      (read-frame receiver)
       (read-frame receiver)))
 
   (fiasco:signals too-big-padding
     (with-test-client-to-server-setup
-      (write-frame
-       (create-new-local-stream sender)
-       -1 +headers-frame+
-       (list :padded (make-octet-buffer 10))
-       (constantly nil) #())
+      (let ((stream (create-new-local-stream sender)))
+        ;; open the stream
+        (write-frame stream
+                     0 +headers-frame+ (list :end-headers t)
+                     (constantly nil) #())
+        ;; send big padding
+        (write-frame stream
+                     -1 +data-frame+
+                     (list :padded (make-octet-buffer 10))
+                     (constantly nil) #()))
+      (read-frame receiver)
       (read-frame receiver))))
 
 (fiasco:deftest error/null-connection-window-update ()

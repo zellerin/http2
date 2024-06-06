@@ -235,12 +235,16 @@ where it is used.")
        (write-sequence (get-write-buffer ,stream-name) (get-network-stream ,connection)))))
 
 (defmacro with-padding-marks ((connection padded start end) &body body)
-  `(let* ((length (length data))
-          (,end (if ,padded (- length (aref data 0)) length))
-          (,start (if ,padded 1 0)))
-     (when (<= ,end 0)
-       (http2:connection-error 'too-big-padding ,connection))
-     ,@body))
+  (let ((length (gensym "LENGTH")))
+    `(let* ((,length (length data))
+            (,end (if ,padded (- ,length (aref data 0)) ,length))
+            (,start (if ,padded 1 0)))
+       (when (<= ,end 0)
+         (http2:connection-error 'too-big-padding ,connection))
+       ,@body
+       (if padded
+           (values #'read-padding-from-vector ,length)
+           (values #'parse-frame-header 9)))))
 
 (defun next-action-wrapper (fn)
   "Wrapper for an old frame payload reader to be able to work without a stream.
@@ -607,6 +611,24 @@ handler that calls appropriate callbacks."
   "Write a list of sequences to stream."
   (map nil (lambda (a) (write-sequence a stream)) headers))
 
+
+(defun read-padding-from-vector (connection data)
+  "Ignore the padding octets. Frame header is next"
+  ;; also
+  (declare (ignorable data connection))
+  (values #'parse-frame-header 9))
+
+(defun read-and-check-padding (data padded connection)
+  (when padded
+    (setf padded (aref data 0)
+          data (subseq data 1
+                       (progn
+                         (unless (> (length data) padded)
+                           (connection-error 'too-big-padding connection))
+                         (- (length data) padded)))))
+  (values data padded))
+
+
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame
     "#+begin_src artist
@@ -625,7 +647,7 @@ handler that calls appropriate callbacks."
      :must-have-stream-in (open half-closed/local))
     (lambda (stream data)
       (typecase data
-        (null) ; just to close stream
+        (null)                          ; just to close stream
         (cons (write-sequences stream data))
         (t (write-sequence data stream)))
       (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length))
@@ -633,13 +655,11 @@ handler that calls appropriate callbacks."
     (lambda (connection data padded active-stream flags end-of-stream)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
       (declare (ignorable flags))
-
-      (with-provisional-write-stream connection
-        (with-padding-marks (connection padded start end)
+      (with-padding-marks (connection padded start end)
+        (with-provisional-write-stream connection
           (account-read-window-contribution connection active-stream (- end start))
           (apply-data-frame active-stream data start end))
-        (maybe-end-stream end-of-stream active-stream))
-      (values #'parse-frame-header 9)))
+        (maybe-end-stream end-of-stream active-stream))))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -688,7 +708,7 @@ handler that calls appropriate callbacks."
 
     ;; reader
     (lambda (connection data padded active-stream flags end-of-stream)
-      (declare (ignore padded))
+      (multiple-value-setq (data padded) (read-and-check-padding data padded connection))
       ;; FIXME
       (with-provisional-write-stream connection
         (let ((start (if (get-flag flags :priority) 5 0)))
@@ -700,7 +720,9 @@ handler that calls appropriate callbacks."
             ;; another CONTINUATION frame.
             (process-end-headers connection active-stream))
         (http2::maybe-end-stream end-of-stream active-stream))
-      (values #'parse-frame-header 9)))
+      (if padded
+          (values #'read-padding-from-vector padded)
+          (values #'parse-frame-header 9))))
 
 (defun read-and-add-headers (data http-stream start end-headers)
   "Read http headers from payload in DATA, starting at START.
@@ -720,7 +742,7 @@ read."
     when name
       do (add-header connection http-stream name value)
     while (< (get-index data-as-stream) length)
-)
+    )
   (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
           9))
 
@@ -932,6 +954,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
       (write-sequences stream headers))
     ;; reader
     (lambda (stream connection http-stream length flags)
+      ;; TODO: fix reader to vector, implement, dont forget padding
       (declare (ignore stream connection http-stream length flags))
       (error "Reading promise N/A")))
 

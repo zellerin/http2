@@ -52,7 +52,8 @@
   :version "0.5"
   :serial t
   :pathname "server"
-  :depends-on ("puri" "http2/tls")
+  ;; FIXME: is /tls really needed?
+  :depends-on ("puri" "http2/tls" "http2")
   :components ((:file "dispatch")
                (:file "scheduler")))
 

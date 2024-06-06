@@ -41,8 +41,9 @@ May block."
         and stream = (get-network-stream connection)
         initially (force-output stream)
                   ;; Prevent ending when waiting for payload
-        while (and (or (null just-pending) (listen stream))
-                   (eql #'parse-frame-header frame-action))
+        while (or (null just-pending)
+                  (listen stream)
+                  (not (eql #'parse-frame-header frame-action)))
         do
            (force-output stream)
            (let ((buffer (make-octet-buffer size)))
@@ -51,12 +52,10 @@ May block."
                  (multiple-value-setq
                      (frame-action size)
                      (funcall frame-action connection buffer))
-                 (error 'end-of-file))))
-    (end-of-file () nil)
+                 (error 'end-of-file :stream (get-network-stream connection)))))
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
-      nil)
-    (connection-error ())))
+      (error 'end-of-file :stream (get-network-stream connection)))))
 
 (defmacro with-http2-connection ((name class &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters.

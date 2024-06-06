@@ -9,13 +9,12 @@
   (fiasco:is (equalp #(10) (integer-to-array 10 5 0))
       "C.1.1.  Example 1: Encoding 10 Using a 5-Bit Prefix")
 
-  (let ((*bytes-left* 2))
-    (fiasco:is
-        (= 1337
-           (multiple-value-bind (write read) (make-pipe)
-             (write-sequence #(154 10) write)
-             (get-integer-from-octet read #x1f 5)))
-        "C.1.2.  Example 2: Encoding 1337 Using a 5-Bit Prefix"))
+  (fiasco:is
+      (= 1337
+         (multiple-value-bind (write read) (make-pipe)
+           (write-sequence #(154 10) write)
+           (get-integer-from-octet read #x1f 5)))
+      "C.1.2.  Example 2: Encoding 1337 Using a 5-Bit Prefix")
   (fiasco:is (equalp (integer-to-array 1337 5 0) #(31 154 10))
       "C.1.2 incorrect number of bytes")
 
@@ -71,10 +70,11 @@ C.2.  Header Field Representation Examples
                 with source = (vector-from-hex-text encoded)
                 initially (setf (get-buffer stream) source
                                 (get-index stream) 0)
-
-                with *bytes-left* = (length source)
-         while (plusp *bytes-left*)
-                collect (read-http-header stream decompression-context)))))
+                for header = (handler-case
+                                 (read-http-header stream decompression-context)
+                               (end-of-file ()))
+                while header
+                collect header))))
 
 (fiasco:deftest test-header-packings ()
   (let* ((stream (make-instance 'pipe-end-for-read :index 0))
@@ -119,16 +119,16 @@ C.2.  Header Field Representation Examples
       (equalp (mapcar 'list headers values)
               (loop
                 with source = (vector-from-hex-text encoded)
-                with *bytes-left* = (length source)
-                for (name value) = (read-http-header
-                                    stream decompression-context)
+                for (name value) = (handler-case
+                                       (read-http-header
+                                        stream decompression-context)
+                                     (end-of-file ()))
                 initially (setf (get-buffer stream) source
                                 (get-index stream) 0)
 
 
-
-                collect (list name value)
-                while (plusp *bytes-left*)))))
+                while name
+                collect (list name value)))))
 
 ;; C.4.  Request Examples with Huffman Coding
 
