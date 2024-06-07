@@ -8,6 +8,7 @@
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams"
                                       "anaphora"  "gzip-stream" "alexandria"
+                                      "chipz"
                                       "mgl-pax")
   :components ((:file "package")
                (:module "core"
@@ -18,6 +19,7 @@
                              (:file "hpack")
                              (:file "binary-payload")
                              (:file "pipe")
+                             (:file "gzip-decode")
                              (:file "payload-streams"))))
   :in-order-to ((test-op (test-op "http2/test"))))
 
