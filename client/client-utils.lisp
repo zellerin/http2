@@ -62,8 +62,9 @@ May block."
   Close the underlying network stream when done."
   `(let ((,name (make-instance ,class ,@params)))
      (unwind-protect
-          (progn ,@body)
-       (process-pending-frames ,name t)
+          (unwind-protect
+               (progn ,@body)
+            (process-pending-frames ,name t))
        (handler-case
            (close ,name)
          (cl+ssl::ssl-error-zero-return ())))))
