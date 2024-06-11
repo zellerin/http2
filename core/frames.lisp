@@ -541,12 +541,6 @@ write, read the header and process it."
   (when (plusp R) (warn 'reserved-bit-set))
   R)
 
-(defun update-stream-state (stream)
-  (ecase (get-state stream)
-    (half-closed/local (close-http2-stream stream))
-    (open (setf (get-state stream) 'half-closed/remote)))
-  (peer-ends-http-stream stream))
-
 (defun parse-frame-header (connection header)
   "Read one frame related to the CONNECTION from STREAM. All frames begin with a
 fixed 9-octet header followed by a variable-length payload. The function reads
@@ -617,17 +611,6 @@ handler that calls appropriate callbacks."
   ;; also
   (declare (ignorable data connection))
   (values #'parse-frame-header 9))
-
-(defun read-and-check-padding (data padded connection)
-  (when padded
-    (setf padded (aref data 0)
-          data (subseq data 1
-                       (progn
-                         (unless (> (length data) padded)
-                           (connection-error 'too-big-padding connection))
-                         (- (length data) padded)))))
-  (values data padded))
-
 
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame
