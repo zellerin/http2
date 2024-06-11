@@ -293,19 +293,3 @@ Guess encoding and need to gunzip from headers:
   (make-transport-input-stream-from-stream
    (make-instance 'http2::payload-input-stream :base-http2-stream raw-stream)
    charset gzip))
-
-(defun http-stream-to-vector (raw-stream)
-  "Read HTTP2 stream payload data, do guessed conversions and return either
-string or octets vector. You can expect the HTTP2 stream to be closed after calling
-this."
-  (let*  ((headers (get-headers raw-stream))
-          (charset (extract-charset-from-content-type
-                    (cdr (assoc "content-type" headers
-                                :test 'string-equal))))
-          (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
-                                             :test 'string-equal)))))
-    (with-open-stream (response-stream
-                       (make-transport-input-stream raw-stream charset encoded))
-      (if charset
-          (read-stream-content-into-string response-stream)
-          (read-stream-content-into-byte-vector response-stream)))))

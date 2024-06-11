@@ -13,25 +13,6 @@
   (drakma-style-stream-values function)
   (retrieve-url-using-http-connection function))
 
-(defun http-stream-to-vector (http2-stream)
-  "Read HTTP2 raw stream payload data, do guessed conversions and return either
-string or octets vector. You can expect the stream to be closed after calling
-this."
-  (let*  ((headers (get-headers http2-stream))
-          (charset (http2::extract-charset-from-content-type (cdr (assoc "content-type" headers
-                                                                         :test 'string-equal))))
-          (encoded (equal "gzip" (cdr (assoc "content-encoding" headers
-                                             :test 'string-equal)))))
-    (with-open-stream (response-stream
-                       (make-instance 'http2::payload-input-stream :base-http2-stream http2-stream))
-      ;; FIXME: this duplicates HTTP2::MAKE-TRANSPORT-STREAM a lot.
-      (when encoded
-        (setf response-stream (gzip-stream:make-gzip-input-stream response-stream)))
-      (if charset
-          (read-stream-content-into-string
-           (flexi-streams:make-flexi-stream response-stream :external-format charset))
-       (read-stream-content-into-byte-vector response-stream)))))
-
 (defun maybe-send-pings (connection ping)
   (typecase ping
     (integer (dotimes (i ping) (send-ping connection)))
@@ -45,8 +26,7 @@ this."
        content additional-headers
        (content-fn (when content (curry #'write-sequence content)))
        (content-type "text/plain; charset=utf-8")
-       (charset (extract-charset-from-content-type content-type))
-       gzip-content end-headers-fn &allow-other-keys)
+       gzip-content end-headers-fn end-stream-fn &allow-other-keys)
   "Return HTTP-STREAM object that represent a request sent on HTTP-CONNECTION.
 
 The stream does not necessarily contain response when returned. You can read its
@@ -72,12 +52,16 @@ Parameters:
                                          :gzip-content gzip-content
                                          :additional-headers additional-headers)
                         :end-stream (null (or content content-fn))
-                        :stream-pars `(:end-headers-fn ,end-headers-fn))))
-    (when content-fn
-      (let ((out (make-transport-output-stream raw-stream charset nil)))
-        (funcall content-fn out)
-        (close out)))
+                        :stream-pars `(:end-headers-fn ,end-headers-fn :end-stream-fn ,end-stream-fn))))
     raw-stream))
+
+(defun http-stream-to-vector (http-stream)
+  ;; 20240611 TODO: document
+  (with-output-to-string (*standard-output*)
+    (mapc 'princ (nreverse (http2::get-data http-stream)))))
+
+(defmethod http2::apply-text-data-frame ((stream vanilla-client-stream) text)
+  (push text (http2::get-data stream)))
 
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
@@ -90,8 +74,10 @@ Parameters:
                                      :network-stream network-stream)
     (maybe-send-pings connection ping)
     (apply #'retrieve-url-using-http-connection connection parsed-url args)
-    (http2::process-pending-frames connection nil)
-    (error "The stream never finished")))
+    (restart-case
+             (http2::process-pending-frames connection nil)
+           (finish-stream (stream)
+             (drakma-style-stream-values stream)))))
 
 
 (defun drakma-style-stream-values (raw-stream &key close-stream)
@@ -160,8 +146,8 @@ See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values
                                   :sni (puri:uri-host parsed-url)
                                   :port (or (puri:uri-port parsed-url) 443))
            parsed-url
-           :end-headers-fn
+           :end-headers-fn (constantly nil)
+           :end-stream-fn
            (lambda (raw-stream)
-             (return-from retrieve-url
-               (drakma-style-stream-values raw-stream)))
+             (invoke-restart 'finish-stream raw-stream))
            pars)))
