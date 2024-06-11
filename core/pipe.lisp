@@ -32,7 +32,9 @@ At the moment, it is strictly for the purpose of testing, so not generally usabl
 
 (defclass pipe-end-for-read (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((buffer :accessor get-buffer :initarg :buffer)
-   (index  :accessor get-index  :initarg :index))
+   (index  :accessor get-index  :initarg :index)
+   (end    :accessor get-end    :initarg :end
+           :initform nil))
   (:documentation "Octet stream backed by a buffer.
 
 Each instance has a buffer and an index to the first unread element of it. It is

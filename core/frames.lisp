@@ -691,23 +691,19 @@ handler that calls appropriate callbacks."
 
     ;; reader
     (lambda (connection data padded active-stream flags end-of-stream)
-      (multiple-value-setq (data padded) (read-and-check-padding data padded connection))
-      ;; FIXME
-      (with-provisional-write-stream connection
-        (let ((start (if (get-flag flags :priority) 5 0)))
+      (with-padding-marks (connection padded start end)
+        (with-provisional-write-stream connection
           (when (get-flag flags :priority)
-            (read-priority data active-stream))
-          (read-and-add-headers data active-stream start (get-flag flags :end-headers)))
-        (if (get-flag flags :end-headers)
-            ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-            ;; another CONTINUATION frame.
-            (process-end-headers connection active-stream))
-        (http2::maybe-end-stream end-of-stream active-stream))
-      (if padded
-          (values #'read-padding-from-vector padded)
-          (values #'parse-frame-header 9))))
+            (read-priority data active-stream)
+            (incf start 5))
+          (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
+          (if (get-flag flags :end-headers)
+              ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+              ;; another CONTINUATION frame.
+              (process-end-headers connection active-stream))
+          (http2::maybe-end-stream end-of-stream active-stream)))))
 
-(defun read-and-add-headers (data http-stream start end-headers)
+(defun read-and-add-headers (data http-stream start end end-headers)
   "Read http headers from payload in DATA, starting at START.
 
 Returns next function to call and size of expected data. If the END-HEADERS was
@@ -718,7 +714,8 @@ read."
     with http-stream-id = (get-stream-id http-stream)
     with connection = (get-connection http-stream)
     with length = (length data)
-    with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start)
+    with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start
+                                         :end end)
     for  (name value) =
                       (read-http-header data-as-stream
                                         (get-decompression-context connection))
