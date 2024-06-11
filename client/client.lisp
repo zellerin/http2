@@ -58,10 +58,10 @@ Parameters:
 (defun http-stream-to-vector (http-stream)
   ;; 20240611 TODO: document
   (with-output-to-string (*standard-output*)
-    (mapc 'princ (nreverse (http2::get-data http-stream)))))
+    (mapc 'princ (nreverse (http2::get-text http-stream)))))
 
 (defmethod http2::apply-text-data-frame ((stream vanilla-client-stream) text)
-  (push text (http2::get-data stream)))
+  (push text (http2::get-text stream)))
 
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
