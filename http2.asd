@@ -8,6 +8,7 @@
   :serial t
   :depends-on ("trivial-gray-streams" "flexi-streams"
                                       "anaphora" "gzip-stream" "alexandria"
+                                      "trivial-utf-8"
                                       "chipz"
                                       "mgl-pax")
   :components ((:file "package")
