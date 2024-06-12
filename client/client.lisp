@@ -26,6 +26,7 @@
        content additional-headers
        (content-fn (when content (curry #'write-sequence content)))
        (content-type "text/plain; charset=utf-8")
+       (charset (extract-charset-from-content-type content-type))
        gzip-content end-headers-fn end-stream-fn &allow-other-keys)
   "Return HTTP-STREAM object that represent a request sent on HTTP-CONNECTION.
 
@@ -53,7 +54,25 @@ Parameters:
                                          :additional-headers additional-headers)
                         :end-stream (null (or content content-fn))
                         :stream-pars `(:end-headers-fn ,end-headers-fn :end-stream-fn ,end-stream-fn))))
+    (when content-fn
+      (let ((out (make-transport-output-stream raw-stream charset nil)))
+        (funcall content-fn out)
+        (close out)))
     raw-stream))
+
+(defun make-transport-output-stream (http2-stream charset gzip)
+  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
+  (let* ((transport (make-instance 'http2::payload-output-stream :base-http2-stream http2-stream)))
+    (when gzip
+      (setf transport (gzip-stream:make-gzip-output-stream transport)))
+    (when charset
+      (setf transport
+            (flexi-streams:make-flexi-stream
+             transport
+             :external-format charset)))
+    transport))
+
+
 
 (defun http-stream-to-vector (http-stream)
   ;; 20240611 TODO: document
