@@ -1,0 +1,82 @@
+* Version 2
+The code is currently rewritten so that it does not use streams in the core, but
+octet arrays.
+
+The reason is that streams do always block, and this is sometime problem.
+
+The relevant code is in v2 branch and not yet ready.
+
+Checklist for being ready:
+- [ ] All tests pass
+- [ ] New interface documented
+- [ ] Old documented interface still works
+  - [ ] receive-url
+  - [ ] demo server
+- [ ] Can support single-thread non-blocking server
+- [ ] New test cases to cover the code
+
+** DONE Vectorize write-frame-header.
+~write-frame-header~ is now a thin wrapper over ~write-frame-header-to-vector~. The
+latter accepts octet vector in place of a stream.
+
+** DONE Reading frames (header and body) in chunks
+~process-pending-frames~ now reads chunks of data of appropriate size (9 for
+header, as needed for frame content).
+
+It calls first ~parse-frame-header~, and then each called function returns next
+function to call.
+
+From outside, it should have same behaviour as before.
+
+~read-frame~ is now a wrapper over ~parse-frame-header~.
+
+** TODO Handlers should not block to write
+Handlers and callbacks should not block to write (nor read, but this is not
+topic here) the data.
+
+So the (blocking) function read-frame now takes the data in the slot and writes
+them; this has additional benefit of having a short code block to lock if
+needed.
+
+
+There is a new macro ~WITH-PROVISIONAL-WRITE-STREAM~ that temporarily binds the
+output stream to output to a buffer, and then stores it into the TO-WRITE
+slot. This is used to convert the old callbacks to the new system.
+
+
+- [X] New slot in the connection object for data to write
+- [ ] This should be probably in read-frame and not polute ~parse-frame-header~.
+- [ ] The connection should not need the network stream slot then
+
+
+
+** TODO Transform old handlers
+Old read handlers are transformed to new ones automatically, using
+~next-action-wrapper~, when ~define-frame-type-old~ is used. This is not optimal,
+they should probably be customized.
+
+** TODO Rewrite encoding conversion to vectors (read)
+Instead of streams, the conversion of data is done on vectors of octets. This provides a challenge due to breaks in the middle of UTF-8 sequence of a single character.
+
+- [X] UTF-8
+- [X] gunzip
+- [ ] other encodings
+
+** TODO Rewrite encoding conversion to vectors (write)
+- [ ] UTF-8
+- [ ] gzip
+- [ ] other encodings
+
+** Other changes
+- Remove unused logging-object
+- new class rw-pipe
+- ~apply-data-frame~ now takes ~start~ and ~end~ parameters.
+- New callback:
+- New utility class: TEXT-COLLECTING-STREAM
+
+** TODO Fix server spawning schedulers during the tests
+** Cleanups (after basics work)
+
+*** Clean packages and systems
+- ~process-pending-frames~ is used now by the server as well, move it?
+- do we need dependencies w/o streams?
