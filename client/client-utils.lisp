@@ -10,8 +10,6 @@
   (connect-to-tls-server function)
 #+nil  (with-http2-connection macro)
   (send-headers function)
-  (make-transport-output-stream function)
-  (make-transport-input-stream function)
   (process-pending-frames function)
   (http-stream-to-vector function)
   (vanilla-client-stream class)
@@ -150,31 +148,3 @@ converted to proper encoding) into a TEXT slot."))
     (t (warn "Content-type ~s not known to be text nor binary. Using default ~a"
              content-type *default-encoding*)
        *default-encoding*)))
-
-(defun make-transport-output-stream (http2-stream charset gzip)
-  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
-  (let* ((transport (make-instance 'payload-output-stream :base-http2-stream http2-stream)))
-    (when gzip
-      (setf transport (gzip-stream:make-gzip-output-stream transport)))
-    (awhen charset
-      (setf transport
-            (flexi-streams:make-flexi-stream
-             transport
-             :external-format charset)))
-
-    transport))
-
-(defun make-transport-stream (http2-stream charset encoded)
-  "INPUT-STREAM built atop a HTTP2-STREAM.
-
-Guess encoding and need to gunzip from headers:
-- apply zip decompression content-encoding is gzip (FIXME: also compression)
-- use charset if understood in content-type
-- otherwise guess whether text (use UTF-8) or binary."
-  (let* ((transport (make-instance 'payload-input-stream :base-http2-stream http2-stream)))
-    (when encoded
-      (setf transport (gzip-stream:make-gzip-input-stream transport)))
-    (when charset
-      (setf transport
-            (flexi-streams:make-flexi-stream transport :external-format charset)))
-    transport))
