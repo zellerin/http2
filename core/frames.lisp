@@ -222,7 +222,8 @@ where it is used.")
   ())
 
 (defmacro with-provisional-write-stream (connection &body body)
-  "Run BODY simulating that the connection has a write stream. Write at the end."
+  "Run BODY simulating that the connection has a write stream. Store written octets
+to the TO-WRITE slot of the connection."
   (let ((stream-name (gensym "STREAM")))
     `(let* ((,stream-name (make-instance 'pipe-end-for-write
                                    :write-buffer (make-array 1024 :adjustable t
@@ -515,7 +516,8 @@ write, read the header and process it."
   (force-output stream)
   (let ((buffer (make-octet-buffer 9)))
     (declare (dynamic-extent buffer))
-    (read-sequence buffer stream)
+    (when (< (read-sequence buffer stream) 9)
+      (error 'end-of-file :stream connection))
     (multiple-value-bind (receive-fn length)
         (parse-frame-header connection buffer)
       (declare (compiled-function receive-fn)
