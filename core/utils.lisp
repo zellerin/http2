@@ -18,8 +18,10 @@
 (defun make-octet-buffer (size)
   (make-array size :element-type '(unsigned-byte 8)))
 
+#+obsolete
 (defvar *bytes-left* nil "Number of bytes left in frame")
 
+#+obsolete
 (defvar *when-no-bytes-left-fn* nil "Function to call when no bytes are left. Either errors or calls continuations.")
 
 #|
@@ -47,6 +49,15 @@ setting can have any value between 2^14 (16,384) and 2^24-1
            (setf (ldb (byte 8 (* 8 (- size 1 i))) res)
                  (aref sequence (+ start i)))
         finally (return res)))
+
+(defun (setf aref/wide) (value sequence start size)
+  (declare ((integer 1 8) size))
+  (loop for i from 0 to (+ -1 size)
+        do
+           (setf
+            (aref sequence (+ start i))
+            (ldb (byte 8 (* 8 (- size 1 i))) value))
+        finally (return value)))
 
 (defun read-bytes (stream n)
   "Read N bytes from stream to an integer"

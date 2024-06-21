@@ -168,14 +168,17 @@ a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
 padding."
   (dotimes (i padding-size) (read-bytes stream 1)))
 
-(defun possibly-padded-body (stream fn padded pars)
+(defun possibly-padded-body (connection fn padded pars)
   "Add padding code to BODY if needed."
   (cond
-    ((null padded) (apply fn stream pars))
+    ((null padded) (list (apply fn connection pars)))
     (t
-     (write-bytes stream 1 (length padded))
-     (apply fn stream pars)
-     (write-sequence padded stream))))
+     ;; this may be slow, but we do not pad much I guess
+     `(,@(get-to-write connection)
+       (make-array 1 :element-type '(unsigned-byte 8)
+                     :initial-element  (length padded))
+       (apply fn connection pars)
+       padded))))
 
 (defun change-state-on-write-end (http-stream)
   "Change state of the stream when STREAM-END is sent."
@@ -228,12 +231,12 @@ to the TO-WRITE slot of the connection."
     `(let* ((,stream-name (make-instance 'pipe-end-for-write
                                    :write-buffer (make-array 1024 :adjustable t
                                                                   :fill-pointer 0))))
-       (rotatef (http2::get-network-stream ,connection) ,stream-name)
+       (setf (http2::get-network-stream ,connection) ,stream-name)
        (unwind-protect
             (progn
               ,@body)
-         (rotatef (http2::get-network-stream ,connection) ,stream-name))
-       (write-sequence (get-write-buffer ,stream-name) (get-network-stream ,connection)))))
+         (setf  (http2::get-network-stream ,connection) nil)
+         (push (get-write-buffer ,stream-name) (get-to-write connection))))))
 
 (defmacro with-padding-marks ((connection padded start end) &body body)
   (let ((length (gensym "LENGTH")))
@@ -380,21 +383,24 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
+;;; !!!! WIP FIXME !!!
+;;; Move from stream to array(s)
 (defun write-frame (http-connection-or-stream length type-code keys
-                  writer &rest pars)
-  "Universal function to write a frame to a stream and account for it."
-  (let ((padded (getf keys :padded))
-        (stream (get-network-stream http-connection-or-stream)))
-    (write-frame-header stream
-                        (padded-length length padded)
-                        type-code
-                        (flags-to-code keys)
-                        http-connection-or-stream
-                        nil)
-    (possibly-padded-body stream
-                          writer
-                          padded
-                          pars))
+                    writer &rest pars)
+  "Universal function to write a frame to a stream and account for possible stream
+state change."
+  (let ((padded (getf keys :padded)))
+    (setf (get-to-write (get-connection http-connection-or-stream))
+          `(,@(get-to-write (get-connection http-connection-or-stream))
+            ,(write-frame-header-to-vector
+              (make-octet-buffer 9) 0 (padded-length length padded)
+              type-code (flags-to-code keys)
+              (get-stream-id http-connection-or-stream) nil)
+            ,@(possibly-padded-body
+               (get-connection http-connection-or-stream)
+               writer
+               padded
+               pars))))
   (when (getf keys :end-stream)
     (change-state-on-write-end http-connection-or-stream)))
 
@@ -415,11 +421,11 @@ passed to the make-instance"
 (defun write-32-bits (stream value)
   (write-bytes stream 4 value))
 
-(defun write-31-bits (stream value flag)
-  "Write 31 bits of VALUE to a STREAM. Set first bit if FLAG is set."
+(defun write-31-bits (vector value flag)
+  "Write 31 bits of VALUE to a VECTOR. Set first bit if FLAG is set."
   (declare (optimize speed))
   (declare (type stream-id value))
-  (write-32-bits stream (logior value (if flag #x80000000 0))))
+  (setf (aref/wide vector 0 4) (logior value (if flag #x80000000 0))))
 
 (defun write-stream-id (stream value reserved)
   "Write STREAM-ID to the binary stream"
@@ -524,10 +530,18 @@ write, read the header and process it."
                ((unsigned-byte 24) length))
       (loop while (not (equal #'parse-frame-header receive-fn))
             do
-               (let ((frame-content (make-octet-buffer length)))
-                 (read-sequence frame-content stream)
+               (let* ((frame-content (make-octet-buffer length))
+                      (read (read-sequence frame-content stream)))
+                 (when (< read length)
+                   (error 'end-of-file :stream connection))
                  (multiple-value-setq (receive-fn length)
-                   (funcall receive-fn connection frame-content)))))))
+                   (funcall receive-fn connection frame-content))))
+      (maybe-lock-for-write connection)
+      (write-sequences (get-to-write connection) (get-network-stream connection))
+      (setf (get-to-write connection) nil)
+      ;; 20240612 TODO: factor out net stream
+      (force-output (get-network-stream connection))
+      (maybe-unlock-for-write connection))))
 
 (defun checked-length (length connection)
   (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
@@ -604,8 +618,11 @@ handler that calls appropriate callbacks."
       (peer-ends-http-stream stream-or-connection)))
 
 (defun write-sequences (stream headers)
-  "Write a list of sequences to stream."
-  (map nil (lambda (a) (write-sequence a stream)) headers))
+  "Write a tree of sequences to stream."
+  (etypecase headers
+    (nil nil)
+    (vector (write-sequence headers stream))
+    (cons (map nil (lambda (a) (write-sequences a stream)) headers))))
 
 
 (defun read-padding-from-vector (connection data)
@@ -630,12 +647,14 @@ handler that calls appropriate callbacks."
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    (lambda (stream data)
+    (lambda (connection data)
+      (declare (ignore connection))
+      (account-write-window-contribution
+       (get-connection http-connection-or-stream) http-connection-or-stream length)
       (typecase data
-        (null)                          ; just to close stream
-        (cons (write-sequences stream data))
-        (t (write-sequence data stream)))
-      (account-write-window-contribution (get-connection http-connection-or-stream) http-connection-or-stream length))
+        (null nil)                      ; just to close stream
+        (cons data)
+        (t (list data))))
 
     (lambda (connection data padded active-stream flags end-of-stream)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
@@ -655,11 +674,12 @@ handler that calls appropriate callbacks."
   (decf (get-peer-window-size connection) length)
   (decf (get-peer-window-size stream) length))
 
-(defun write-priority (stream priority)
-  (write-31-bits stream
-                 (priority-stream-dependency priority)
-                 (priority-exclusive priority))
-  (write-byte (priority-weight priority) stream))
+(defun write-priority (priority)
+  (let ((prio-vector (make-octet-buffer 5)))
+    (write-31-bits prio-vector
+                   (priority-stream-dependency priority)
+                   (priority-exclusive priority))
+    (setf (aref prio-vector 4) (priority-weight priority))))
 
 (define-frame-type 1 :headers-frame
     "#+begin_src artist
@@ -686,10 +706,11 @@ handler that calls appropriate callbacks."
      :new-stream-state open)
 
     ;; writer
-    (lambda (stream headers priority)
-      (when priority ;; this is deprecated as in RFC9113 but still implemented
-        (write-priority stream priority))
-      (write-sequences stream headers))
+    (lambda (connection headers priority)
+      (declare (ignore connection))
+      (if priority ;; this is deprecated as in RFC9113 but still implemented
+        (cons (write-priority priority) headers))
+      headers)
 
     ;; reader
     (lambda (connection data padded active-stream flags end-of-stream)
