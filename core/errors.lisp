@@ -42,7 +42,6 @@ NETWORK-STREAM used."
                           0             ; fixme: last processed stream
                           code
                           (map 'vector 'char-code (symbol-name class))))
-    (finish-output (get-network-stream connection))
     (error err)))
 
 (defmethod print-object ((ce connection-error) out)
