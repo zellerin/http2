@@ -226,20 +226,6 @@ where it is used.")
 (defclass rw-pipe (pipe-end-for-write pipe-end-for-read)
   ())
 
-(defmacro with-provisional-write-stream (connection &body body)
-  "Run BODY simulating that the connection has a write stream. Store written octets
-to the TO-WRITE slot of the connection."
-  (let ((stream-name (gensym "STREAM")))
-    `(let* ((,stream-name (make-instance 'pipe-end-for-write
-                                   :write-buffer (make-array 1024 :adjustable t
-                                                                  :fill-pointer 0))))
-       (setf (http2::get-network-stream ,connection) ,stream-name)
-       (unwind-protect
-            (progn
-              ,@body)
-         (setf (http2::get-network-stream ,connection) nil)
-         (push (get-write-buffer ,stream-name) (get-to-write connection))))))
-
 (defmacro with-padding-marks ((connection padded start end) &body body)
   (let ((length (gensym "LENGTH")))
     `(let* ((,length (length data))
@@ -666,9 +652,8 @@ handler that calls appropriate callbacks."
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
       (declare (ignorable flags))
       (with-padding-marks (connection padded start end)
-        (with-provisional-write-stream connection
-          (account-read-window-contribution connection active-stream (- end start))
-          (apply-data-frame active-stream data start end))
+        (account-read-window-contribution connection active-stream (- end start))
+        (apply-data-frame active-stream data start end)
         (maybe-end-stream end-of-stream active-stream))))
 
 (defun account-read-window-contribution (connection stream length)
@@ -724,16 +709,15 @@ handler that calls appropriate callbacks."
     ;; reader
     (lambda (connection data padded active-stream flags end-of-stream)
       (with-padding-marks (connection padded start end)
-        (with-provisional-write-stream connection
-          (when (get-flag flags :priority)
-            (read-priority data active-stream)
-            (incf start 5))
-          (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
-          (if (get-flag flags :end-headers)
-              ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-              ;; another CONTINUATION frame.
-              (process-end-headers connection active-stream))
-          (http2::maybe-end-stream end-of-stream active-stream)))))
+        (when (get-flag flags :priority)
+          (read-priority data active-stream)
+          (incf start 5))
+        (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
+        (if (get-flag flags :end-headers)
+            ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+            ;; another CONTINUATION frame.
+            (process-end-headers connection active-stream))
+        (http2::maybe-end-stream end-of-stream active-stream))))
 
 (defun read-and-add-headers (data http-stream start end end-headers)
   "Read http headers from payload in DATA, starting at START.
