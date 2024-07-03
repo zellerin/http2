@@ -160,13 +160,19 @@ See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values
   (declare (ignore method content content-fn additional-headers
                    content-type charset gzip-content))
   (let ((parsed-url (puri:parse-uri url)))
-    (apply #'retrieve-url-using-network-stream
-           (connect-to-tls-server (puri:uri-host parsed-url)
-                                  :sni (puri:uri-host parsed-url)
-                                  :port (or (puri:uri-port parsed-url) 443))
-           parsed-url
-           :end-headers-fn (constantly nil)
-           :end-stream-fn
-           (lambda (raw-stream)
-             (invoke-restart 'finish-stream raw-stream))
-           pars)))
+    (let ((network-stream
+            (connect-to-tls-server (puri:uri-host parsed-url)
+                                   :sni (puri:uri-host parsed-url)
+                                   :port (or (puri:uri-port parsed-url) 443))))
+      (unwind-protect
+           (apply #'retrieve-url-using-network-stream
+                  network-stream
+                  parsed-url
+                  :end-headers-fn (constantly nil)
+                  :end-stream-fn
+                  (lambda (raw-stream)
+                    (invoke-restart 'finish-stream raw-stream))
+                  pars)
+        (handler-case
+            (close network-stream)
+          (cl+ssl::ssl-error-zero-return ()))))))

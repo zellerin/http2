@@ -59,16 +59,11 @@ May block."
       (error 'end-of-file :stream (get-network-stream connection)))))
 
 (defmacro with-http2-connection ((name class &rest params) &body body)
-  "Run BODY with NAME bound to instance of CLASS with parameters.
-  Close the underlying network stream when done."
+  "Run BODY with NAME bound to instance of CLASS with parameters."
   `(let ((,name (make-instance ,class ,@params)))
      (unwind-protect
-          (unwind-protect
-               (progn ,@body)
-            (process-pending-frames ,name t))
-       (handler-case
-           (close ,name)
-         (cl+ssl::ssl-error-zero-return ())))))
+          (progn ,@body)
+       (process-pending-frames ,name t))))
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))
