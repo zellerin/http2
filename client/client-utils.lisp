@@ -21,7 +21,7 @@
 
 
 (defun process-pending-frames (connection &optional just-pending)
-  "Read and process frames on the input.
+  "Read and process frames on the input stream taken from the CONNECTION's network-stream.
 
 Finish normally when either
 
@@ -43,13 +43,16 @@ May block."
                   (listen stream)
                   (not (eql #'parse-frame-header frame-action)))
         do
+           (dolist (chunk (get-to-write connection))
+             (write-sequence chunk stream))
            (force-output stream)
+           (setf (get-to-write connection) nil)
            (let ((buffer (make-octet-buffer size)))
              (declare (dynamic-extent buffer))
              (if (= size (read-sequence buffer stream))
                  (multiple-value-setq
                      (frame-action size)
-                     (funcall frame-action connection buffer))
+                   (funcall frame-action connection buffer))
                  (error 'end-of-file :stream (get-network-stream connection)))))
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
