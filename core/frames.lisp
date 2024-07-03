@@ -168,17 +168,19 @@ a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
 padding."
   (dotimes (i padding-size) (read-bytes stream 1)))
 
-(defun possibly-padded-body (connection fn padded pars)
-  "Add padding code to BODY if needed."
+(defun possibly-padded-body (connection buffer fn padded pars)
+  "Add payload and possibly padding to a BUFFER that already contains 9 octets of the header."
   (cond
-    ((null padded) (list (apply fn connection pars)))
+    ((null padded) (apply fn buffer 9 pars))
     (t
-     ;; this may be slow, but we do not pad much I guess
-     `(,@(get-to-write connection)
-       (make-array 1 :element-type '(unsigned-byte 8)
-                     :initial-element  (length padded))
-       (apply fn connection pars)
-       padded))))
+     (setf (aref buffer 9) (length padded)) ; padding
+     (apply fn buffer 10 pars)
+     (replace buffer padded :start1 (- (length buffer) (length padded)))
+       `(,(get-to-write connection)
+         ,(make-array 1 :element-type '(unsigned-byte 8)
+                        :initial-element  (length padded))
+
+         padded))))
 
 (defun change-state-on-write-end (http-stream)
   "Change state of the stream when STREAM-END is sent."
@@ -235,7 +237,7 @@ to the TO-WRITE slot of the connection."
        (unwind-protect
             (progn
               ,@body)
-         (setf  (http2::get-network-stream ,connection) nil)
+         (setf (http2::get-network-stream ,connection) nil)
          (push (get-write-buffer ,stream-name) (get-to-write connection))))))
 
 (defmacro with-padding-marks ((connection padded start end) &body body)
@@ -270,7 +272,6 @@ This is supposed to be a temporary necessity."
       (http2::maybe-end-stream end-of-stream active-stream)
       (rotatef (http2::get-network-stream connection) stream)
       (assert (= (get-index stream) length)) ;; all should have been consumed
-      (write-sequence (get-write-buffer stream) (get-network-stream connection))
       (values #'parse-frame-header 9))))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
@@ -383,26 +384,35 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
-;;; !!!! WIP FIXME !!!
-;;; Move from stream to array(s)
+
 (defun write-frame (http-connection-or-stream length type-code keys
                     writer &rest pars)
   "Universal function to write a frame to a stream and account for possible stream
-state change."
-  (let ((padded (getf keys :padded)))
+state change.
+
+Adds to the GET-TO-WRITE object:
+- frame header (9 octets),
+- the payload, if any (length octets), including padding octets.
+
+The payload is generated using WRITER object. The WRITER takes CONNECTION and PARS as its
+parameters."
+  (let ((padded (getf keys :padded))
+        (buffer (make-octet-buffer (+ length 9))))
+    (write-frame-header-to-vector
+     buffer 0 (padded-length length padded)
+     type-code (flags-to-code keys)
+     (get-stream-id http-connection-or-stream) nil)
+    (possibly-padded-body
+     (get-connection http-connection-or-stream) buffer
+     writer
+     padded
+     pars)
     (setf (get-to-write (get-connection http-connection-or-stream))
           `(,@(get-to-write (get-connection http-connection-or-stream))
-            ,(write-frame-header-to-vector
-              (make-octet-buffer 9) 0 (padded-length length padded)
-              type-code (flags-to-code keys)
-              (get-stream-id http-connection-or-stream) nil)
-            ,@(possibly-padded-body
-               (get-connection http-connection-or-stream)
-               writer
-               padded
-               pars))))
+            ,buffer)))
   (when (getf keys :end-stream)
-    (change-state-on-write-end http-connection-or-stream)))
+    (change-state-on-write-end http-connection-or-stream))
+  (get-to-write (get-connection http-connection-or-stream)))
 
 (defun create-new-local-stream (connection &optional pars)
   "Create new local stream of default class on CONNECTION. Additional PARS are
@@ -421,15 +431,15 @@ passed to the make-instance"
 (defun write-32-bits (stream value)
   (write-bytes stream 4 value))
 
-(defun write-31-bits (vector value flag)
+(defun write-31-bits (vector start value flag)
   "Write 31 bits of VALUE to a VECTOR. Set first bit if FLAG is set."
   (declare (optimize speed))
   (declare (type stream-id value))
-  (setf (aref/wide vector 0 4) (logior value (if flag #x80000000 0))))
+  (setf (aref/wide vector start 4) (logior value (if flag #x80000000 0))))
 
 (defun write-stream-id (stream value reserved)
   "Write STREAM-ID to the binary stream"
-  (write-31-bits stream value reserved))
+  (write-31-bits stream 0 value reserved))
 
 (defun write-frame-header-to-vector (vector start length type flags stream-id R)
   "Write a frame header to STREAM."
@@ -620,9 +630,9 @@ handler that calls appropriate callbacks."
 (defun write-sequences (stream headers)
   "Write a tree of sequences to stream."
   (etypecase headers
-    (nil nil)
+    (null nil)
     (vector (write-sequence headers stream))
-    (cons (map nil (lambda (a) (write-sequences a stream)) headers))))
+    (cons (map nil (lambda (a) (write-sequences stream a)) headers))))
 
 
 (defun read-padding-from-vector (connection data)
@@ -647,14 +657,10 @@ handler that calls appropriate callbacks."
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    (lambda (connection data)
-      (declare (ignore connection))
+    (lambda (buffer start data)
       (account-write-window-contribution
        (get-connection http-connection-or-stream) http-connection-or-stream length)
-      (typecase data
-        (null nil)                      ; just to close stream
-        (cons data)
-        (t (list data))))
+      (replace buffer data :start1 start))
 
     (lambda (connection data padded active-stream flags end-of-stream)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
@@ -674,12 +680,15 @@ handler that calls appropriate callbacks."
   (decf (get-peer-window-size connection) length)
   (decf (get-peer-window-size stream) length))
 
-(defun write-priority (priority)
-  (let ((prio-vector (make-octet-buffer 5)))
-    (write-31-bits prio-vector
-                   (priority-stream-dependency priority)
-                   (priority-exclusive priority))
-    (setf (aref prio-vector 4) (priority-weight priority))))
+(defun write-priority (priority buffer start &optional headers)
+  (unless (null (cdr headers))
+    (error "FIXME: not implemented "))
+  (write-31-bits buffer start
+                 (priority-stream-dependency priority)
+                 (priority-exclusive priority))
+  (setf (aref buffer (+ 4 start)) (priority-weight priority))
+  (replace buffer (car headers) :start1 (+ start 5))
+  buffer)
 
 (define-frame-type 1 :headers-frame
     "#+begin_src artist
@@ -706,11 +715,11 @@ handler that calls appropriate callbacks."
      :new-stream-state open)
 
     ;; writer
-    (lambda (connection headers priority)
-      (declare (ignore connection))
+    (lambda (buffer start headers priority)
       (if priority ;; this is deprecated as in RFC9113 but still implemented
-        (cons (write-priority priority) headers))
-      headers)
+          (write-priority priority buffer start headers)
+          ;; TODO: what is allowed headers format?
+          (replace buffer (car headers) :start1 start)))
 
     ;; reader
     (lambda (connection data padded active-stream flags end-of-stream)
@@ -744,8 +753,7 @@ read."
                                         (get-decompression-context connection))
     when name
       do (add-header connection http-stream name value)
-    while (< (get-index data-as-stream) length)
-    )
+    while (< (get-index data-as-stream) length))
   (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
           9))
 
@@ -794,7 +802,8 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     (:length 5
      :must-have-stream-in (idle reserved/remote reserved/local open half-closed/local half-closed/remote closed)
      :new-stream-state idle)
-    #'write-priority
+    (lambda (buffer start priority)
+      (write-priority priority buffer start))
     (lambda (connection data padded http-stream flags end-of-stream)
       (declare (ignore connection flags padded end-of-stream))
       (unless (= 5 (length data))
@@ -827,7 +836,8 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      ;;    type PROTOCOL_ERROR.
      :must-have-stream-in (reserved/remote reserved/local open half-closed/local half-closed/remote closed)
      :bad-state-error +protocol-error+)
-    #'write-32-bits
+    (lambda (buffer start code)
+      (setf (aref/wide buffer start 4) code))
     (lambda (stream connection http-stream length flags)
       (assert (zerop flags))
       (unless (= length 4)
@@ -854,13 +864,17 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      :must-have-connection t
      :flags (ack))
     ;; writer
-    (lambda (stream settings)
-      (dolist (setting settings)
-        #-ecl(declare ((cons (or (unsigned-byte 16) symbol) (unsigned-byte 32)) setting))
-        (write-bytes stream 2
+    (lambda (buffer start settings)
+      (loop
+            for i from start by 6
+            and setting in settings
+            do
+               (setf (aref/wide buffer i 2)
                      (if (numberp (car setting)) (car setting)
-                         (find-setting-code (car setting))))
-        (write-32-bits stream (cdr setting))))
+                         (find-setting-code (car setting)))
+                     (aref/wide buffer (+ i 2) 4)
+                     (cdr setting))
+            finally (return buffer)))
     ;;reader
     (lambda (stream connection http-stream length flags)
       (declare (ignore http-stream))
@@ -952,9 +966,9 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      :bad-state-error +protocol-error+
      :has-reserved t)
     ;;writer
-    (lambda (stream headers promised-stream-id reserved)
-      (write-stream-id stream  promised-stream-id reserved)
-      (write-sequences stream headers))
+    (lambda (buffer start headers promised-stream-id reserved)
+      (write-31-bits buffer start promised-stream-id reserved)
+      (replace buffer (car headers) :start1 (+ start 4)))
     ;; reader
     (lambda (stream connection http-stream length flags)
       ;; TODO: fix reader to vector, implement, dont forget padding
@@ -996,8 +1010,9 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     (:length 8 :flags (ack)
      :must-have-connection t)
     ;; writer
-    (lambda (stream opaque-data)
-      (write-bytes stream 8 opaque-data))
+    (lambda (buffer start opaque-data)
+      (setf (aref/wide buffer start 8) opaque-data)
+      buffer)
     (lambda (stream connection http-stream length flags)
       (declare (ignore http-stream))
       (unless (= length 8)
@@ -1030,10 +1045,12 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      :must-have-connection t
      :has-reserved t)
 
-    (lambda (stream last-stream-id error-code debug-data reserved)
-      (write-stream-id stream last-stream-id reserved)
-     (write-bytes stream 4 error-code)
-     (write-sequence debug-data stream))
+    (lambda (buffer start last-stream-id error-code debug-data reserved)
+      (write-31-bits buffer start last-stream-id reserved)
+      (setf
+       (aref/wide buffer (+ start 4) 4) error-code)
+      (replace buffer debug-data :start1 (+ start 8))
+      buffer)
 
     ;; reader
     (lambda (stream connection http-stream length flags)
@@ -1062,8 +1079,8 @@ individual stream and on the entire connection."
      :must-have-stream-in (open closed half-closed/local half-closed/remote
                                 reserved/local reserved/remote)
      :may-have-connection t)
-    (lambda (stream window-size-increment reserved)
-      (write-31-bits stream  window-size-increment reserved)
+    (lambda (buffer start window-size-increment reserved)
+      (write-31-bits buffer start  window-size-increment reserved)
       (incf (get-window-size http-connection-or-stream) window-size-increment))
 
     (lambda (connection data padded http-stream flags end-of-stream)
@@ -1085,6 +1102,7 @@ individual stream and on the entire connection."
       (values #'parse-frame-header 9)))
 
 
+;;;; FIXME: this is completly wrong (continuation frame)
 (define-frame-type-old 9 :continuation-frame
     "#+begin_src artist
 
@@ -1139,15 +1157,17 @@ Return two values, length of the payload and END-HEADERS flag."
      (alt-svc-field-value string))
     (:length (+ 2 (length origin) (length alt-svc-field-value)))
 
-    (lambda (stream origin alt-svc-field-value)
-      (write-bytes stream 2 (length origin))
+    (lambda (buffer start origin alt-svc-field-value)
+      (setf (aref/wide buffer start 2) (length origin))
       (when origin
-        (write-sequence (map '(vector unsigned-byte 8)
-                             'char-code origin)
-                        stream))
-      (write-sequence (map '(vector unsigned-byte 8)
-                           'char-code alt-svc-field-value)
-                      stream))
+        (replace buffer
+                 (map '(vector unsigned-byte 8)
+                      'char-code origin)
+                 :start1 (+ start 2)))
+      (replace buffer
+               (map '(vector unsigned-byte 8)
+                    'char-code alt-svc-field-value)
+               :start1 (+ 2 start (length origin))))
 
     ;; reader
     (lambda (stream connection http-stream length flags)
