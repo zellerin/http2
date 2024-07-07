@@ -1,4 +1,4 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
+;;;; Copyright 2022, 2023, 2024 by Tomáš Zellerin
 
 ;;;; As an example of how a server could be built, define class
 ;;;; vanilla-server-connection that dispatches incoming requests based on their
@@ -38,6 +38,7 @@ REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
            (acons ,prefix ,fn
                   (remove ,prefix ,target :key 'car :test 'equal)))))
 
+;; FIXME: This is currently unused & untested AFACT
 (defmacro handler ((flexi-stream-name charset gzip) &body body)
   "Runs BODY in a context with
 - FLEXI-STREAM-NAME bound to a flexi stream,

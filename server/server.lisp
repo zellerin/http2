@@ -43,9 +43,10 @@
        (:p "UTF8 test: Příliš žluťoučký kůň... 😎"))))
 
 (define-exact-handler "/long"
-    (handler (out :utf-8 nil)
-      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
-                      ("refresh" "30; url=/")))
+    ;; FIXME: put the looping logic to the callbacks
+    (constant-handler (out :utf-8 nil
+                           `((:status "200") ("content-type" "text/html; charset=utf-8")
+                             ("refresh" "30; url=/")))
       (with-html-output (out)
         (:h1 "Test long body")
         (dotimes (i 100000)
@@ -82,31 +83,38 @@
                         (values))))))))))
 
 (define-exact-handler "/event-stream"
-    (scheduling-handler (out '(:utf-8 :eol-style :crlf) nil)
-      (send-headers `((:status "200") ("content-type" "text/event-stream")))
+    (lambda (connection stream)
+      (send-headers stream `((:status "200") ("content-type" "text/event-stream")))
       (let ((i 0))
         (labels ((send-event-and-plan-next ()
                    (handler-case
-                       (bt:with-lock-held ((get-lock connection))
-                         (format out "id: ~d~%" (incf i))
-                         (multiple-value-bind (sec min hr day)
-                             (decode-universal-time (get-universal-time))
-                           (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day hr
-                                   min sec))
-                         (force-output out)
-                         (schedule-task (get-scheduler connection) 1000000
-                                        #'send-event-and-plan-next))
-                     ; TODO: handle stream closed
-                     )))
-          ;; this needs to be scheduled so that existing lock is not re-acquired
+                       ;; FIXME: lock? (bordeaux-threads:with-lock-held ((get-lock connection)))
+                       (http2::write-binary-payload connection stream
+                                                    (trivial-utf-8:string-to-utf-8-bytes
+                                                     (with-output-to-string (out)
+                                                       (format out "id: ~d~%" (incf i))
+                                                       (multiple-value-bind (sec min hr day)
+                                                           (decode-universal-time (get-universal-time))
+                                                         (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day
+                                                                 hr min sec))
+                                                       (schedule-task (get-scheduler connection) 1000000
+                                                                      #'send-event-and-plan-next)))
+                                                    :end-stream nil))
+                   (dolist (chunk (http2::get-to-write connection))
+                     (write-sequence chunk
+                      (http2::get-network-stream connection))
+                     (setf (http2::get-to-write connection) nil)
+                     (force-output (http2::get-network-stream connection)))))
           (schedule-task (get-scheduler connection) 0
                          #'send-event-and-plan-next)))))
 
 (define-exact-handler "/body"
-    (handler (out :utf-8 nil)
-      (send-headers `((:status "200") ("content-type" "text/plain; charset=utf-8")
+    (lambda (connection stream)
+      (send-headers stream
+                    `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
-      (princ (get-body stream) out)))
+      (http2::write-binary-payload connection stream
+                                   (trivial-utf-8:string-to-utf-8-bytes  (get-body stream)))))
 
 (defmethod add-header (connection (stream server-stream) name value)
   (handler-bind ((warning #'muffle-warning))
