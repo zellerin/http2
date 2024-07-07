@@ -105,6 +105,7 @@ is a good one to trace to debug low level problems. Each write function takes
 object identifying the http stream or connection that the frame affects,
 additional parameters, and optional parameters that usually relate to the known
 flags."
+  (parse-frame-header function)
   (write-frame-header function)
   (write-data-frame function)
   (write-headers-frame function)
@@ -464,10 +465,9 @@ pretty short so we do not care."
   R)
 
 (defun parse-frame-header (connection header)
-  "Read one frame related to the CONNECTION from STREAM. All frames begin with a
-fixed 9-octet header followed by a variable-length payload. The function reads
-and processes the header, and then dispatches to a frame type specific
-handler that calls appropriate callbacks."
+  "Parse header (9 octets array) and return two values, a function to parse
+following data (that can be again #'PARSE-FRAME-HEADER if there is no payload),
+and size of data that the following function expects."
 ;;;  +-----------------------------------------------+
 ;;;  |                 Length (24)                   |
 ;;;  +---------------+---------------+---------------+
@@ -480,7 +480,7 @@ handler that calls appropriate callbacks."
 
   (declare
    (optimize speed)
-   ((simple-array (unsigned-byte 8) *) header))
+   ((simple-array (unsigned-byte 8) (9)) header))
   ;; first flush anything we should have send to prevent both sides waiting
   (let* ((length (aref/wide header 0 3))
          (type (aref header 3))
