@@ -15,6 +15,7 @@
                (:module "core"
                 :components ((:file "utils")
                              (:file "errors")
+                             (:file "glossary")
                              (:file "frames")
                              (:file "classes")
                              (:file "hpack")
