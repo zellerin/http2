@@ -100,13 +100,13 @@ are processed as part of processing preceding header frame.
 
 The write function are expected to be called either as part of initializing
 communication (FIXME: relevant functions) or from the @CALLBACKS and each calls
-WRITE-FRAME-HEADER to send common parts; you should not need to call it, but it
-is a good one to trace to debug low level problems. Each write function takes
-object identifying the http stream or connection that the frame affects,
-additional parameters, and optional parameters that usually relate to the known
-flags."
+WRITE-FRAME that calls in turn WRITE-FRAME-HEADER-TO-VECTOR to write the header
+itself. You should not need to call these, but they are good ones to trace to
+debug low level problems. Each write function takes object identifying the http
+stream or connection that the frame affects, additional parameters, and optional
+parameters that usually relate to the known flags."
   (parse-frame-header function)
-  (write-frame-header function)
+  (write-frame-header-to-vector function)
   (write-data-frame function)
   (write-headers-frame function)
   (priority type)
@@ -309,18 +309,16 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
-
 (defun write-frame (http-connection-or-stream length type-code keys
                     writer &rest pars)
   "Universal function to write a frame to a stream and account for possible stream
 state change.
 
-Adds to the GET-TO-WRITE object:
-- frame header (9 octets),
-- the payload, if any (length octets), including padding octets.
+Adds to the GET-TO-WRITE slot of a octet vector with the frame, including
+frame header (9 octets) and padding octets.
 
-The payload is generated using WRITER object. The WRITER takes CONNECTION and PARS as its
-parameters."
+The payload is generated using WRITER object. The WRITER takes CONNECTION and
+PARS as its parameters."
   (let ((padded (getf keys :padded))
         (buffer (make-octet-buffer (+ length 9))))
     (write-frame-header-to-vector
@@ -397,13 +395,6 @@ passed to the make-instance"
   (setf (aref vector (incf start))  (ldb (byte 8 8) stream-id))
   (setf (aref vector (incf start))  (ldb (byte 8 0) stream-id))
   vector)
-
-(defun write-frame-header (stream length type flags http-stream R)
-  "Write a frame header to STREAM."
-  (write-sequence
-   (write-frame-header-to-vector
-    (make-octet-buffer 9) 0 length type flags (get-stream-id http-stream) R)
-   stream))
 
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
@@ -1093,7 +1084,8 @@ Return two values, length of the payload and END-HEADERS flag."
 
 Reading from Common Lisp streams has problems with not being able to poll, as
 well as some others I forgot."
-  (read-frame function))
+  (read-frame function)
+  (write-frame-header function))
 
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
     "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
@@ -1122,3 +1114,10 @@ write, read the header and process it."
       (setf (get-to-write connection) nil)
       (force-output network-stream)
       (maybe-unlock-for-write connection))))
+
+(defun write-frame-header (stream length type flags http-stream R)
+  "Write a frame header to STREAM."
+  (write-sequence
+   (write-frame-header-to-vector
+    (make-octet-buffer 9) 0 length type flags (get-stream-id http-stream) R)
+   stream))
