@@ -1,13 +1,11 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
-
-;;;; http2.lisp
+;;;; Copyright 2022, 2023, 2024 by Tomáš Zellerin
 
 (in-package :http2)
 
 (defsection @terms
     (:export nil
      :title "Glossary terms")
-  "Everywhere in the documentation, HTTP stands for HTTP/2 as defined in the STANDARD."
+  "Everywhere in the documentation, HTTP stands for HTTP/2 as defined in the HTTP2-STANDARD."
 
   (http2-standard glossary-term)
   (http2-client glossary-term)
@@ -23,8 +21,8 @@
   (network-stream-term glossary-term))
 
 (define-glossary-term http2-standard
-    (:title "standard")
-    "The [RFC9113][https://www.rfc-editor.org/rfc/rfc9113.html] is the standard for HTTP/2 that this library aims to implement. It obsoletes RFC7540.")
+    (:title "Standard")
+    "[RFC9113](https://www.rfc-editor.org/rfc/rfc9113.html) is the standard for HTTP/2 that this library aims to implement. It obsoletes RFC7540.")
 
 (define-glossary-term  http2-client
     (:title "HTTP client")
@@ -37,7 +35,8 @@
 
 (define-glossary-term peer
     (:title "peer")
-    "When discussing a particular CONNECTION-ENDPOINT, peer refers to the endpoint that is remote to the primary subject of discussion.")
+    "When discussing a particular CONNECTION-ENDPOINT, peer refers to the endpoint
+that is remote to the primary subject of discussion.")
 
 (define-glossary-term connection-term
     (:title "HTTP connection")
@@ -93,22 +92,34 @@ See also function [HTTP-STREAM-ERROR][function] and condition
 
 (defsection @frames-api
   (:title "API for sending and receiving frames")
-  "Lowest level interace deals with sending and receiving individual frames. For
-each frame type there is an anonymous read function called by READ-FRAME based
-on the type, and write function (WRITE-DATA-FRAME, ...) The only exception is
-continuations frame that are not expected when read-frame is called - they are
-processed as part of processing preceding header frame.
+  "Lowest level interace deals with creating and parsing individual frames. For
+each frame type there is an anonymous parsing function called by READ-FRAME
+based on the type, and write function (WRITE-DATA-FRAME, ...) The only exception
+is continuations frame that are not expected when read-frame is called - they
+are processed as part of processing preceding header frame.
 
-The write function are expected to be called individually and each calls
-WRITE-FRAME-HEADER to send common parts; you should not need to call it, but
-it is a good one to trace to debug low level problems. Each write function takes
+The write function are expected to be called either as part of initializing
+communication (FIXME: relevant functions) or from the @CALLBACKS and each calls
+WRITE-FRAME-HEADER to send common parts; you should not need to call it, but it
+is a good one to trace to debug low level problems. Each write function takes
 object identifying the http stream or connection that the frame affects,
 additional parameters, and optional parameters that usually relate to the known
 flags."
-
   (read-frame function)
   (write-frame-header function)
-  (write-ack-setting-frame function))
+  (write-data-frame function)
+  (write-headers-frame function)
+  (priority type)
+  (write-priority-frame function)
+  (write-rst-stream-frame function)
+  (write-settings-frame function)
+  (write-ack-setting-frame function)
+  (write-push-promise-frame function)
+  (write-ping-frame function)
+  (write-goaway-frame function)
+  (write-window-update-frame function)
+  (write-continuation-frame function)
+  (write-altsvc-frame function))
 
 (defsection @frames-implementation
   (:title "Sending and receiving frames"
@@ -279,7 +290,11 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
   (declare ((unsigned-byte 8) type-code)
            (keyword frame-type-name))
   (let (key-parameters
-        (writer-name (intern (format nil "WRITE-~a" frame-type-name))))
+        (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
+        (http-connection-or-stream
+          (cond (must-have-connection 'connection)
+                (may-have-connection 'stream-or-connection)
+                (t 'stream))))
     ;; Reserved is used rarely so no need to force always specifying it
     (when has-reserved (push '(reserved t) key-parameters))
     ;; Priority is both a flag to set and value to store if this flags is set.
@@ -287,7 +302,7 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
     `(progn
        (defconstant ,(intern (format nil "+~a+" frame-type-name)) ,type-code)
 
-       (defun ,writer-name (http-connection-or-stream
+       (defun ,writer-name (,http-connection-or-stream
                             ,@(mapcar 'first parameters)
                             &rest keys
                             &key
@@ -297,7 +312,7 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
          (declare (ignore ,@(remove 'priority flags)))
          (let ((length ,length))
            (write-frame
-            http-connection-or-stream
+            ,http-connection-or-stream
             length
             ,type-code
             keys
@@ -533,7 +548,7 @@ write, read the header and process it."
                  (multiple-value-setq (receive-fn length)
                    (funcall receive-fn connection frame-content))))
       (maybe-lock-for-write connection)
-      (write-sequences (get-to-write connection) (get-network-stream connection))
+      (write-sequences  (get-network-stream connection) (get-to-write connection))
       (setf (get-to-write connection) nil)
       ;; 20240612 TODO: factor out net stream
       (force-output (get-network-stream connection))
@@ -629,12 +644,11 @@ handler that calls appropriate callbacks."
 
 ;;;; Definition of individual frame types.
 (define-frame-type 0 :data-frame
-    "#+begin_src artist
-
+    "```
   +---------------+-----------------------------------------------+
   |                            Data (*)                         ...
   +---------------------------------------------------------------+
-  #+end_src
+```
 
   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
   octets associated with a stream.  One or more DATA frames are used,
@@ -645,8 +659,12 @@ handler that calls appropriate callbacks."
      :must-have-stream-in (open half-closed/local))
     (lambda (buffer start data)
       (account-write-window-contribution
-       (get-connection http-connection-or-stream) http-connection-or-stream length)
-      (replace buffer data :start1 start))
+       (get-connection stream) stream length)
+      (if (consp data)
+          (dolist (chunk data)
+            (replace buffer chunk :start1 start)
+            (incf start (length chunk)))
+          (replace buffer data :start1 start)))
 
     (lambda (connection data padded active-stream flags end-of-stream)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them."
@@ -676,7 +694,7 @@ handler that calls appropriate callbacks."
   buffer)
 
 (define-frame-type 1 :headers-frame
-    "#+begin_src artist
+    "```
 
     +-+-------------+-----------------------------------------------+
     |E|                 Stream Dependency? (31)                     |
@@ -685,11 +703,11 @@ handler that calls appropriate callbacks."
     +-+-------------+-----------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
-   #+end_src
+```
 
    The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
-   be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
+   .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state."
     ((headers list))                    ;  &key dependency weight
     (:length (+ (if priority 5 0) (reduce '+ (mapcar 'length headers)))
@@ -761,26 +779,26 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
 (define-frame-type 2 :priority-frame
     "
    The PRIORITY frame (type=0x2) specifies the sender-advised priority
-   of a stream (Section 5.3).
+   of a stream ([Section 5.3](https://www.rfc-editor.org/rfc/rfc9113.html#name-prioritization)).
 
-   #+begin_src artist
+```
     +-+-------------------------------------------------------------+
     |E|                  Stream Dependency (31)                     |
     +-+-------------+-----------------------------------------------+
     |   Weight (8)  |
     +-+-------------+
-   #+end_src
+```
 
    The payload of a PRIORITY frame contains the following fields:
 
    E: A single-bit flag indicating that the stream dependency is
-      exclusive (see Section 5.3).
+      exclusive.
 
    Stream Dependency:  A 31-bit stream identifier for the stream that
-      this stream depends on (see Section 5.3).
+      this stream depends on.
 
    Weight:  An unsigned 8-bit integer representing a priority weight for
-      the stream (see Section 5.3).  Add one to the value to obtain a
+      the stream.  Add one to the value to obtain a
       weight between 1 and 256."
     ((priority priority))
     (:length 5
@@ -801,11 +819,11 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
    stream.  RST_STREAM is sent to request cancellation of a stream or to
    indicate that an error condition has occurred.
 
-   #+begin_src artist
+```
     +---------------------------------------------------------------+
     |                        Error Code (32)                        |
     +---------------------------------------------------------------+
-   #+end_src
+```
 
    The RST_STREAM frame contains a single unsigned, 32-bit integer
    identifying the error code (Section 7).  The error code indicates why
@@ -830,13 +848,13 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
 
 
 (define-frame-type-old 4 :settings-frame
-    "#+begin_src artist
+    "```
     +-------------------------------+
     |       Identifier (16)         |
     +-------------------------------+-------------------------------+
     |                        Value (32)                             |
     +---------------------------------------------------------------+
-   #+end_src
+   ```
 
    The SETTINGS frame (type=0x4) conveys configuration parameters that
    affect how endpoints communicate, such as preferences and constraints
@@ -904,13 +922,13 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
    provide additional context for the stream.  Section 8.2 contains a
    thorough description of the use of PUSH_PROMISE frames.
 
-   #+begin_src artist
+   ```
     +-+-------------+-----------------------------------------------+
     |R|                  Promised Stream ID (31)                    |
     +-+-----------------------------+-------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
-   #+end_src
+   ```
 
    The PUSH_PROMISE frame payload has the following fields:
 
@@ -966,15 +984,13 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
    idle connection is still functional.  PING frames can be sent from
    any endpoint.
 
-   #+begin_src artist
+   ```
     +---------------------------------------------------------------+
     |                                                               |
     |                      Opaque Data (64)                         |
     |                                                               |
     +---------------------------------------------------------------+
-   #+end_src
-
-                      Figure 12: PING Payload Format
+   ```
 
    In addition to the frame header, PING frames MUST contain 8 octets of
    opaque data in the payload.  A sender can include any value it
@@ -1007,7 +1023,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
             (do-ping connection data)))))
 
 (define-frame-type-old 7 :goaway-frame
-    "#+begin_src artist
+    "```
     +-+-------------------------------------------------------------+
     |R|                  Last-Stream-ID (31)                        |
     +-+-------------------------------------------------------------+
@@ -1015,7 +1031,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     +---------------------------------------------------------------+
     |                  Additional Debug Data (*)                    |
     +---------------------------------------------------------------+
-   #+end_src
+   ```
 
    The GOAWAY frame (type=0x7) is used to initiate shutdown of a
    connection or to signal serious error conditions.  GOAWAY allows an
@@ -1047,11 +1063,11 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
         (do-goaway connection (get-error-name error-code) last-id data))))
 
 (define-frame-type 8 :window-update-frame
-    "#+begin_src artist
+    "```
     +-+-------------------------------------------------------------+
     |R|              Window Size Increment (31)                     |
     +-+-------------------------------------------------------------+
-  #+end_src
+  ```
 
 The WINDOW_UPDATE frame (type=0x8) is used to implement flow control; see
 Section 5.2 for an overview.  Flow control operates at two levels: on each
@@ -1065,7 +1081,7 @@ individual stream and on the entire connection."
      :may-have-connection t)
     (lambda (buffer start window-size-increment reserved)
       (write-31-bits buffer start  window-size-increment reserved)
-      (incf (get-window-size http-connection-or-stream) window-size-increment))
+      (incf (get-window-size stream-or-connection) window-size-increment))
 
     (lambda (connection data padded http-stream flags end-of-stream)
       (declare (ignore padded end-of-stream))
@@ -1088,12 +1104,12 @@ individual stream and on the entire connection."
 
 ;;;; FIXME: this is completly wrong (continuation frame)
 (define-frame-type-old 9 :continuation-frame
-    "#+begin_src artist
+    "```
 
     +---------------------------------------------------------------+
     |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
-#+end_src
+```
 
 The CONTINUATION frame (type=0x9) is used to continue a sequence of header block
 fragments (Section 4.3).  Any number of CONTINUATION frames can be sent, as long
@@ -1130,13 +1146,13 @@ Return two values, length of the payload and END-HEADERS flag."
     "See RFC 7838.  The ALTSVC HTTP/2 frame advertises the availability of an
    alternative service to an HTTP/2 client.
 
-    #+begin_src artist
+```
     +-------------------------------+-------------------------------+
     |         Origin-Len (16)       | Origin? (*)                 ...
     +-------------------------------+-------------------------------+
     |                   Alt-Svc-Field-Value (*)                   ...
     +---------------------------------------------------------------+
-   #+end_src"
+```"
     ((origin (or null string))
      (alt-svc-field-value string))
     (:length (+ 2 (length origin) (length alt-svc-field-value)))
