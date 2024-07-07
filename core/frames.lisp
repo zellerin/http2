@@ -105,7 +105,6 @@ is a good one to trace to debug low level problems. Each write function takes
 object identifying the http stream or connection that the frame affects,
 additional parameters, and optional parameters that usually relate to the known
 flags."
-  (read-frame function)
   (write-frame-header function)
   (write-data-frame function)
   (write-headers-frame function)
@@ -119,7 +118,8 @@ flags."
   (write-goaway-frame function)
   (write-window-update-frame function)
   (write-continuation-frame function)
-  (write-altsvc-frame function))
+  (write-altsvc-frame function)
+  (@old-frame-functions section))
 
 (defsection @frames-implementation
   (:title "Sending and receiving frames"
@@ -448,34 +448,6 @@ The list of streams should already be sorted from high number to low number, so 
 stop as soon as we can see lower value. However, we assume the list needed to be searched is
 pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
-
-(defun read-frame (connection &optional (stream (get-network-stream connection)))
-    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
-write, read the header and process it."
-  (declare (inline make-octet-buffer))
-  (force-output stream)
-  (let ((buffer (make-octet-buffer 9)))
-    (declare (dynamic-extent buffer))
-    (when (< (read-sequence buffer stream) 9)
-      (error 'end-of-file :stream connection))
-    (multiple-value-bind (receive-fn length)
-        (parse-frame-header connection buffer)
-      (declare (compiled-function receive-fn)
-               ((unsigned-byte 24) length))
-      (loop while (not (equal #'parse-frame-header receive-fn))
-            do
-               (let* ((frame-content (make-octet-buffer length))
-                      (read (read-sequence frame-content stream)))
-                 (when (< read length)
-                   (error 'end-of-file :stream connection))
-                 (multiple-value-setq (receive-fn length)
-                   (funcall receive-fn connection frame-content))))
-      (maybe-lock-for-write connection)
-      (write-sequences  (get-network-stream connection) (get-to-write connection))
-      (setf (get-to-write connection) nil)
-      ;; 20240612 TODO: factor out net stream
-      (force-output (get-network-stream connection))
-      (maybe-unlock-for-write connection))))
 
 (defun checked-length (length connection)
   (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
@@ -1114,3 +1086,39 @@ Return two values, length of the payload and END-HEADERS flag."
            "An ALTSVC frame on stream 0 with empty (length 0) \"Origin\" information is
    invalid and MUST be ignored.")
           (t (handle-alt-svc http-stream nil alt-svc-field-value))))))
+
+(defsection @old-frame-functions
+    (:title "Read frames from Common Lisp streams")
+  "This was the entry point for the version one of the library.
+
+Reading from Common Lisp streams has problems with not being able to poll, as
+well as some others I forgot."
+  (read-frame function))
+
+(defun read-frame (connection &optional (stream (get-network-stream connection)))
+    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+write, read the header and process it."
+  (declare (inline make-octet-buffer))
+  (force-output stream)
+  (let ((buffer (make-octet-buffer 9))
+        (network-stream (get-network-stream connection)))
+    (declare (dynamic-extent buffer))
+    (when (< (read-sequence buffer stream) 9)
+      (error 'end-of-file :stream connection))
+    (multiple-value-bind (receive-fn length)
+        (parse-frame-header connection buffer)
+      (declare (compiled-function receive-fn)
+               ((unsigned-byte 24) length))
+      (loop while (not (equal #'parse-frame-header receive-fn))
+            do
+               (let* ((frame-content (make-octet-buffer length))
+                      (read (read-sequence frame-content stream)))
+                 (when (< read length)
+                   (error 'end-of-file :stream connection))
+                 (multiple-value-setq (receive-fn length)
+                   (funcall receive-fn connection frame-content))))
+      (maybe-lock-for-write connection)
+      (write-sequences  network-stream (get-to-write connection))
+      (setf (get-to-write connection) nil)
+      (force-output network-stream)
+      (maybe-unlock-for-write connection))))
