@@ -756,7 +756,8 @@ recieved order."
              ;;    unsupported identifier MUST ignore that setting.
              when name
                do (set-peer-setting connection name value)
-             finally (peer-expects-settings-ack connection)))))))
+             finally (peer-expects-settings-ack connection)))))
+      (values #'parse-frame-header 9)))
 
 (defun write-ack-setting-frame (connection)
   "Write ACK settings frame.
