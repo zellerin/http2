@@ -277,8 +277,8 @@ frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
 PARS as its parameters."
-  (let ((padded (getf keys :padded))
-        (buffer (make-octet-buffer (+ length 9))))
+  (let* ((padded (getf keys :padded))
+         (buffer (make-octet-buffer (+ length 9 (if padded (+ 1 (length padded)) 0)))))
     (write-frame-header-to-vector
      buffer 0 (padded-length length padded)
      type-code (flags-to-code keys)
