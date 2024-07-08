@@ -34,6 +34,7 @@ This is to be called on client when the initial request was send, or on server
 to serve requests.
 
 May block."
+  (declare (stream-based-connection-mixin connection))
   (handler-case
       (loop
         with frame-action = #'parse-frame-header
@@ -45,10 +46,7 @@ May block."
                   (listen stream)
                   (not (eql #'parse-frame-header frame-action)))
         do
-           (dolist (chunk (get-to-write connection))
-             (write-sequence chunk stream))
            (force-output stream)
-           (setf (get-to-write connection) nil)
            (let ((buffer (make-octet-buffer size)))
              (declare (dynamic-extent buffer))
              (if (= size (read-sequence buffer stream))
@@ -77,6 +75,7 @@ protocol (H2 by default)."
    :verify verify :hostname sni :alpn-protocols alpn-protocols))
 
 (defclass vanilla-client-connection (client-http2-connection
+                                     stream-based-connection-mixin
                                      http2::history-printing-object
                                      http2::timeshift-pinging-connection)
   ()

@@ -15,8 +15,7 @@
    "The flow control parameters are used both for streams and connections."))
 
 (defclass http2-connection (flow-control-mixin)
-  ((network-stream           :accessor get-network-stream           :initarg :network-stream)
-   (streams                  :accessor get-streams                  :initarg :streams
+  ((streams                  :accessor get-streams                  :initarg :streams
                              :documentation "Sequence of HTTP2 streams")
    (acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
    (compression-context      :accessor get-compression-context      :initarg :compression-context)
@@ -33,8 +32,7 @@
    (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size)
    (stream-id                :accessor get-stream-id                :initarg :stream-id
                              :initform      0
-                             :allocation :class)
-   (to-write                 :accessor get-to-write                 :initarg :to-write))
+                             :allocation :class))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -47,8 +45,7 @@
                      :initial-window-size 65535
                      :max-frame-size 16384
                      :max-peer-frame-size 16384
-                     :peer-window-size 65535
-                     :to-write nil)
+                     :peer-window-size 65535)
 
   (:documentation
    "A simple connection: promise push not allowed, otherwise reasonable behaviour"))
@@ -771,3 +768,20 @@ extensions."))
     (add-log stream `(:alt-svc ,origin ,value))))
 
 
+;;;; FIXME: move around
+(defclass write-buffer-connection-mixin ()
+  ((to-write :accessor get-to-write :initarg :to-write))
+  (:default-initargs :to-write
+   (make-array 3 :fill-pointer 0
+                 :adjustable t)))
+
+(defclass stream-based-connection-mixin ()
+  ((network-stream :accessor get-network-stream :initarg :network-stream)))
+
+(defgeneric queue-frame (connection frame)
+  (:method ((connection write-buffer-connection-mixin) frame)
+    (vector-push-extend frame (get-to-write connection)))
+  (:method ((connection stream-based-connection-mixin) frame)
+    (maybe-lock-for-write connection)
+    (write-sequence frame (get-network-stream connection))
+    (maybe-unlock-for-write connection)))

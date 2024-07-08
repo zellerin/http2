@@ -136,19 +136,15 @@ a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
 padding."
   (dotimes (i padding-size) (read-bytes stream 1)))
 
-(defun possibly-padded-body (connection buffer fn padded pars)
+(defun possibly-padded-body (buffer fn padded pars)
   "Add payload and possibly padding to a BUFFER that already contains 9 octets of the header."
   (cond
     ((null padded) (apply fn buffer 9 pars))
     (t
      (setf (aref buffer 9) (length padded)) ; padding
      (apply fn buffer 10 pars)
-     (replace buffer padded :start1 (- (length buffer) (length padded)))
-       `(,(get-to-write connection)
-         ,(make-array 1 :element-type '(unsigned-byte 8)
-                        :initial-element  (length padded))
-
-         padded))))
+     (replace buffer padded :start1 (- (length buffer) (length padded)))))
+  buffer)
 
 (defun change-state-on-write-end (http-stream)
   "Change state of the stream when STREAM-END is sent."
@@ -272,7 +268,7 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
   "Universal function to write a frame to a stream and account for possible stream
 state change.
 
-Adds to the GET-TO-WRITE slot of a octet vector with the frame, including
+Queues using QUEUE-FRAME an octet vector with the frame, including
 frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
@@ -283,17 +279,10 @@ PARS as its parameters."
      buffer 0 (padded-length length padded)
      type-code (flags-to-code keys)
      (get-stream-id http-connection-or-stream) nil)
-    (possibly-padded-body
-     (get-connection http-connection-or-stream) buffer
-     writer
-     padded
-     pars)
-    (setf (get-to-write (get-connection http-connection-or-stream))
-          `(,@(get-to-write (get-connection http-connection-or-stream))
-            ,buffer)))
+    (possibly-padded-body buffer writer padded pars)
+    (queue-frame (get-connection http-connection-or-stream) buffer))
   (when (getf keys :end-stream)
-    (change-state-on-write-end http-connection-or-stream))
-  (get-to-write (get-connection http-connection-or-stream)))
+    (change-state-on-write-end http-connection-or-stream)))
 
 (defun create-new-local-stream (connection &optional pars)
   "Create new local stream of default class on CONNECTION. Additional PARS are
@@ -1078,15 +1067,15 @@ well as some others I forgot."
     (vector (write-sequence headers stream))
     (cons (map nil (lambda (a) (write-sequences stream a)) headers))))
 
-(defun read-frame (connection &optional (stream (get-network-stream connection)))
+(defun read-frame (connection &optional (network-stream (get-network-stream connection)))
   "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
 write, read the header and process it."
-  (declare (inline make-octet-buffer))
-  (force-output stream)
-  (let ((buffer (make-octet-buffer 9))
-        (network-stream (get-network-stream connection)))
+  (declare (inline make-octet-buffer)
+           (stream-based-connection-mixin))
+  (force-output network-stream)
+  (let ((buffer (make-octet-buffer 9)))
     (declare (dynamic-extent buffer))
-    (when (< (read-sequence buffer stream) 9)
+    (when (< (read-sequence buffer network-stream) 9)
       (error 'end-of-file :stream connection))
     (multiple-value-bind (receive-fn length)
         (parse-frame-header connection buffer)
@@ -1095,16 +1084,12 @@ write, read the header and process it."
       (loop while (not (equal #'parse-frame-header receive-fn))
             do
                (let* ((frame-content (make-octet-buffer length))
-                      (read (read-sequence frame-content stream)))
+                      (read (read-sequence frame-content network-stream)))
                  (when (< read length)
                    (error 'end-of-file :stream connection))
                  (multiple-value-setq (receive-fn length)
                    (funcall receive-fn connection frame-content))))
-      (maybe-lock-for-write connection)
-      (write-sequences  network-stream (get-to-write connection))
-      (setf (get-to-write connection) nil)
-      (force-output network-stream)
-      (maybe-unlock-for-write connection))))
+      (force-output network-stream))))
 
 (defun write-frame-header (stream length type flags http-stream R)
   "Write a frame header to STREAM."

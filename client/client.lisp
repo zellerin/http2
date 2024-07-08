@@ -71,8 +71,6 @@ Parameters:
              :external-format charset)))
     transport))
 
-
-
 (defun http-stream-to-vector (http-stream)
   ;; 20240611 TODO: document
   (with-output-to-string (*standard-output*)

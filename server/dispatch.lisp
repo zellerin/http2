@@ -156,7 +156,8 @@ events)."))
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
-                                     threaded-server-mixin)
+                                     threaded-server-mixin
+                                     stream-based-connection-mixin)
   ()
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation
