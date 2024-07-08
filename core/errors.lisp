@@ -1,13 +1,14 @@
 (in-package :http2)
 
 (defsection @errors
-  (:title "Errors handling")
+  (:title "Errors handlers")
   (connection-error condition)
   (connection-error function)
   (http-stream-error condition)
   (http-stream-error function)
   (go-away condition)
-  (do-goaway generic-function))
+  (do-goaway generic-function)
+  (cl+ssl::ssl-error condition))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)

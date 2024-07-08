@@ -4,22 +4,53 @@
 
 (defsection @frames-api
   (:title "API for sending and receiving frames")
-  "![image](../frames.png) There are three main low-level components."
-  "Lowest level interace deals with creating and parsing individual frames. For
-each frame type there is an anonymous parsing function called by READ-FRAME
-based on the type, and write function (WRITE-DATA-FRAME, ...) The only exception
-is continuations frame that are not expected when read-frame is called - they
-are processed as part of processing preceding header frame.
+  "![image](../frames.png) There are several main low-level components:
 
-The write function are expected to be called either as part of initializing
-communication (FIXME: relevant functions) or from the @CALLBACKS and each calls
-WRITE-FRAME that calls in turn WRITE-FRAME-HEADER-TO-VECTOR to write the header
-itself. You should not need to call these, but they are good ones to trace to
-debug low level problems. Each write function takes object identifying the http
-stream or connection that the frame affects, additional parameters, and optional
-parameters that usually relate to the known flags."
-  (parse-frame-header function)
-  (write-frame-header-to-vector function)
+- @FRAME-HANDLERS that reads data from some source (typically, a socket) related
+  to connection, sets up environment to allow callbacks to write data, calls
+  appropriate parsing functions, and writes collected responses,
+- @FRAME-PARSERS, that parses the frame header and payload octets, and calls respective callbacks,
+- @CALLBACKS that implement application specific behaviour,
+- @FRAME-WRITERS such as WRITE-DATA-FRAME that are typically invoked from the callbacks,
+- @ERRORS that break the loop as needed.
+ "
+  (@frame-handler section)
+  (@frame-parsers section)
+  (@callbacks section)
+  (@frame-writers section)
+  (@old-frame-functions section)
+  (@errors section))
+
+(defsection @frame-handler
+    (:title "Frame handler")
+  "Frame handler implements data moving from outside world to the connection. The generic structure is:
+
+- set current frame parser to an initial one (e.g., PARSE-FRAME-HEADER)  and expected length to expected (e.g., 9)
+- loop:
+   - set up a space to write data in the connection
+   - wait for some data to arrive (or obtain them somehow)
+   - process as much data as possible by calling current parser to obtain next one
+- end on an error, or when there are no longer any data"
+  "Existing handlers include PROCESS-PENDING-FRAMES.")
+
+(defsection @frame-parsers
+    (:title "Frame parsers")
+  "Frame parser take an octet of data of expected size, process it (calling any
+callback applicable) and return two values, next frame parser and expected size.
+
+The entry point is PARSE-FRAME-HEADER."
+  (parse-frame-header function))
+
+(defsection @frame-writers
+    (:title "Frame writing functions")
+  "The write function are expected to be called either as part of initializing
+communication (READ-CLIENT-PREFACE for server, INITIALIZE-INSTANCE for client)
+or from the @CALLBACKS and each calls WRITE-FRAME that calls in turn
+WRITE-FRAME-HEADER-TO-VECTOR to write the header itself. You should not need to
+call these, but they are good ones to trace to debug low level problems. Each
+write function takes object identifying the http stream or connection that the
+frame affects, additional parameters, and optional parameters that usually
+relate to the known flags."
   (write-data-frame function)
   (write-headers-frame function)
   (priority type)
@@ -33,11 +64,11 @@ parameters that usually relate to the known flags."
   (write-window-update-frame function)
   (write-continuation-frame function)
   (write-altsvc-frame function)
-  (@old-frame-functions section))
+  (write-frame-header-to-vector function))
 
 (defsection @frames-implementation
-  (:title "Sending and receiving frames"
-   :export nil)
+    (:title "Sending and receiving frames"
+     :export nil)
 
   (frame-type class)
   (*frame-types* variable))

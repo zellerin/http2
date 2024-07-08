@@ -21,11 +21,13 @@
 
 
 (defun process-pending-frames (connection &optional just-pending)
-  "Read and process frames on the input stream taken from the CONNECTION's network-stream.
+  "@FRAME-HANDLER built atop CL streams.
+
+Read and process frames on the input stream taken from the CONNECTION's network-stream.
 
 Finish normally when either
 
-- peer closes connection (END-OF-FILE, CONNECTION-ERROR or SSL-ERROR was signalled), or
+- peer closes connection (END-OF-FILE, CONNECTION-ERROR condition or CL+SSL::SSL-ERROR was signalled), or
 - JUST-PENDING was true, we are at a frame border and there is no additional input on the stream
 
 This is to be called on client when the initial request was send, or on server

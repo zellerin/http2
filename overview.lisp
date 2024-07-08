@@ -15,20 +15,18 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
 (defsection @index
     (:title "HTTP2 in Common Lisp")
   (@overview section)
-  (@terms section)
   (http2/client::@client section)
+  (@frames-api section)
   (@server/threaded section)
   (@client section)
   (@base-classes section)
 
   (@utils section)
-  (@callbacks section)
   (@scheduling section)
   (#:http2 asdf/system:system)
-  (@frames-api section)
   (http2/hpack::@hpack-api section)
   (http2::@buffer-stream-and-pipes section)
-  (@errors section))
+  (@terms section))
 
 (defsection @test
     ()
