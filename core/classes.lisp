@@ -56,6 +56,9 @@
 (defmethod print-object ((connection http2-connection) out)
   (print-unreadable-object (connection out :type t :identity nil)))
 
+(defmethod get-connection ((c http2-connection))
+  c)
+
 (defclass client-http2-connection (http2-connection)
   ()
   (:default-initargs :id-to-use 1)
@@ -191,9 +194,9 @@ communication can be debugged or recorded."))
 (defsection @data-received
     (:title "Processing data frames")
   (apply-data-frame generic-function)
-  (apply-data-frame (method nil (t t)))
+  (apply-data-frame (method nil (t t t t)))
   (body-collecting-mixin class)
-  (apply-data-frame (method nil (body-collecting-mixin t))))
+  (apply-data-frame (method nil (body-collecting-mixin t t t))))
 
 
 (defsection @stream-closed
@@ -744,7 +747,9 @@ extensions."))
 
 ;;;; network comm simplifications
 (defmethod close ((connection http2-connection) &key &allow-other-keys)
-  (close (get-network-stream connection)))
+  (break "This should not happen")
+  (when (get-network-stream connection)
+    (close (get-network-stream connection))))
 
 (defgeneric handle-alt-svc (stream origin value)
   (:documentation
