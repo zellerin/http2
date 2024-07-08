@@ -56,8 +56,7 @@ Parameters:
                         :stream-pars `(:end-headers-fn ,end-headers-fn :end-stream-fn ,end-stream-fn))))
     (when content-fn
       (let ((out (make-transport-output-stream raw-stream charset nil)))
-        (funcall content-fn out)
-        (close out)))
+        (funcall content-fn out)))
     raw-stream))
 
 (defun make-transport-output-stream (http2-stream charset gzip)
