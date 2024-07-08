@@ -4,6 +4,7 @@
 
 (defsection @frames-api
   (:title "API for sending and receiving frames")
+  "![image](../frames.png) There are three main low-level components."
   "Lowest level interace deals with creating and parsing individual frames. For
 each frame type there is an anonymous parsing function called by READ-FRAME
 based on the type, and write function (WRITE-DATA-FRAME, ...) The only exception
@@ -426,14 +427,6 @@ and size of data that the following function expects."
         (open (setf (get-state stream-or-connection) 'half-closed/remote)))
       (peer-ends-http-stream stream-or-connection)))
 
-(defun write-sequences (stream headers)
-  "Write a tree of sequences to stream."
-  (etypecase headers
-    (null nil)
-    (vector (write-sequence headers stream))
-    (cons (map nil (lambda (a) (write-sequences stream a)) headers))))
-
-
 (defun read-padding-from-vector (connection data)
   "Ignore the padding octets. Frame header is next"
   ;; also
@@ -517,6 +510,8 @@ and size of data that the following function expects."
 
     ;; writer
     (lambda (buffer start headers priority)
+      (when (cdr headers)
+        (error "Multiple header groups not supported now."))
       (if priority ;; this is deprecated as in RFC9113 but still implemented
           (write-priority priority buffer start headers)
           ;; TODO: what is allowed headers format?
@@ -917,7 +912,10 @@ CONTINUATION frame without the END_HEADERS flag set."
     ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
      :flags (end-headers))
-    #'write-sequences
+    (lambda (buffer start headers)
+      (when (cdr headers)
+        (error "Multiple header groups not supported now."))
+      (replace buffer (car headers) :start1 start))
 
     ;; reader
     ;; If we needed continuation frame, we would be in READ-BYTE*.
@@ -999,8 +997,15 @@ well as some others I forgot."
   (read-frame function)
   (write-frame-header function))
 
+(defun write-sequences (stream headers)
+  "Write a tree of sequences to stream."
+  (etypecase headers
+    (null nil)
+    (vector (write-sequence headers stream))
+    (cons (map nil (lambda (a) (write-sequences stream a)) headers))))
+
 (defun read-frame (connection &optional (stream (get-network-stream connection)))
-    "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+  "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
 write, read the header and process it."
   (declare (inline make-octet-buffer))
   (force-output stream)

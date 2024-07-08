@@ -1,0 +1,27 @@
+digraph frames {
+    bgcolor="transparent"
+
+    client server
+    node [shape=none]
+
+    client -> client_init -> client_send_requests ->
+    read_frame
+    subgraph cluster_handler {
+        label="Frame handler"
+        fillcolor="lightblue"
+        style="filled"
+        labelloc="b"
+        read_frame -> parse_frame -> write_callbacks -> read_frame
+   }
+   server -> server_init -> read_frame
+   parse_frame -> run_callbacks
+   run_callbacks -> parse_frame
+   read_frame [label="Read next frame octets"]
+   parse_frame [label="Parse frame and run\nframe-specific callbacks"]
+   write_callbacks [label="Write collected responses"]
+   subgraph cluster_callback {
+       label="Callback"
+       run_callbacks
+   }
+   run_callbacks [label="Do something\nand generate data\nto send to peer"]
+}
