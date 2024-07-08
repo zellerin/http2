@@ -579,7 +579,7 @@ flag is set.
 At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
       (with-padding-marks (connection padded start end)
         (when (get-flag flags :priority)
-          (read-priority data active-stream)
+          (read-priority data active-stream start)
           (incf start 5))
         (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
         (if (get-flag flags :end-headers)
@@ -611,9 +611,9 @@ read."
   (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
           9))
 
-(defun read-priority (data http-stream)
-  (let* ((e+strdep (aref/wide data 0 4))
-         (weight (aref data 4))
+(defun read-priority (data http-stream start)
+  (let* ((e+strdep (aref/wide data start 4))
+         (weight (aref data (+ start 4)))
          (exclusive (plusp (ldb (byte 1 31) e+strdep)))
          (stream-dependency (ldb (byte 31 0) e+strdep)))
     (apply-stream-priority http-stream exclusive weight stream-dependency)
@@ -665,7 +665,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
         (http-stream-error 'frame-size-error http-stream))
-      (read-priority data http-stream)))
+      (read-priority data http-stream 0)))
 
 (define-frame-type 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
