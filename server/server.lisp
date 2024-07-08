@@ -62,25 +62,28 @@
           (htm (:p "A paragraph #" (princ (format nil "~d" i) out) "."))))))
 
 (define-exact-handler "/es-test"
-    (handler (out :utf-8 nil)
-      (send-headers `((:status "200") ("content-type" "text/html; charset=utf-8")
+    (lambda (connection stream)
+      (send-headers stream `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
-      (with-html-output (out out :prologue "<!DOCTYPE html>")
-        (:html
-         (:body
-          "Waiting for event"
-          (:p :id "events")
-          (:script :type "text/javascript"
-                   (str
-                    (parenscript:ps
-                      (let ((source (new (-event-source "/event-stream"))))
-                        (setf (@ source onmessage)
-                              (lambda (event)
-                                (setf (@ ((@ document get-element-by-id) "events")
-                                         text-content)
-                                      (@ event data))
-                                (values)) )
-                        (values))))))))))
+      (http2::write-binary-payload connection stream
+                                   (trivial-utf-8:string-to-utf-8-bytes
+                                    (with-output-to-string (out)
+                                      (with-html-output (out out :prologue "<!DOCTYPE html>")
+                                        (:html
+                                         (:body
+                                          "Waiting for event"
+                                          (:p :id "events")
+                                          (:script :type "text/javascript"
+                                                   (str
+                                                    (parenscript:ps
+                                                      (let ((source (new (-event-source "/event-stream"))))
+                                                        (setf (@ source onmessage)
+                                                              (lambda (event)
+                                                                (setf (@ ((@ document get-element-by-id) "events")
+                                                                         text-content)
+                                                                      (@ event data))
+                                                                (values)) )
+                                                        (values)))))))))))))
 
 (define-exact-handler "/event-stream"
     (lambda (connection stream)
