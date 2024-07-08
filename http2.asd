@@ -88,6 +88,7 @@
   :pathname "tests"
   :components ((:file "pipe")
                (:file "test")
+               (:file "frames")
                (:file "tests-hpack")
                (:file "client-server-test")
                (:file "errors-lowlevel")
