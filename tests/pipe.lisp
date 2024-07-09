@@ -44,12 +44,11 @@
        (setf (get-to-write ,connection) nil))))
 
 
-(defun make-dummy-connection (stream &key (class 'logging-connection)
+(defun make-dummy-connection (&key (class 'logging-connection)
                                        (STREAM-ID 1) (STATE 'open))
   "Make a dummy connection class with one stream of id ID in state STATE. Used for
 testing."
   (let ((connection (make-instance class
-                         :network-stream stream
                          :last-id-seen stream-id
                          :id-to-use (1+ stream-id))))
     (when state
@@ -85,23 +84,11 @@ testing."
 
 Bind PROCESS-MESSAGES function to pass messages in both directions until all is
 quiet."
-  `(multiple-value-bind (write-stream read-stream) (make-full-pipe)
-     (let ((sender (make-dummy-connection write-stream))
-           (receiver (make-dummy-connection read-stream :state ,init-state))
-           (sender-signalled)
-           (receiver-signalled))
-       (flet ((process-messages ()
-                (loop
-                  (cond ((and (null receiver-signalled)
-                              (listen (get-network-stream receiver)))
-                         (handler-case (read-frame receiver)
-                           (serious-condition (e) (setf receiver-signalled e))))
-                        ((and (null sender-signalled)
-                              (listen (get-network-stream sender)))
-                         (handler-case (read-frame sender)
-                           (serious-condition (e) (setf sender-signalled e))))
-                        (t (return))))))
-         ,@body))))
+  `(let ((sender (make-dummy-connection))
+         (receiver (make-dummy-connection :state ,init-state))
+         (sender-signalled)
+         (receiver-signalled))
+     ,@body))
 
 (defun check-history (fn pars expected got type)
   (fiasco:is (equalp expected got)
@@ -125,7 +112,7 @@ quiet."
     ((atom tree) (funcall fn tree init-value))
     ((consp tree)
      (map-reduce-tree fn (cdr tree) (map-reduce-tree fn (car tree) init-value)))))
-
+;;; FIXME: should not be used anymore
 (defun do-updates (connection chunks action size)
   (dolist (chunk chunks)
     (loop with consumed = 0
@@ -136,6 +123,20 @@ quiet."
                     (error "Bad chunk sizes: leftover ~a from ~a, needed ~a"
                            (- (length chunk) consumed) chunk size))))
   (values action size))
+
+(defun exchange-frames (sender receiver)
+  (declare (write-buffer-connection-mixin sender receiver))
+  (loop for chunks = (get-to-write sender)
+        while (plusp (fill-pointer chunks))
+        do
+           (map nil (lambda (chunk)
+                      (multiple-value-bind (parser size)
+                          (parse-frame-header receiver chunk 0 9)
+                        (when (plusp size)
+                          (funcall parser receiver (subseq chunk 9)))))
+                (get-to-write sender))
+           (setf (fill-pointer (get-to-write sender)) 0)
+           (rotatef receiver sender)))
 
 (defun test-one-frame (send-fn send-pars
                        &key expected-log-connection expected-log-stream
@@ -151,40 +152,14 @@ expected."
   ;; this should be now the simplest of the frame handlers (is it a term?).
   ;; Now it is over complicated
   (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
-    (let ((sender (make-dummy-connection nil))
-          (receiver (make-dummy-connection nil :state init-state))
+    (let ((sender (make-dummy-connection))
+          (receiver (make-dummy-connection :state init-state))
           sender-signalled receiver-signalled)
-      (loop with sender-to-receiver =
-                                    (apply send-fn
-                                           (make-dummy-stream-from-stream-id sender stream)
-                                           send-pars)
-            with sender-frame-action = #'parse-frame-header
-            and receiver-frame-action = #'parse-frame-header
-            and sender-size = 9 and receiver-size = 9
-            while (and sender-to-receiver sender-frame-action)
-            do
-               (handler-case
-                   (multiple-value-setq (sender-frame-action sender-size)
-                     (do-updates sender sender-to-receiver sender-frame-action sender-size))
-                 (error (e)
-                   (describe e)
-                   (setf sender-signalled (type-of e)
-                         (get-to-write sender) nil
-                         sender-frame-action nil)))
-               (setf sender-to-receiver (get-to-write sender))
-               (setf (get-to-write sender) nil)
-            when receiver-frame-action
-              do
-                 (handler-case
-                     (multiple-value-setq (receiver-frame-action receiver-size)
-                       (do-updates receiver sender-to-receiver receiver-frame-action receiver-size))
-                   (error (e)
-                     (describe e)
-                     (setf receiver-signalled (type-of e)
-                           (get-to-write receiver) nil
-                           receiver-frame-action nil)))
-                 (setf sender-to-receiver (get-to-write receiver))
-                 (setf (get-to-write receiver) nil))
+      (apply send-fn
+             (make-dummy-stream-from-stream-id sender stream)
+             send-pars)
+      (exchange-frames sender receiver)
+
       (fiasco:is (eq expected-sender-error sender-signalled)
           "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
       (fiasco:is (eq expected-receiver-error receiver-signalled)

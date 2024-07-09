@@ -180,7 +180,7 @@ communication can be debugged or recorded."))
    "A LOGGING-OBJECT that implements ADD-LOG to print all logs to
 *TRACE-OUTPUT* as soon as it receives them."))
 
-(defclass logging-connection (http2-connection history-keeping-object)
+(defclass logging-connection (http2-connection history-keeping-object write-buffer-connection-mixin)
   ())
 
 (defclass logging-stream (http2-stream history-keeping-object)
@@ -780,8 +780,10 @@ extensions."))
 
 (defgeneric queue-frame (connection frame)
   (:method ((connection write-buffer-connection-mixin) frame)
-    (vector-push-extend frame (get-to-write connection)))
+    (vector-push-extend frame (get-to-write connection))
+    frame)
   (:method ((connection stream-based-connection-mixin) frame)
     (maybe-lock-for-write connection)
     (write-sequence frame (get-network-stream connection))
-    (maybe-unlock-for-write connection)))
+    (maybe-unlock-for-write connection)
+    frame))

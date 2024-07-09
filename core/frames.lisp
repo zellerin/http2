@@ -279,10 +279,12 @@ PARS as its parameters."
      buffer 0 (padded-length length padded)
      type-code (flags-to-code keys)
      (get-stream-id http-connection-or-stream) nil)
-    (possibly-padded-body buffer writer padded pars)
-    (queue-frame (get-connection http-connection-or-stream) buffer))
-  (when (getf keys :end-stream)
-    (change-state-on-write-end http-connection-or-stream)))
+    (when writer
+      (possibly-padded-body buffer writer padded pars))
+    (queue-frame (get-connection http-connection-or-stream) buffer)
+    (when (getf keys :end-stream)
+      (change-state-on-write-end http-connection-or-stream))
+    buffer))
 
 (defun create-new-local-stream (connection &optional pars)
   "Create new local stream of default class on CONNECTION. Additional PARS are
@@ -465,8 +467,8 @@ and size of data that the following function expects."
       (peer-ends-http-stream stream)))
 
 (defun read-padding-from-vector (connection data)
-  "Ignore the padding octets. Frame header is next"
-  ;; also
+  "Ignore the padding octets. Frame header is next
+FIXME: might be also continuation-frame-header"
   (declare (ignorable data connection))
   (values #'parse-frame-header 9))
 
@@ -758,8 +760,7 @@ recieved order."
       field value other than 0 MUST be treated as a connection error
       (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
       see Section 6.5.3 (\"Settings Synchronization\")."
-  (write-frame-header (get-network-stream connection)
-                      0 +settings-frame+ 1 connection nil))
+  (write-frame connection 0 +settings-frame+ '(:ack t) nil))
 
 
 (define-frame-type 5 :push-promise-frame
@@ -872,7 +873,8 @@ do."
       (let ((data (aref/wide data 0 8)))
         (if (get-flag flags :ack)
             (do-pong connection data)
-            (do-ping connection data)))))
+            (do-ping connection data)))
+      (values #'parse-frame-header 9)))
 
 (define-frame-type 7 :goaway-frame
     "```

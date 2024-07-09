@@ -8,27 +8,6 @@
                         fiasco-suites::all-tests))
 
 
-(defun test-write-parse-fn (write-fn expected octets &rest pars)
-  (with-dummy-stream (stream :state 'open)
-    (setf (get-last-id-seen (get-connection stream)) 42)
-    (let* ((res (apply write-fn (make-instance 'dummy-stream :state 'open) pars))
-           (parsed-header
-             (multiple-value-list
-              (parse-frame-header
-               (get-connection stream)
-               (car res) 0 9))))
-      (fiasco:is (equalp octets (car res))
-          "Generated octets do not match for~& ~a~&Seen:   ~a~&Wanted: ~a" pars (car res) octets)
-      (fiasco:is (null (cdr res)) "Too many chunks generated")
-      (fiasco:is (equalp (second parsed-header) (- (length octets) 9))
-          "Parsed size does not match")
-      (funcall (first parsed-header) (get-connection stream)
-               (subseq (car res) 9))
-      (fiasco:is (equalp expected (get-history stream))))))
-
-
-
-
 (fiasco:deftest flags-to-code/test ()
   "Check that flag PADDED is translated correctly."
   (fiasco:is (equalp (flags-to-code `(:padded nil)) 0))

@@ -1,6 +1,6 @@
 (in-package http2)
 
-(defclass dummy-connection (http2-connection) ())
+(defclass dummy-connection (http2-connection write-buffer-connection-mixin) ())
 (defclass dummy-stream (http2-stream history-keeping-object) ()
   (:default-initargs
    :connection (make-instance 'dummy-connection)
@@ -18,6 +18,23 @@
 (defmacro with-dummy-stream ((name &rest pars) &body body)
   `(let ((,name (make-dummies ,@pars)))
     ,@body))
+
+(defun test-write-parse-fn (write-fn expected octets &rest pars)
+  (with-dummy-stream (stream :state 'open)
+    (setf (get-last-id-seen (get-connection stream)) 42)
+    (let* ((res (apply write-fn (make-instance 'dummy-stream :state 'open) pars))
+           (parsed-header
+             (multiple-value-list
+              (parse-frame-header
+               (get-connection stream)
+               res 0 9))))
+      (fiasco:is (equalp octets res)
+          "Generated octets do not match for~& ~a~&Seen:   ~a~&Wanted: ~a" pars  res octets)
+      (fiasco:is (equalp (second parsed-header) (- (length octets) 9))
+          "Parsed size does not match")
+      (funcall (first parsed-header) (get-connection stream)
+               (subseq res 9))
+      (fiasco:is (equalp expected (get-history stream))))))
 
 (fiasco:deftest write-data-frame/test ()
   (test-write-parse-fn #'write-data-frame
