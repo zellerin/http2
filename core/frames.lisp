@@ -925,7 +925,8 @@ do."
       (let ((last-id (aref/wide data 0 4))
             (error-code (aref/wide data 4 4))
             (data (subseq data 8)))
-        (do-goaway connection (get-error-name error-code) last-id data))))
+        (do-goaway connection (get-error-name error-code) last-id data))
+      (invoke-restart 'close-connection)))
 
 (define-frame-type 8 :window-update-frame
     "```
