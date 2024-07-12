@@ -450,14 +450,20 @@ and size of data that the following function expects."
            (flag-keywords (frame-type-flag-keywords frame-type-object))
            ;; 20240708 TODO: Delegate padding to resepctive fn, same end-of-stream
            (padded (has-flag flags :padded flag-keywords)))
-      (if (zerop length)
-          (values #'parse-frame-header 9)
-          (values (lambda (connection data)
-                    (funcall (frame-type-receive-fn frame-type-object)
-                             connection data padded
-                             stream-or-connection flags
-                             (has-flag flags :end-stream flag-keywords)))
-                  length)))))
+      (cond
+        ((zerop length)
+         ;; empty HEADER-FRAME still can have end-streams or end-headers flag
+         (funcall (frame-type-receive-fn frame-type-object)
+                  connection #() nil
+                  stream-or-connection flags
+                  (has-flag flags :end-stream flag-keywords)))
+        (t
+         (values (lambda (connection data)
+                   (funcall (frame-type-receive-fn frame-type-object)
+                            connection data padded
+                            stream-or-connection flags
+                            (has-flag flags :end-stream flag-keywords)))
+                 length))))))
 
 (defun maybe-end-stream (has-end-flag stream)
     (when has-end-flag
