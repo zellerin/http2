@@ -389,9 +389,8 @@ automatically, otherwise caller must ensure it."
   (:method ((stram (eql :closed)) error-code))
   (:method (stream error-code)
     (unwind-protect
-         (unless (eq error-code '+cancel+)
-           (warn 'http-stream-error :stream stream
-                                    :code error-code))
+         (unless (eq error-code +cancel+)
+           (warn 'http-stream-error :stream stream :code error-code))
       (close-http2-stream stream)))
   (:method :before ((stream logging-object) error-code)
     (add-log stream  `(:closed :error ,(get-error-name error-code))))
