@@ -174,10 +174,8 @@ optionally prints activities."))
 prints activities, and reads full body from client if clients sends one."))
 
 (defvar *default-handler*
-  (handler (out :utf-8 nil)
-    (send-headers
-     `((:status "404")
-       ("content-type" "text/html; charset=UTF-8")))
+  (constant-handler (out :utf-8 nil `((:status "404")
+                                      ("content-type" "text/html; charset=UTF-8")))
     (format out  "<h1>Not found</h1>"))
   "Handler used as last resort - page not found.")
 
