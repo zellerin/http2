@@ -57,7 +57,10 @@ May block."
                  (error 'end-of-file :stream (get-network-stream connection)))))
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
-      (error 'end-of-file :stream (get-network-stream connection)))))
+      (error 'end-of-file :stream (get-network-stream connection)))
+    (connection-error (ce)
+      (format t "-> We close connection due to ~a" ce)
+      (invoke-restart 'close-connection))))
 
 (defmacro with-http2-connection ((name class &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters."
