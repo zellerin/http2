@@ -24,6 +24,10 @@ Almost all parts of the listed standards implemented, see below for exceptions.
 The library definitely allows to implement a client or server, and a simple ones
 are attached to it as examples.
 
+Currently, all changes happen in v2-main branch that will eventually become version 2 of this. The changes include
+switch from frames over Lisp stream to frames as an array of octets; this enables - among other - poll based single thread 
+server implementation (as can be seen in the ../tls-server-pocs).
+
 *** Client
 
 The bundled client requests remote page and returns values of body (converted to
