@@ -597,12 +597,12 @@ read."
     ;; 20240708 TODO: stream -> octets
     with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start
                                                             :end end)
+    while (< (get-index data-as-stream) length)
     for (name value) =
                       (read-http-header data-as-stream
                                         (get-decompression-context connection))
     when name
-      do (add-header connection http-stream name value)
-    while (< (get-index data-as-stream) length))
+      do (add-header connection http-stream name value))
   (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
           9))
 
