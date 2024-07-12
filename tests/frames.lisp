@@ -54,6 +54,13 @@
                        '((:payload #(1 2 3 4 5)))
                        #(0 0 9 0 8 0 0 0 42 3 1 2 3 4 5 10 11 12)
                        #(1 2 3 4 5)
+                       :padded #(10 11 12))
+
+  ;; Test empty body
+  (test-write-parse-fn #'write-data-frame
+                       '((:payload #()))
+                       #(0 0 4 0 8 0 0 0 42 3 10 11 12)
+                       #()
                        :padded #(10 11 12)))
 
 (fiasco:deftest write-headers-frame/test ()

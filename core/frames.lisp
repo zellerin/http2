@@ -195,7 +195,7 @@ where it is used.")
     `(let* ((,length (length data))
             (,end (if ,padded (- ,length (aref data 0)) ,length))
             (,start (if ,padded 1 0)))
-       (when (<= ,end 0)
+       (when (< ,end ,start)
          (http2:connection-error 'too-big-padding ,connection))
        ,@body
        (if padded
