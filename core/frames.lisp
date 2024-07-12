@@ -568,16 +568,20 @@ Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
 flag is set.
 
 At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
-      (with-padding-marks (connection padded start end)
-        (when (get-flag flags :priority)
-          (read-priority data active-stream start)
-          (incf start 5))
-        (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
-        (if (get-flag flags :end-headers)
-            ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-            ;; another CONTINUATION frame.
-            (process-end-headers connection active-stream))
-        (http2::maybe-end-stream end-of-stream active-stream))))
+      (handler-case
+          (with-padding-marks (connection padded start end)
+            (when (get-flag flags :priority)
+              (read-priority data active-stream start)
+              (incf start 5))
+            (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
+            (if (get-flag flags :end-headers)
+                ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+                ;; another CONTINUATION frame.
+                (process-end-headers connection active-stream))
+            (http2::maybe-end-stream end-of-stream active-stream))
+        (http-stream-error (e)
+          (format t "-> We close a stream due to ~a" e)
+          (values #'parse-frame-header 9)))))
 
 (defun read-and-add-headers (data http-stream start end end-headers)
   "Read http headers from payload in DATA, starting at START.
