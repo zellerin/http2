@@ -7,8 +7,7 @@
   (http-stream-error condition)
   (http-stream-error function)
   (go-away condition)
-  (do-goaway generic-function)
-  (cl+ssl::ssl-error condition))
+  (do-goaway generic-function))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
