@@ -1056,4 +1056,5 @@ Return two values, length of the payload and END-HEADERS flag."
           ((eq connection http-stream)
            "An ALTSVC frame on stream 0 with empty (length 0) \"Origin\" information is
    invalid and MUST be ignored.")
-          (t (handle-alt-svc http-stream nil alt-svc-field-value))))))
+          (t (handle-alt-svc http-stream nil alt-svc-field-value))))
+      (values #'parse-frame-header 9)))
