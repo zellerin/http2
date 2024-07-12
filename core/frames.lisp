@@ -694,7 +694,8 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
       (assert (zerop flags))
       (unless (= (length data) 4)
         (connection-error 'incorrect-rst-frame-size connection))
-      (peer-resets-stream http-stream (aref/wide data 0 4))))
+      (peer-resets-stream http-stream (aref/wide data 0 4))
+      (values #'parse-frame-header 9)))
 
 
 (define-frame-type 4 :settings-frame
