@@ -122,9 +122,11 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
    (stream :accessor get-stream :initarg :stream)))
 
 (defmethod print-object ((err http-stream-error) out)
-  (with-slots (stream) err
+  (with-slots (stream code) err
       (print-unreadable-object (err out :type t)
-      #+nil  (format out "on ~a" stream))))
+        (format out "~a on ~s"
+                (documentation (aref *error-codes* code) 'variable)
+                stream))))
 
 (defun http-stream-error (e stream &rest args)
   "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise appropriate warning in case someone is interested, close affected stream, and continue."
