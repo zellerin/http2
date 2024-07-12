@@ -162,6 +162,39 @@ than :status allowed, etc."))
    "A mixin that implements specific DO-PING and DO-PONG so that the RTT is printed
 after DO-PING is send."))
 
+
+;; 20240709 TODO: Link the section to documentation
+(defsection @write-data-handling ()
+  (:section "Writing frames")
+  "There are two strategies how to write data that a connection produces - either
+write them to a stream, or store them for future. They specialize QUEUE-FRAME
+generic function to actually store the data."
+  (write-buffer-connection-mixin class)
+  (stream-based-connection-mixin class)
+  (queue-frame generic-function))
+
+(defclass write-buffer-connection-mixin ()
+  ((to-write :accessor get-to-write :initarg :to-write))
+  (:default-initargs :to-write
+   (make-array 3 :fill-pointer 0
+                 :adjustable t))
+  (:documentation
+   "Stores queued frame in a per-connection write buffer. The internals of the
+buffer are opaque."))
+
+(defclass stream-based-connection-mixin ()
+  ((network-stream :accessor get-network-stream :initarg :network-stream)))
+
+(defgeneric queue-frame (connection frame)
+  (:method ((connection write-buffer-connection-mixin) frame)
+    (vector-push-extend frame (get-to-write connection))
+    frame)
+  (:method ((connection stream-based-connection-mixin) frame)
+    (maybe-lock-for-write connection)
+    (write-sequence frame (get-network-stream connection))
+    (maybe-unlock-for-write connection)
+    frame))
+
 ;;;; Connection and stream for logging: tracks every callback in (reversed)
 ;;;; history.
 (defclass logging-object ()
@@ -768,22 +801,49 @@ extensions."))
     (add-log stream `(:alt-svc ,origin ,value))))
 
 
-;;;; FIXME: move around
-(defclass write-buffer-connection-mixin ()
-  ((to-write :accessor get-to-write :initarg :to-write))
-  (:default-initargs :to-write
-   (make-array 3 :fill-pointer 0
-                 :adjustable t)))
+(defsection @old-frame-functions
+    (:title "Read frames from Common Lisp streams")
+  "This was the entry point for the version one of the library.
 
-(defclass stream-based-connection-mixin ()
-  ((network-stream :accessor get-network-stream :initarg :network-stream)))
+Reading from Common Lisp streams has problems with not being able to poll, as
+well as some others I forgot."
+  (read-frame function)
+  (write-frame-header function))
 
-(defgeneric queue-frame (connection frame)
-  (:method ((connection write-buffer-connection-mixin) frame)
-    (vector-push-extend frame (get-to-write connection))
-    frame)
-  (:method ((connection stream-based-connection-mixin) frame)
-    (maybe-lock-for-write connection)
-    (write-sequence frame (get-network-stream connection))
-    (maybe-unlock-for-write connection)
-    frame))
+(defun write-sequences (stream headers)
+  "Write a tree of sequences to stream."
+  (etypecase headers
+    (null nil)
+    (vector (write-sequence headers stream))
+    (cons (map nil (lambda (a) (write-sequences stream a)) headers))))
+
+(defun read-frame (connection &optional (network-stream (get-network-stream connection)))
+  "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+write, read the header and process it."
+  (declare (inline make-octet-buffer)
+           (stream-based-connection-mixin))
+  (force-output network-stream)
+  (let ((buffer (make-octet-buffer 9)))
+    (declare (dynamic-extent buffer))
+    (when (< (read-sequence buffer network-stream) 9)
+      (error 'end-of-file :stream connection))
+    (multiple-value-bind (receive-fn length)
+        (parse-frame-header connection buffer)
+      (declare (compiled-function receive-fn)
+               ((unsigned-byte 24) length))
+      (loop while (not (equal #'parse-frame-header receive-fn))
+            do
+               (let* ((frame-content (make-octet-buffer length))
+                      (read (read-sequence frame-content network-stream)))
+                 (when (< read length)
+                   (error 'end-of-file :stream connection))
+                 (multiple-value-setq (receive-fn length)
+                   (funcall receive-fn connection frame-content))))
+      (force-output network-stream))))
+
+(defun write-frame-header (stream length type flags http-stream R)
+  "Write a frame header to STREAM."
+  (write-sequence
+   (write-frame-header-to-vector
+    (make-octet-buffer 9) 0 length type flags (get-stream-id http-stream) R)
+   stream))

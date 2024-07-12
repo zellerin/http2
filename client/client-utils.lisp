@@ -40,13 +40,14 @@ May block."
         with frame-action = #'parse-frame-header
         and size = 9
         and stream = (get-network-stream connection)
-        initially (force-output stream)
                   ;; Prevent ending when waiting for payload
         while (or (null just-pending)
                   (listen stream)
                   (not (eql #'parse-frame-header frame-action)))
         do
+           (maybe-lock-for-write connection)
            (force-output stream)
+           (maybe-unlock-for-write connection)
            (let ((buffer (make-octet-buffer size)))
              (declare (dynamic-extent buffer))
              (if (= size (read-sequence buffer stream))
