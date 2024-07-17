@@ -335,8 +335,8 @@ Create certficates if they do not exist.
 Do something (see code) with conditions."
 
   (maybe-create-certificate key certificate)
-  (handler-bind ((warning 'muffle-warning)
-                 (error (lambda (e)
+  (handler-bind (#+nil(warning 'muffle-warning)
+                #+nil (error (lambda (e)
                           (describe e)
                           (invoke-restart 'abort))))
     (create-https-server port key certificate)))

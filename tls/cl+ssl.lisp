@@ -4,6 +4,8 @@
 
 (defconstant +SSL-TLSEXT-ERR-ALERT-FATAL+ 2)
 
+#+add-when-defsection  (cl+ssl::ssl-error condition)
+
 (define-ssl-function ("SSL_CTX_set_alpn_select_cb" ssl-ctx-set-alpn-select-cb)
     :void
   (ctx ssl-ctx)

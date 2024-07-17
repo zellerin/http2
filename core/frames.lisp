@@ -620,7 +620,7 @@ read."
     (apply-stream-priority http-stream exclusive weight stream-dependency)
     (values #'parse-frame-header 9)))
 
-
+
 #|
 Prioritization information in a HEADERS frame is logically equivalent ;
 to a separate PRIORITY frame, but inclusion in HEADERS avoids the ;
@@ -667,7 +667,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
         (http-stream-error 'frame-size-error http-stream))
       (read-priority data http-stream 0)))
-
+
 (define-frame-type 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
    stream.  RST_STREAM is sent to request cancellation of a stream or to

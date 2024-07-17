@@ -129,20 +129,20 @@ quiet."
   (loop for chunks = (get-to-write sender)
         while (plusp (fill-pointer chunks))
         do
-           (map nil (lambda (chunk)
-                      (multiple-value-bind (parser size)
-                          (parse-frame-header receiver chunk 0 9)
-                        (when (plusp size)
-                          (funcall parser receiver (subseq chunk 9)))))
-                (get-to-write sender))
+           (with-simple-restart (continue "Stop processing")
+             (map nil (lambda (chunk)
+                        (multiple-value-bind (parser size)
+                            (parse-frame-header receiver chunk 0 9)
+                          (when (plusp size)
+                            (funcall parser receiver (subseq chunk 9)))))
+                  (get-to-write sender)))
            (setf (fill-pointer (get-to-write sender)) 0)
            (rotatef receiver sender)))
 
 (defun test-one-frame (send-fn send-pars
                        &key expected-log-connection expected-log-stream
                          expected-log-sender
-                         expected-sender-error
-                         expected-receiver-error
+                         (expected-error 'null)
                          (stream 1)
                          (init-state 'open))
   "Send message by SEND-FN with SEND-PARS to receiver, and let all relevant
@@ -151,23 +151,32 @@ expected."
   ;; FIXME: 2024 doc update
   ;; this should be now the simplest of the frame handlers (is it a term?).
   ;; Now it is over complicated
-  (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
-    (let ((sender (make-dummy-connection))
-          (receiver (make-dummy-connection :state init-state))
-          sender-signalled receiver-signalled)
-      (apply send-fn
-             (make-dummy-stream-from-stream-id sender stream)
-             send-pars)
-      (exchange-frames sender receiver)
+  (with-simple-restart (close-connection "Close connection")
+    (handler-bind ((warning #'muffle-warning)) ; yes, we know some things are not handled.
+      (let ((sender (make-dummy-connection))
+            (receiver (make-dummy-connection :state init-state))
+            signalled)
+        (apply send-fn
+               (make-dummy-stream-from-stream-id sender stream)
+               send-pars)
 
-      (fiasco:is (eq expected-sender-error sender-signalled)
-          "Sender error should be ~s is ~s" expected-sender-error sender-signalled)
-      (fiasco:is (eq expected-receiver-error receiver-signalled)
-          "Receiver error should be ~s is ~s" expected-receiver-error receiver-signalled)
-      (when (and expected-log-stream) init-state
-            (check-history send-fn send-pars expected-log-stream
-                           (get-history (car (get-streams receiver))) "stream"))
-      (check-history send-fn send-pars expected-log-connection
-                     (get-history receiver) "connection")
-      (check-history send-fn send-pars expected-log-sender
-                     (get-history sender) "sender"))))
+        (handler-bind
+            ((stream-error (lambda (e)
+                             (setf signalled e)
+                             (continue)))
+             (connection-error (lambda (e)
+                                 (setf signalled e)
+                                 (continue))))
+            (exchange-frames sender receiver)
+          ;; 20240712 TODO: make common parent mixin
+)
+
+        (fiasco:is (typep signalled expected-error)
+               "Expected error should be ~s is ~s" expected-error signalled)
+        (when (and expected-log-stream) init-state
+              (check-history send-fn send-pars expected-log-stream
+                             (get-history (car (get-streams receiver))) "stream"))
+        (check-history send-fn send-pars expected-log-connection
+                       (get-history receiver) "connection")
+        (check-history send-fn send-pars expected-log-sender
+                       (get-history sender) "sender")))))

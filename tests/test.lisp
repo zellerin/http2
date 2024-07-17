@@ -25,7 +25,7 @@
                 :init-state 'closed
                 :expected-log-stream nil
                 :expected-log-sender '((:GO-AWAY :LAST-STREAM-ID 0 :ERROR-CODE +STREAM-CLOSED+))
-                :expected-receiver-error 'bad-stream-state)
+                :expected-error 'bad-stream-state)
 
   (test-a-frame padded #'write-data-frame '(#(1 2 3 4 5)
                                             :padded #(0 1 2 3  6 7))
@@ -113,7 +113,7 @@
   `(fiasco:deftest ,name ()
      (let ((err (fiasco:signals go-away
                   ,@body)))
-       (fiasco:is (eq ',error (get-error-code err)))
+       (fiasco:is (eq ,error (get-error-code err)))
        err)))
 
 (defun read-intro (sender receiver)

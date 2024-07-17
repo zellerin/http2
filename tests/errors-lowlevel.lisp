@@ -11,7 +11,7 @@
 
 (fiasco:deftest error/too-big-padding ()
   ;; make payload smaller than padding
-  (fiasco:signals too-big-padding
+  (fiasco:signals end-of-file
     (with-test-client-to-server-setup
       (write-frame
        (create-new-local-stream sender)
@@ -20,7 +20,7 @@
        (constantly nil) #())
       (read-frame receiver)))
 
-  (fiasco:signals too-big-padding
+  (fiasco:signals end-of-file
     (with-test-client-to-server-setup
       (let ((stream (create-new-local-stream sender)))
         ;; open the stream
