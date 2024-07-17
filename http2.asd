@@ -22,7 +22,19 @@
                              (:file "binary-payload")
                              (:file "pipe")
                              (:file "gzip-decode")
-                             (:file "utf8")
+                             (:file "utf8"))))
+  :in-order-to ((test-op (test-op "http2/test"))))
+
+(defsystem "http2/stream-based"
+  :description "HTTP2 protocol implementation"
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :license  "MIT"
+  :version "1.1"
+  :serial t
+  :depends-on ("http2" "bordeaux-threads")
+  :components ((:file "package")
+               (:module "core"
+                :components ((:file "stream-based-connections")
                              (:file "payload-streams"))))
   :in-order-to ((test-op (test-op "http2/test"))))
 
@@ -33,10 +45,10 @@
   :version "1.0"
   :serial t
   :pathname "tls"
-  :depends-on ("cl+ssl" "http2" "bordeaux-threads")
+  :depends-on ("cl+ssl" "http2/stream-based" "bordeaux-threads")
   :components ((:file "server")
                (:file "cl+ssl"))
-  ;:in-order-to ((test-op (test-op "http2/test")))
+                                        ;:in-order-to ((test-op (test-op "http2/test")))
   )
 
 (defsystem "http2/client"
@@ -46,7 +58,7 @@
   :version "0.4"
   :serial t
   :pathname "client"
-  :depends-on ("cl+ssl" "puri" "http2")
+  :depends-on ("cl+ssl" "puri" "http2/stream-based")
   :components ((:file "client-utils")
                (:FILE "client")))
 
@@ -58,7 +70,7 @@
   :serial t
   :pathname "server"
   ;; FIXME: is /tls really needed?
-  :depends-on ("puri" "http2/tls" "http2")
+  :depends-on ("puri" "http2/tls")
   :components ((:file "dispatch")
                (:file "scheduler")))
 

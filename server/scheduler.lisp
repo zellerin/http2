@@ -4,81 +4,107 @@
     (:title "Scheduled tasks in server")
   (scheduled-task class)
   (scheduler class)
+  (scheduler-in-thread class)
   (schedule-task function)
   (run-scheduler-in-thread function)
   (threaded-server-mixin class))
 
 (defclass scheduled-task ()
   ((internal-time-to-run :accessor get-internal-time-to-run :initarg :internal-time-to-run)
-   (action-to-run          :accessor get-action-to-run          :initarg :action)))
+   (action-to-run        :accessor get-action-to-run        :initarg :action)
+   (action-name          :accessor get-action-name          :initarg :action-name))
+  (:default-initargs :action-name nil))
+
+(defvar *dummy-last-task*
+  (make-instance 'scheduled-task :internal-time-to-run most-positive-fixnum))
 
 (defun time-to-action (task)
-  (ceiling (- (get-internal-time-to-run task)
-            (get-internal-real-time))
-         (floor internal-time-units-per-second 1000)))
+  (/ (- (get-internal-time-to-run task)
+              (get-internal-real-time))
+     1.0
+     internal-time-units-per-second))
 
 (defmethod print-object ((task scheduled-task) stream)
   (print-unreadable-object (task stream)
-    (format stream "in ~dms" (time-to-action task))))
-
-
+    (if (eq task *dummy-last-task*)
+        (format stream "dummy last task")
+        (format stream "~a in ~ds"
+                (or (get-action-name task) (get-action-to-run task))
+                (time-to-action task)))))
 
 (defclass scheduler ()
   ((scheduled-tasks :accessor get-scheduled-tasks :initarg :scheduled-tasks)
-   (name            :accessor get-name            :initarg :name)
-   (thread          :accessor get-thread          :initarg :thread))
+   (name            :accessor get-name            :initarg :name))
   (:default-initargs
    :scheduled-tasks
-   (list
-    (make-instance 'scheduled-task :internal-time-to-run most-positive-fixnum))
-   :name "A scheduler"
-   :thread nil)
-  (:documentation
-   "Simple scheduler of delayed tasks."))
+   (list *dummy-last-task*)
+   :name "A scheduler")
+  (:documentation "Simple scheduler of delayed tasks. Holds a list of tasks to run."))
 
-(defun schedule-task (scheduler delay action)
-  "Add a new action to server with scheduler. If scheduler already has a thread,
-wake it up."
-  (with-slots (scheduled-tasks thread) scheduler
-    (let* ((new-time-to-run (+ delay (get-internal-real-time)))
+(defun schedule-task (scheduler delay action name)
+  "Add a new action to a scheduler to be run in DELAY seconds.
+
+Returns SCHEDULER."
+  (with-slots (scheduled-tasks) scheduler
+    (let* ((new-time-to-run (floor (+ (* internal-time-units-per-second delay)
+                                      (get-internal-real-time))))
            (new-task (make-instance 'scheduled-task
                                     :internal-time-to-run new-time-to-run
-                                    :action action))
+                                    :action action
+                                    :action-name name))
            (next-actions (member new-time-to-run scheduled-tasks
-                                   :key #'get-internal-time-to-run
-                                   :test #'<)))
+                                 :key #'get-internal-time-to-run
+                                 :test #'<)))
       (setf (cdr next-actions) (cons (car next-actions) (cdr next-actions))
-            (car next-actions) new-task))
-    (when thread
-      (bt:interrupt-thread thread #'continue))))
+            (car next-actions) new-task)))
+  scheduler)
+
+(defun get-next-task (scheduler)
+  (let ((next-action (car (get-scheduled-tasks scheduler))))
+    (values next-action (time-to-action next-action))))
+
+(defun run-mature-tasks (scheduler)
+  (loop
+    (multiple-value-bind (next time-left) (get-next-task scheduler)
+      (when (plusp time-left)
+        (return-from run-mature-tasks time-left))
+      (pop (get-scheduled-tasks scheduler))
+      (funcall (get-action-to-run next))
+      (run-mature-tasks scheduler))))
+
+(defmethod print-object ((scheduler scheduler) out)
+  (print-unreadable-object (scheduler out :type t)
+    (format out "~a task~:p, next ~a" (length (get-scheduled-tasks scheduler))
+            (car (get-scheduled-tasks scheduler)))))
+
+(defclass scheduler-in-thread (scheduler)
+  ((thread          :accessor get-thread          :initarg :thread))
+  (:default-initargs
+   :thread nil)
+  (:documentation
+   "Simple scheduler of delayed tasks that runs in a thread."))
+
+(defun schedule-task-wake-thread (scheduler delay action name)
+  "Add a new action to server with scheduler. If scheduler already has a thread,
+wake it up by invoking CONTINUE restart."
+  (schedule-task scheduler delay action name)
+  (with-slots (thread) scheduler
+    (if thread
+      (bt:interrupt-thread thread #'continue)
+      (run-scheduler-in-thread scheduler)))
+  scheduler)
 
 (defun run-scheduler-in-thread (scheduler)
   "Make a thread that runs tasks as they mature. CONTINUE restart can be used
 during the sleep to re-asses next tasks."
   (setf (get-thread scheduler)
         (bt:make-thread (lambda ()
-                          (loop
-                            for next-action = (car (get-scheduled-tasks scheduler))
-                            for time-to-next = (time-to-action next-action)
-                            if (plusp time-to-next)
-                              do
+                          (unwind-protect
+                               (loop
                                  (with-simple-restart (continue "Do next action.")
-                                     (sleep (/ time-to-next 1000))
-                                   (continue))
-                            else
-                              do
-                                 (funcall (get-action-to-run next-action))
-                                 (pop (get-scheduled-tasks scheduler))))
+                                   (sleep (run-mature-tasks scheduler))))
+                            (setf (get-thread scheduler) nil)))
                         :name (get-name scheduler))))
 
-(defmethod initialize-instance :after ((s scheduler) &key &allow-other-keys)
-  (run-scheduler-in-thread s))
-
-(defgeneric cleanup-connection (connection)
-  (:method (connection) nil)
-  (:method :after ((connection threaded-server-mixin))
-    (ignore-errors ; we might be in shutdown phase and thread gone
-     (bt:destroy-thread (get-thread (get-scheduler connection)))))
-  (:documentation
-   "Remove resources associated with a server connection. Called after connection is
-closed."))
+(defun stop-scheduler-in-thread (scheduler)
+  (bt:destroy-thread (get-thread scheduler)))

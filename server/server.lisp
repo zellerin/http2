@@ -103,11 +103,12 @@
                                                        (schedule-task (get-scheduler connection) 1000000
                                                                       #'send-event-and-plan-next)))
                                                     :end-stream nil))
-                   (dolist (chunk (http2::get-to-write connection))
-                     (write-sequence chunk
-                      (http2::get-network-stream connection))
-                     (setf (http2::get-to-write connection) nil)
-                     (force-output (http2::get-network-stream connection)))))
+                   (force-output (http2::get-network-stream connection))
+                   #+chunking                   (dolist (chunk (http2::get-to-write connection))
+                                                  (write-sequence chunk
+                                                                  (http2::get-network-stream connection))
+                                                  (setf (http2::get-to-write connection) nil)
+                                                  (force-output (http2::get-network-stream connection)))))
           (schedule-task (get-scheduler connection) 0
                          #'send-event-and-plan-next)))))
 

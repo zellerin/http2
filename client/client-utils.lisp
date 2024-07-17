@@ -20,48 +20,6 @@
   (extract-charset-from-content-type function))
 
 
-(defun process-pending-frames (connection &optional just-pending)
-  "@FRAME-HANDLER built atop CL streams.
-
-Read and process frames on the input stream taken from the CONNECTION's network-stream.
-
-Finish normally when either
-
-- peer closes connection (END-OF-FILE, CONNECTION-ERROR condition or CL+SSL::SSL-ERROR was signalled), or
-- JUST-PENDING was true, we are at a frame border and there is no additional input on the stream
-
-This is to be called on client when the initial request was send, or on server
-to serve requests.
-
-May block."
-  (declare (stream-based-connection-mixin connection))
-  (handler-case
-      (loop
-        with frame-action = #'parse-frame-header
-        and size = 9
-        and stream = (get-network-stream connection)
-                  ;; Prevent ending when waiting for payload
-        while (or (null just-pending)
-                  (listen stream)
-                  (not (eql #'parse-frame-header frame-action)))
-        do
-           (maybe-lock-for-write connection)
-           (force-output stream)
-           (maybe-unlock-for-write connection)
-           (let ((buffer (make-octet-buffer size)))
-             (declare (dynamic-extent buffer))
-             (if (= size (read-sequence buffer stream))
-                 (multiple-value-setq
-                     (frame-action size)
-                   (funcall frame-action connection buffer))
-                 (error 'end-of-file :stream (get-network-stream connection)))))
-    (cl+ssl::ssl-error ()
-      ;; peer may close connection and strange things happen
-      (error 'end-of-file :stream (get-network-stream connection)))
-    (connection-error (ce)
-      (format t "-> We close connection due to ~a" ce)
-      (invoke-restart 'close-connection))))
-
 (defmacro with-http2-connection ((name class &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters."
   `(let ((,name (make-instance ,class ,@params)))

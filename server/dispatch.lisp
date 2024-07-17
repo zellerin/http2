@@ -86,7 +86,8 @@ another thread) responses:
                 (write-goaway-frame connection 0 code debug-data)
                 (force-output (get-network-stream connection)))
               (schedule (delay action)
-                (schedule-task (get-scheduler connection) delay action)))
+                (schedule-task-wake-thread (get-scheduler connection) delay action
+                                           'scheduling-handler)))
          (declare (ignorable #'send-goaway #'schedule))
          ,@body))))
 
@@ -141,18 +142,6 @@ optionally provided CONTENT wit CONTENT-TYPE."
     (when content
       (princ content out))))
 
-(defclass threaded-server-mixin ()
-  ((scheduler :accessor get-scheduler :initarg :scheduler)
-   (lock      :accessor get-lock      :initarg :lock))
-  (:default-initargs
-   :scheduler (make-instance 'scheduler
-                             :name "Scheduler for connection")
-   :lock (bt:make-lock))
-  (:documentation
-   "Server with that holds a lock in actions that write to the output network
-stream, and provides a second thread for scheduled activities (e.g., periodical
-events)."))
-
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
@@ -204,11 +193,23 @@ CONNECTION."
   (with-slots (connection) stream
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
+(defmethod queue-frame :around ((server threaded-server-mixin) frame)
+  (bt:with-lock-held ((get-lock server))
+    (call-next-method)))
+
 (defmethod maybe-lock-for-write ((c threaded-server-mixin))
-  (bt:acquire-lock (get-lock c)))
+  (error "Do not call me"))
 
 (defmethod maybe-unlock-for-write ((c threaded-server-mixin))
- (bt:release-lock (get-lock c)))
+  (error "Do not callme"))
+
+(defgeneric cleanup-connection (connection)
+  (:method (connection) nil)
+  (:method :after ((connection threaded-server-mixin))
+    (stop-scheduler-in-thread (get-scheduler connection)))
+  (:documentation
+   "Remove resources associated with a server connection. Called after connection is
+closed."))
 
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection)
                                        connection)
@@ -219,11 +220,12 @@ maybe we do) or GO-AWAY (client closes connection - or maybe we do) is
 signalled."
   (let ((connection (or connection
                         (make-instance connection-class))))
-    (setf (get-network-stream connection) stream)
-    (read-client-preface connection)
     (with-simple-restart (close-connection "Close current connection")
-      (unwind-protect
-           (handler-case
-               (process-pending-frames connection)
-             (end-of-file ()))
-        (cleanup-connection connection)))))
+      (handler-case
+          (unwind-protect
+               (progn
+                 (setf (get-network-stream connection) stream)
+                 (read-client-preface connection)
+                 (process-pending-frames connection))
+            (cleanup-connection connection))
+        (end-of-file ())))))
