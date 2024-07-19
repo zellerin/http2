@@ -408,7 +408,7 @@ Neither name of the header nor value is in table, so read both as literals."
 VALUE) using dynamic table CONTEXT. Update CONTEXT appropriately.
 
 Can also return NIL if no header is available if it is not detected earlier; this can happen, e.g., when there is a zero sized continuation header frame.."
-  (let* ((octet0 (read-byte* stream)))
+  (let ((octet0 (read-byte* stream)))
     (handler-case
         (cond
           ((plusp (ldb (byte 1 7) octet0)) ;; 1xxx xxxx
@@ -425,9 +425,7 @@ Can also return NIL if no header is available if it is not detected earlier; thi
           (t                                ; 001x xxxx
            (update-dynamic-table-size context
                                       (get-integer-from-octet stream octet0 5))
-           nil))
-      (end-of-file ()
-        (error 'http2::missing-header-octets :connection nil)))))
+           nil)))))
 
 
 

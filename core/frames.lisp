@@ -190,17 +190,15 @@ where it is used.")
 (defclass rw-pipe (pipe-end-for-write pipe-end-for-read)
   ())
 
-(defmacro with-padding-marks ((connection padded start end) &body body)
+(defmacro with-padding-marks ((connection flags start end) &body body)
   (let ((length (gensym "LENGTH")))
-    `(let* ((,length (length data))
-            (,end (if ,padded (- ,length (aref data 0)) ,length))
-            (,start (if ,padded 1 0)))
+    `(let* ((padded (get-flag ,flags :padded))
+            (,length (length data))
+            (,end (if padded (- ,length (aref data 0)) ,length))
+            (,start (if padded 1 0)))
        (when (< ,end ,start)
          (http2:connection-error 'too-big-padding ,connection))
-       ,@body
-       (if padded
-           (values #'read-padding-from-vector ,length)
-           (values #'parse-frame-header 9)))))
+       ,@body)))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -404,6 +402,19 @@ pretty short so we do not care."
   (when (plusp R) (warn 'reserved-bit-set))
   R)
 
+(defun decode-frame-header (header start)
+  (declare (optimize speed)
+           ((simple-array (unsigned-byte 8) *) header)
+           (fixnum start)
+           ((simple-array t *) *frame-types*))
+  (let* ((length (aref/wide header start 3))
+         (type (aref header (+ start 3)))
+         (flags (aref header (+ start 4)))
+         (http-stream+R (aref/wide header (+ start 5) 4))
+         (http-stream (ldb (byte 31 0) http-stream+R))
+         (R (ldb (byte 1 31) http-stream+R)))
+    (values (aref *frame-types* type) length flags http-stream R)))
+
 (defun parse-frame-header (connection header &optional (start 0) (end (length header)))
   "Parse header (9 octets array) and return two values, a function to parse
 following data (that can be again #'PARSE-FRAME-HEADER if there is no payload),
@@ -424,53 +435,45 @@ and size of data that the following function expects."
    ((integer 0 #.array-dimension-limit) start end))
   ;; first flush anything we should have send to prevent both sides waiting
   (assert (= 9 (- end start)))
-  (let* ((length (aref/wide header start 3))
-         (type (aref header (+ start 3)))
-         (flags (aref header (+ start 4)))
-         (http-stream+R (aref/wide header (+ start 5) 4))
-         (http-stream (ldb (byte 31 0) http-stream+R))
-         (R (ldb (byte 1 31) http-stream+R)))
+  (multiple-value-bind (frame-type-object length flags http-stream R)
+    (decode-frame-header header start)
     (declare ((unsigned-byte 24) length)
-             ((unsigned-byte 8) type flags)
              (stream-id http-stream)
+             (bit R)
              (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
-    ;; FIXME:
-    ;; - for most frame types, read full data then
-    ;; - for data and maybe headers frame read as it goes
+      ;; FIXME:
+      ;; - for most frame types, read full data then
+      ;; - for data and maybe headers frame read as it goes
+
     (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
       ;; fixme: sometimes connection error.
       (connection-error 'too-big-frame connection
                         :frame-size length
                         :max-frame-size (get-max-frame-size connection)))
     (if (plusp R) (warn 'reserved-bit-set))
-    (let* ((frame-type-object (aref (the simple-vector *frame-types*) type))
-           (stream-or-connection
+    (let* ((stream-or-connection
              (find-http-stream-by-id connection http-stream frame-type-object))
-           (flag-keywords (frame-type-flag-keywords frame-type-object))
-           ;; 20240708 TODO: Delegate padding to resepctive fn, same end-of-stream
-           (padded (has-flag flags :padded flag-keywords)))
+           (flag-keywords (frame-type-flag-keywords frame-type-object)))
       (cond
         ((zerop length)
          ;; empty HEADER-FRAME still can have end-streams or end-headers flag
          (funcall (frame-type-receive-fn frame-type-object)
-                  connection #() nil
-                  stream-or-connection flags
-                  (has-flag flags :end-stream flag-keywords)))
+                  connection (make-octet-buffer 0)
+                  stream-or-connection flags))
         (t
          (values (lambda (connection data)
                    (funcall (frame-type-receive-fn frame-type-object)
-                            connection data padded
-                            stream-or-connection flags
-                            (has-flag flags :end-stream flag-keywords)))
+                            connection data
+                            stream-or-connection flags))
                  length))))))
 
-(defun maybe-end-stream (has-end-flag stream)
-    (when has-end-flag
-      (ecase (get-state stream)
-        (half-closed/local (close-http2-stream stream))
-        (open (setf (get-state stream) 'half-closed/remote)))
-      (peer-ends-http-stream stream)))
+(defun maybe-end-stream (flags stream)
+  (when (get-flag flags :end-stream)
+    (ecase (get-state stream)
+      (half-closed/local (close-http2-stream stream))
+      (open (setf (get-state stream) 'half-closed/remote)))
+    (peer-ends-http-stream stream)))
 
 (defun read-padding-from-vector (connection data)
   "Ignore the padding octets. Frame header is next
@@ -502,17 +505,18 @@ FIXME: might be also continuation-frame-header"
             (incf start (length chunk)))
           (replace buffer data :start1 start)))
 
-    (lambda (connection data padded active-stream flags end-of-stream)
+    (lambda (connection data active-stream flags)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them.
 
 Reduce tracked incoming window.
 
 Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
       (declare (ignorable flags))
-      (with-padding-marks (connection padded start end)
+      (with-padding-marks (connection flags start end)
         (account-read-window-contribution connection active-stream (- end start))
         (apply-data-frame active-stream data start end)
-        (maybe-end-stream end-of-stream active-stream))))
+        (maybe-end-stream flags active-stream)
+        (values #'read-frame 9))))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -567,7 +571,7 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
           (replace buffer (car headers) :start1 start)))
 
     ;; reader
-    (lambda (connection data padded active-stream flags end-of-stream)
+    (lambda (connection data active-stream flags)
       "Read incoming headers and call ADD-HEADER callback for each header.
 
 Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
@@ -575,21 +579,16 @@ flag is set.
 
 At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
       (handler-case
-          (with-padding-marks (connection padded start end)
+          (with-padding-marks (connection flags start end)
             (when (get-flag flags :priority)
               (read-priority data active-stream start)
               (incf start 5))
-            (read-and-add-headers data active-stream start end (get-flag flags :end-headers))
-            (if (get-flag flags :end-headers)
-                ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-                ;; another CONTINUATION frame.
-                (process-end-headers connection active-stream))
-            (http2::maybe-end-stream end-of-stream active-stream))
+            (read-and-add-headers data active-stream start end flags))
         (http-stream-error (e)
           (format t "-> We close a stream due to ~a" e)
           (values #'parse-frame-header 9)))))
 
-(defun read-and-add-headers (data http-stream start end end-headers)
+(defun read-and-add-headers (data http-stream start end flags)
   "Read http headers from payload in DATA, starting at START.
 
 Returns next function to call and size of expected data. If the END-HEADERS was
@@ -597,20 +596,38 @@ present, it would be PARSE-FRAME-HEADER, if not a continuation frame is to be
 read."
   ;; FIXME: add handler for failure to read full header.
   (loop
+    with end-headers = (get-flag flags :end-headers)
     with http-stream-id = (get-stream-id http-stream)
     with connection = (get-connection http-stream)
     with length = (- end start)
     ;; 20240708 TODO: stream -> octets
     with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start
                                                             :end end)
+    for to-backtrace = (get-index data-as-stream)
     while (< (get-index data-as-stream) length)
     for (name value) =
-                      (read-http-header data-as-stream
-                                        (get-decompression-context connection))
+                     (handler-case
+                         (read-http-header data-as-stream
+                                           (get-decompression-context connection))
+                       (end-of-file ()
+                         (if end-headers
+                             ;; 20240718 TODO: make class for it connection error
+                             (error "Incomplete headers")
+                             (return
+                               (values (read-continuation-frame-on-demand http-stream data to-backtrace end)
+                                       9)))))
     when name
-      do (add-header connection http-stream name value))
-  (values (if end-headers #'parse-frame-header #'read-continuation-frame-on-demand)
-          9))
+      do (add-header connection http-stream name value)
+    finally
+       (if end-headers
+           ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+           ;; another CONTINUATION frame.
+           (process-end-headers connection http-stream)
+           ;; 20240719 TODO: end stream is in headers frame only, not continuation
+           (http2::maybe-end-stream flags http-stream))
+       (return (values (if end-headers #'parse-frame-header
+                           (read-continuation-frame-on-demand http-stream data end end))
+                       9))))
 
 (defun read-priority (data http-stream start)
   (let* ((e+strdep (aref/wide data start 4))
@@ -659,9 +676,9 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      :new-stream-state idle)
     (lambda (buffer start priority)
       (write-priority priority buffer start))
-    (lambda (connection data padded http-stream flags end-of-stream)
+    (lambda (connection data http-stream flags)
       "Read priority frame. Invoke APPLY-STREAM-PRIORITY if priority was present."
-      (declare (ignore connection flags padded end-of-stream))
+      (declare (ignore connection flags))
       (unless (= 5 (length data))
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
@@ -694,8 +711,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
      :bad-state-error +protocol-error+)
     (lambda (buffer start code)
       (setf (aref/wide buffer start 4) code))
-    (lambda (connection data padded http-stream flags end-of-stream)
-      (declare (ignore padded end-of-stream))
+    (lambda (connection data http-stream flags)
       "Invoke PEER-RESETS-STREAM callback."
       (assert (zerop flags))
       (unless (= (length data) 4)
@@ -735,8 +751,8 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
                      (cdr setting))
             finally (return buffer)))
     ;;reader
-    (lambda (connection data padded http-stream flags end-of-stream)
-      (declare (ignore http-stream padded end-of-stream))
+    (lambda (connection data http-stream flags)
+      (declare (ignore http-stream))
       "Parse settings frame. If this is ACK settings frame, invoke PEER-ACKS-SETTINGS
 callback, otherwise invoke SET-PEER-SETTING callback for each setting in the
 recieved order."
@@ -833,9 +849,9 @@ recieved order."
       (write-31-bits buffer start promised-stream-id reserved)
       (replace buffer (car headers) :start1 (+ start 4)))
     ;; reader
-    (lambda (connection data padded http-stream flags end-of-stream)
+    (lambda (connection data http-stream flags)
       ;; TODO: fix reader to vector, implement, dont forget padding
-      (declare (ignore connection data padded http-stream flags end-of-stream))
+      (declare (ignore connection data http-stream flags))
       "Raise an error, as we do not handle promise frames, and do not advertise that we
 do."
       (error "Reading promise N/A")))
@@ -876,8 +892,8 @@ do."
     (lambda (buffer start opaque-data)
       (setf (aref/wide buffer start 8) opaque-data)
       buffer)
-    (lambda (connection data padded http-stream flags end-of-stream)
-      (declare (ignore http-stream padded end-of-stream))
+    (lambda (connection data http-stream flags)
+      (declare (ignore http-stream))
       "Invoke DO-PING unless the ping has ACK flag - in that case invoke DO-PONG"
       (unless (= (length data) 8)
         (connection-error 'incorrect-ping-frame-size connection))
@@ -918,8 +934,8 @@ do."
       buffer)
 
     ;; reader
-    (lambda (connection data padded http-stream flags end-of-stream)
-      (declare (ignore http-stream padded end-of-stream))
+    (lambda (connection data http-stream flags)
+      (declare (ignore http-stream))
       "Invoke DO-GOAWAY callback."
       (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
       (let ((last-id (aref/wide data 0 4))
@@ -949,8 +965,7 @@ individual stream and on the entire connection."
       (write-31-bits buffer start  window-size-increment reserved)
       (incf (get-window-size stream-or-connection) window-size-increment))
 
-    (lambda (connection data padded http-stream flags end-of-stream)
-      (declare (ignore padded end-of-stream))
+    (lambda (connection data http-stream flags)
       "Update window information for outgoing data and invoke
 APPLY-WINDOW-SIZE-INCREMENT callback."
       (unless (zerop flags)
@@ -970,7 +985,6 @@ APPLY-WINDOW-SIZE-INCREMENT callback."
       (values #'parse-frame-header 9)))
 
 
-;;;; FIXME: this is completly wrong (continuation frame)
 (define-frame-type 9 :continuation-frame
     "```
 
@@ -985,7 +999,7 @@ as the preceding frame is on the same stream and is a HEADERS, PUSH_PROMISE, or
 CONTINUATION frame without the END_HEADERS flag set."
     ((headers list))
     (:length (reduce '+ (mapcar 'length headers))
-     :flags (end-headers))
+     :flags (end-headers end-stream))
     (lambda (buffer start headers)
       (when (cdr headers)
         (error "Multiple header groups not supported now."))
@@ -994,26 +1008,66 @@ CONTINUATION frame without the END_HEADERS flag set."
     ;; reader
     ;; If we needed continuation frame, we would be in READ-BYTE*.
     ;; TODO: Confirm and verify, otherwise require state CONTINUATION-NEEDED.
-    (lambda (connection data padded http-stream flags end-of-stream)
+    (lambda (connection data http-stream flags)
       "Raise condition CONNECTION-ERROR. The continuation frame should be read only when
 expected, and then it is parsed by a different function."
-      (declare (ignore data padded http-stream flags end-of-stream))
+      (declare (ignore data http-stream flags))
       (connection-error 'unexpected-continuation-frame connection)))
 
-(defun read-continuation-frame-on-demand (stream http2-stream-id)
-  "Read continuation frame header when it is expected on STREAM.
-
-Return two values, length of the payload and END-HEADERS flag."
-  (let ((length (read-bytes stream 3))
-        (type (read-byte stream))
-        (flags (read-byte stream))
-        (stream-identifier (ldb (byte 31 0) (read-bytes stream 4))))
-    (unless (= type +continuation-frame+)
-      (error "Expected continuation frame and got ~a, should handle this" type))
-    (unless (= http2-stream-id stream-identifier)
-      (error "Expected continuation for ~d, got ~d" http2-stream-id
-             stream-identifier))
-    (values length (get-flag flags :end-headers))))
+(defun read-continuation-frame-on-demand (expected-stream old-data old-data-start old-data-end)
+  ;; this is pretty much copy of READ-FRAME-HEADER, but with a twists
+  (values
+   (lambda (connection header &optional (start 0) (end (length header)))
+     (declare
+      ((simple-array (unsigned-byte 8) *) header old-data)
+      ((integer 0 #.array-dimension-limit) start end))
+     (assert (= 9 (- end start)))
+     (multiple-value-bind (frame-type-object length flags http-stream R)
+         (decode-frame-header header start)
+       (let* ((expected-stream-id (get-stream-id expected-stream)))
+         (declare ((unsigned-byte 24) length old-data-end old-data-start)
+                  ((unsigned-byte 8) flags)
+                  (stream-id http-stream expected-stream-id)
+                  (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
+         (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
+           ;; fixme: sometimes connection error.
+           (connection-error 'too-big-frame connection
+                             :frame-size length
+                             :max-frame-size (get-max-frame-size connection)))
+         (if (plusp R) (warn 'reserved-bit-set))
+         (unless (eq (frame-type-name frame-type-object) :continuation-frame)
+           ; FIXME: make it an object
+           (error "Expected continuation frame and got ~a, should handle this"
+                  (frame-type-name frame-type-object)))
+         (unless (= http-stream expected-stream-id)
+           (error "Expected continuation for ~d, got ~d" http-stream
+                  expected-stream-id))
+         ;; Note: we use headers-frame for this...
+         (let* ((stream-or-connection expected-stream)
+                (flag-keywords (frame-type-flag-keywords frame-type-object)))
+           (cond
+             ((and (get-flag flags :end-headers) (zerop length))
+              ;; empty HEADER-FRAME still can have end-streams or end-headers flag
+              (parse-headers-frame
+               connection (make-octet-buffer 0)
+               stream-or-connection flags))
+             ((zerop length)
+              ;; empty continuation header, expect another one
+              (read-continuation-frame-on-demand expected-stream old-data old-data-start old-data-end))
+             (t
+              (values (lambda (connection data)
+                        (declare ((simple-array (unsigned-byte 8) *) data))
+                        (let ((full-data (make-octet-buffer (+ length
+                                                               (- old-data-end old-data-start)))))
+                          (unless (= old-data-start old-data-end)
+                            (replace full-data old-data :start2 old-data-start
+                                                        :end2 old-data-end))
+                          (replace full-data data :start1 (- old-data-end old-data-start))
+                          (parse-headers-frame
+                           connection full-data
+                           stream-or-connection flags)))
+                      length)))))))
+   9))
 
 (define-frame-type 10 :altsvc-frame
     "See RFC 7838.  The ALTSVC HTTP/2 frame advertises the availability of an
@@ -1044,9 +1098,8 @@ Return two values, length of the payload and END-HEADERS flag."
                :start1 (+ 2 start (length origin))))
 
     ;; reader
-    (lambda (connection data padded http-stream flags end-of-stream)
+    (lambda (connection data http-stream flags)
       "Parse ALT-SVC frame and invoke HANDLE-ALT-SVC callback."
-      (declare (ignore end-of-stream padded))
       (unless (zerop flags) (warn "Flags set for altsvc frame: ~d" flags))
       (let* ((origin-len (aref/wide data 0 2))
              (alt-svc-field-value (subseq data (+ 2 origin-len))))

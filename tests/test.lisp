@@ -140,47 +140,100 @@ that are connected and initialized."
     (fiasco:is (null (listen read-stream)))
     (fiasco:is (null (listen write-stream)))))
 
+(defmethod get-stream-id ((id fixnum))
+  id)
+
+(defmethod get-connection ((id fixnum))
+  :dummy)
+
+(defvar *dummy-write-connection* (make-octet-buffer 4096))
+(defvar *dummy-idx* 0)
+
+(defmethod queue-frame ((conn (eql :dummy)) frame)
+  (replace *dummy-write-connection* frame :start1 *dummy-idx*)
+  (incf *dummy-idx* (length frame)))
+
+(defun read-frame-from-octets (connection octets start end)
+  "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
+write, read the header and process it."
+  (let ()
+    (when (< end (+ 9 start))
+      (error 'end-of-file :stream connection))
+    (multiple-value-bind (receive-fn length)
+        (parse-frame-header connection octets start (+ 9 start))
+      (declare (compiled-function receive-fn)
+               ((unsigned-byte 24) length))
+      (incf start 9)
+      (loop while (not (equal #'parse-frame-header receive-fn))
+            do
+               (when (< end (+ start length))
+                 (error 'end-of-file :stream connection))
+               (let* ((frame-content (subseq octets start (incf start length))))
+                 (multiple-value-setq (receive-fn length)
+                   (funcall receive-fn connection frame-content)))))
+    start))
+
+(defun read-frames-from-octets (connection octets start end)
+  "Read one frame related to the CONNECTION from OCTETS. Flush outstanding data to
+write, read the header and process it."
+  (let ()
+    (when (< end (+ 9 start))
+      (error 'end-of-file :stream connection))
+    (multiple-value-bind (receive-fn length)
+        (parse-frame-header connection octets start (+ 9 start))
+      (declare (compiled-function receive-fn)
+               ((unsigned-byte 24) length))
+      (incf start 9)
+      (loop while  (>= end (+ start length))
+            do
+               (let* ((frame-content (subseq octets start (incf start length))))
+                 (multiple-value-setq (receive-fn length)
+                   (funcall receive-fn connection frame-content)))))
+    start))
+
 (fiasco:deftest test-continuation-header ()
   "Let us take a header and try to split it on all possible places.
 
 And then, try with two splits."
   (loop with headers = (car (http2/hpack:request-headers "GET" "/" "localhost"))
         for split-idx from 0 to (length headers)
+        for receiver = (make-instance 'server-http2-connection :stream-class 'server-stream)
         do
-           (with-test-client-to-server-setup
-             (let ((new-stream (create-new-local-stream sender)))
-               (write-headers-frame new-stream
-                                    (list (subseq headers 0 split-idx))
-                                    :end-headers nil)
-               (write-continuation-frame new-stream
-                                         (list (subseq headers split-idx ))
-                                         :end-headers t)
-               (read-frame receiver)
-               (let ((received-stream (car (get-streams receiver)) ))
-                 (fiasco:is
-                     (equal "/" (get-path received-stream)))
-                 (fiasco:is
-                     (equal "GET" (get-method received-stream)))
-                 (fiasco:is
-                     (eq 'open (get-state received-stream))))))
+           (setf *dummy-idx* 0)
+           (write-headers-frame 41
+                                (list (subseq headers 0 split-idx))
+                                :end-headers nil)
+           (write-continuation-frame 41
+                                     (list (subseq headers split-idx ))
+                                     :end-headers t)
+           (read-frames-from-octets receiver
+                                   *dummy-write-connection* 0 *dummy-idx*)
+           (let ((received-stream (car (get-streams receiver)) ))
+             (fiasco:is
+                 (equal "/" (get-path received-stream)))
+             (fiasco:is
+                 (equal "GET" (get-method received-stream)))
+             (fiasco:is
+                 (eq 'open (get-state received-stream))))
            (loop for second-split-idx from split-idx to (length headers)
+                 for receiver = (make-instance 'server-http2-connection
+                                               :stream-class 'server-stream)
                  do
-                    (with-test-client-to-server-setup
-                      (let ((new-stream (create-new-local-stream sender)))
-                        (write-headers-frame new-stream
-                                             (list (subseq headers 0 split-idx))
-                                             :end-headers nil)
-                        (write-continuation-frame new-stream
-                                                  (list (subseq headers split-idx second-split-idx ))
-                                                  :end-headers nil)
-                        (write-continuation-frame new-stream
-                                                  (list (subseq headers second-split-idx ))
-                                                  :end-headers t)
-                        (read-frame receiver)
-                        (let ((received-stream (car (get-streams receiver)) ))
-                          (fiasco:is
-                              (equal "/" (get-path received-stream)))
-                          (fiasco:is
-                              (equal "GET" (get-method received-stream)))
-                          (fiasco:is
-                              (eq 'open (get-state received-stream)))))))))
+                    (setf *dummy-idx* 0)
+                    (write-headers-frame 41
+                                         (list (subseq headers 0 split-idx))
+                                         :end-headers nil)
+                    (write-continuation-frame 41
+                                              (list (subseq headers split-idx second-split-idx ))
+                                              :end-headers nil)
+                    (write-continuation-frame 41
+                                              (list (subseq headers second-split-idx ))
+                                              :end-headers t)
+                    (read-frame-from-octets receiver *dummy-write-connection* 0 *dummy-idx*)
+                    (let ((received-stream (car (get-streams receiver)) ))
+                      (fiasco:is
+                          (equal "/" (get-path received-stream)))
+                      (fiasco:is
+                          (equal "GET" (get-method received-stream)))
+                      (fiasco:is
+                          (eq 'open (get-state received-stream)))))))
