@@ -206,15 +206,16 @@ And then, try with two splits."
            (write-continuation-frame 41
                                      (list (subseq headers split-idx ))
                                      :end-headers t)
-           (read-frames-from-octets receiver
-                                   *dummy-write-connection* 0 *dummy-idx*)
-           (let ((received-stream (car (get-streams receiver)) ))
-             (fiasco:is
-                 (equal "/" (get-path received-stream)))
-             (fiasco:is
-                 (equal "GET" (get-method received-stream)))
-             (fiasco:is
-                 (eq 'open (get-state received-stream))))
+           (with-simple-restart (skip-case "Skip split at ~a" split-idx)
+             (read-frames-from-octets receiver
+                                      *dummy-write-connection* 0 *dummy-idx*)
+             (let ((received-stream (car (get-streams receiver)) ))
+               (fiasco:is
+                   (equal "/" (get-path received-stream)))
+               (fiasco:is
+                   (equal "GET" (get-method received-stream)))
+               (fiasco:is
+                   (eq 'open (get-state received-stream)))))
            (loop for second-split-idx from split-idx to (length headers)
                  for receiver = (make-instance 'server-http2-connection
                                                :stream-class 'server-stream)
@@ -227,9 +228,10 @@ And then, try with two splits."
                                               (list (subseq headers split-idx second-split-idx ))
                                               :end-headers nil)
                     (write-continuation-frame 41
-                                              (list (subseq headers second-split-idx ))
+                                              (list (subseq headers second-split-idx))
                                               :end-headers t)
-                    (read-frame-from-octets receiver *dummy-write-connection* 0 *dummy-idx*)
+                    (with-simple-restart (skip-split "Skip split at ~a ~a" split-idx second-split-idx)
+                      (read-frame-from-octets receiver *dummy-write-connection* 0 *dummy-idx*))
                     (let ((received-stream (car (get-streams receiver)) ))
                       (fiasco:is
                           (equal "/" (get-path received-stream)))

@@ -583,21 +583,23 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
             (when (get-flag flags :priority)
               (read-priority data active-stream start)
               (incf start 5))
-            (read-and-add-headers data active-stream start end flags))
+            (read-and-add-headers data active-stream start end flags flags))
         (http-stream-error (e)
           (format t "-> We close a stream due to ~a" e)
           (values #'parse-frame-header 9)))))
 
-(defun read-and-add-headers (data http-stream start end flags)
+(defun read-and-add-headers (data http-stream start end flags header-flags)
   "Read http headers from payload in DATA, starting at START.
 
 Returns next function to call and size of expected data. If the END-HEADERS was
 present, it would be PARSE-FRAME-HEADER, if not a continuation frame is to be
-read."
+read.
+
+Note that END-STREAM is present in the first header flag, not in the
+continuation flags, if any, so must be separate."
   ;; FIXME: add handler for failure to read full header.
   (loop
     with end-headers = (get-flag flags :end-headers)
-    with http-stream-id = (get-stream-id http-stream)
     with connection = (get-connection http-stream)
     with length = (- end start)
     ;; 20240708 TODO: stream -> octets
@@ -610,11 +612,12 @@ read."
                          (read-http-header data-as-stream
                                            (get-decompression-context connection))
                        (end-of-file ()
+                         :test
                          (if end-headers
-                             ;; 20240718 TODO: make class for it connection error
-                             (error "Incomplete headers")
+                             ;; 20240718 TODO: make class for this connection error
+                             (error "Incomplete headers: ~a" (subseq data to-backtrace end))
                              (return
-                               (values (read-continuation-frame-on-demand http-stream data to-backtrace end)
+                               (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
                                        9)))))
     when name
       do (add-header connection http-stream name value)
@@ -624,9 +627,9 @@ read."
            ;; another CONTINUATION frame.
            (process-end-headers connection http-stream)
            ;; 20240719 TODO: end stream is in headers frame only, not continuation
-           (http2::maybe-end-stream flags http-stream))
+           (http2::maybe-end-stream header-flags http-stream))
        (return (values (if end-headers #'parse-frame-header
-                           (read-continuation-frame-on-demand http-stream data end end))
+                           (read-continuation-frame-on-demand http-stream data end end header-flags))
                        9))))
 
 (defun read-priority (data http-stream start)
@@ -1014,7 +1017,7 @@ expected, and then it is parsed by a different function."
       (declare (ignore data http-stream flags))
       (connection-error 'unexpected-continuation-frame connection)))
 
-(defun read-continuation-frame-on-demand (expected-stream old-data old-data-start old-data-end)
+(defun read-continuation-frame-on-demand (expected-stream old-data old-data-start old-data-end header-flags)
   ;; this is pretty much copy of READ-FRAME-HEADER, but with a twists
   (values
    (lambda (connection header &optional (start 0) (end (length header)))
@@ -1048,14 +1051,14 @@ expected, and then it is parsed by a different function."
            (cond
              ((and (get-flag flags :end-headers) (zerop length))
               ;; empty HEADER-FRAME still can have end-streams or end-headers flag
-              (parse-headers-frame
-               connection (make-octet-buffer 0)
-               stream-or-connection flags))
+              (read-and-add-headers old-data  stream-or-connection
+                                   old-data-start old-data-end flags header-flags))
              ((zerop length)
               ;; empty continuation header, expect another one
-              (read-continuation-frame-on-demand expected-stream old-data old-data-start old-data-end))
+              (read-continuation-frame-on-demand expected-stream old-data old-data-start old-data-end header-flags))
              (t
               (values (lambda (connection data)
+                        (declare (ignore connection))
                         (declare ((simple-array (unsigned-byte 8) *) data))
                         (let ((full-data (make-octet-buffer (+ length
                                                                (- old-data-end old-data-start)))))
@@ -1063,9 +1066,8 @@ expected, and then it is parsed by a different function."
                             (replace full-data old-data :start2 old-data-start
                                                         :end2 old-data-end))
                           (replace full-data data :start1 (- old-data-end old-data-start))
-                          (parse-headers-frame
-                           connection full-data
-                           stream-or-connection flags)))
+                          (read-and-add-headers full-data stream-or-connection
+                                                0 (length full-data) flags header-flags)))
                       length)))))))
    9))
 
