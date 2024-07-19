@@ -516,7 +516,7 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
         (account-read-window-contribution connection active-stream (- end start))
         (apply-data-frame active-stream data start end)
         (maybe-end-stream flags active-stream)
-        (values #'read-frame 9))))
+        (values #'parse-frame-header 9))))
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -622,12 +622,12 @@ continuation flags, if any, so must be separate."
     when name
       do (add-header connection http-stream name value)
     finally
-       (if end-headers
+       (when end-headers
            ;; If the END_HEADERS bit is not set, this frame MUST be followed by
            ;; another CONTINUATION frame.
            (process-end-headers connection http-stream)
            ;; 20240719 TODO: end stream is in headers frame only, not continuation
-           (http2::maybe-end-stream header-flags http-stream))
+           (maybe-end-stream header-flags http-stream))
        (return (values (if end-headers #'parse-frame-header
                            (read-continuation-frame-on-demand http-stream data end end header-flags))
                        9))))
