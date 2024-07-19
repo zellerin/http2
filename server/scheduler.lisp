@@ -107,4 +107,5 @@ during the sleep to re-asses next tasks."
                         :name (get-name scheduler))))
 
 (defun stop-scheduler-in-thread (scheduler)
-  (bt:destroy-thread (get-thread scheduler)))
+  (when (get-thread scheduler)
+    (bt:destroy-thread (get-thread scheduler))))
