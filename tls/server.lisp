@@ -2,7 +2,6 @@
 
 (in-package http2)
 
-
 (defsection @server/threaded
     (:title "Threaded server")
   (threaded-dispatch function))
@@ -73,6 +72,17 @@ stream is kept open and caller is supposed to either use it or close it."
                     :alpn (cl+ssl:get-selected-alpn-protocol tls-stream))
              (close tls-stream)))))
 
+(cl+ssl::define-ssl-function ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
+  :int
+  (ctx cl+ssl::ssl-ctx)
+  (filename :string))
+
+(cl+ssl::define-ssl-function ("SSL_CTX_use_PrivateKey_file" ssl-ctx-use-private-key-file)
+  :int
+  (ctx cl+ssl::ssl-ctx)
+  (filename :string)
+  (type :int))
+
 (defun make-http2-tls-context ()
   "Make TLS context suitable for http2.
 
@@ -93,6 +103,9 @@ We should also limit allowed ciphers, but we do not."
                           #x40000000) ; no renegotiation
            ;; do not requiest client cert
            :verify-mode cl+ssl:+ssl-verify-none+)))
+    (let ((topdir (asdf:component-pathname (asdf:find-system "tls-server"))))
+      (ssl-ctx-use-certificate-chain-file context (namestring (merge-pathnames "certs/server.pem" topdir)))
+      (ssl-ctx-use-private-key-file context (namestring (merge-pathnames "certs/server.key" topdir)) cl+ssl::+ssl-filetype-pem+))
     (cl+ssl::ssl-ctx-set-alpn-select-cb
      context
      (cffi:get-callback 'cl+ssl::select-h2-callback))
@@ -129,6 +142,51 @@ thread) to start testing it."
     (kill-server (&optional value)
       :report "Kill server"
       value)))
+
+(defvar *http2-tls-context* (make-http2-tls-context)
+  "TLS context to use for our servers.")
+
+(defun wrap-to-tls (raw-stream)
+  "Return a binary stream representing TLS server connection over RAW-STREAM.
+
+Use TLS KEY and CERT for server identity, and *HTTP2-TLS-CONTEXT* for the contex.
+
+This is a simple wrapper over CL+SSL."
+  (cl+ssl:with-global-context (*http2-tls-context* :auto-free-p nil)
+    (let* ((topdir (asdf:component-pathname (asdf:find-system "tls-server")))
+           (tls-stream
+             (cl+ssl:make-ssl-server-stream
+              (usocket:socket-stream raw-stream)
+              :certificate
+              (namestring (merge-pathnames #P"certs/server.pem" topdir))
+              :key (namestring (merge-pathnames #P"certs/server.key" topdir)))))
+      tls-stream)))
+
+(defclass tls-dispatcher-mixin ()
+  ((tls :reader get-tls :initform :tls
+        :allocation :class)))
+
+(defmethod wrap-server-socket (socket (dispatcher tls-dispatcher-mixin))
+  (wrap-to-tls socket))
+
+(defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
+  ())
+
+(defclass threaded-dispatcher (base-dispatcher)
+  ())
+
+(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher)
+                              &key)
+  (let ((socket (usocket:socket-accept listening-socket
+                                       :element-type '(unsigned-byte 8))))
+    (bt:make-thread
+     (lambda ()
+       (unwind-protect
+            (process-server-stream (wrap-server-socket socket dispatcher)
+                                   :connection-class (get-connection-class dispatcher))
+         (usocket:socket-close socket)))
+     ;; TODO: peer IP and port to name?
+     :name "HTTP2 server thread for connection" )))
 
 (defun create-http-server (port &key
                                   (announce-open-fn (constantly nil))

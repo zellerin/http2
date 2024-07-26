@@ -71,7 +71,8 @@
   :pathname "server"
   ;; FIXME: is /tls really needed?
   :depends-on ("puri" "http2/tls")
-  :components ((:file "dispatch")
+  :components ((:file "socket-dispatcher")
+               (:file "dispatch")
                (:file "scheduler")))
 
 (defsystem "http2/server/example"
