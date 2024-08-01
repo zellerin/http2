@@ -120,11 +120,12 @@ Apart from name and documentation, each frame type keeps this:
                              :documentation
                              "Frames of an unknown or unsupported types."
                              :receive-fn (let ((type type))
-                                           (lambda (connection data http-stream flags)
-                                             (declare (ignore http-stream))
-                                             (handle-undefined-frame connection type flags data)
-                                             (values
-                                              #'parse-frame-header 9))))))))
+                                           (lambda (stream-or-connection flags)
+                                             (declare (ignore stream-or-connection))
+                                             (lambda (connection data)
+                                               (handle-undefined-frame connection type flags data)
+                                               (values
+                                                #'parse-frame-header 9)))))))))
     res)
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE-OLD.")
 
@@ -250,7 +251,10 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
             keys
             ,writer
             ,@(mapcar 'car (append parameters key-parameters)))))
-       (defun ,parser-name ,@(cdr reader))
+       (defun ,parser-name ,(cddr (second reader)) ; http-stream flags, or so
+         (declare (ignorable ,@ (cddr (second reader))))
+         (lambda (connection data)
+           ,@(cddr reader)))
        (setf (aref *frame-types* ,type-code)
              (make-frame-type :name ,frame-type-name
                               :documentation ,documentation
@@ -459,15 +463,13 @@ and size of data that the following function expects."
            (flag-keywords (frame-type-flag-keywords frame-type-object)))
       (cond
         ((zerop length)
-         ;; empty HEADER-FRAME still can have end-streams or end-headers flag
-         (funcall (frame-type-receive-fn frame-type-object)
-                  connection (make-octet-buffer 0)
-                  stream-or-connection flags))
+         ;; e.g., empty HEADER-FRAME still can have end-streams or end-headers flag
+         (funcall
+          (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
+          connection (make-octet-buffer 0)))
         (t
-         (values (lambda (connection data)
-                   (funcall (frame-type-receive-fn frame-type-object)
-                            connection data
-                            stream-or-connection flags))
+         (values
+          (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
                  length))))))
 
 (defun maybe-end-stream (flags stream)
@@ -513,8 +515,7 @@ FIXME: might be also continuation-frame-header"
 Reduce tracked incoming window.
 
 Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
-      (declare (ignorable flags))
-      (with-padding-marks (connection flags start end)
+       (with-padding-marks (connection flags start end)
         (account-read-window-contribution connection active-stream (- end start))
         (apply-data-frame active-stream data start end)
         (maybe-end-stream flags active-stream)
@@ -683,7 +684,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
       (write-priority priority buffer start))
     (lambda (connection data http-stream flags)
       "Read priority frame. Invoke APPLY-STREAM-PRIORITY if priority was present."
-      (declare (ignore connection flags))
+      (declare (ignore connection))
       (unless (= 5 (length data))
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
@@ -757,7 +758,7 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
             finally (return buffer)))
     ;;reader
     (lambda (connection data http-stream flags)
-      (declare (ignore http-stream))
+
       "Parse settings frame. If this is ACK settings frame, invoke PEER-ACKS-SETTINGS
 callback, otherwise invoke SET-PEER-SETTING callback for each setting in the
 recieved order."
@@ -856,7 +857,7 @@ recieved order."
     ;; reader
     (lambda (connection data http-stream flags)
       ;; TODO: fix reader to vector, implement, dont forget padding
-      (declare (ignore connection data http-stream flags))
+      (declare (ignore connection data))
       "Raise an error, as we do not handle promise frames, and do not advertise that we
 do."
       (error "Reading promise N/A")))
@@ -898,7 +899,6 @@ do."
       (setf (aref/wide buffer start 8) opaque-data)
       buffer)
     (lambda (connection data http-stream flags)
-      (declare (ignore http-stream))
       "Invoke DO-PING unless the ping has ACK flag - in that case invoke DO-PONG"
       (unless (= (length data) 8)
         (connection-error 'incorrect-ping-frame-size connection))
@@ -940,7 +940,6 @@ do."
 
     ;; reader
     (lambda (connection data http-stream flags)
-      (declare (ignore http-stream))
       "Invoke DO-GOAWAY callback."
       (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
       (let ((last-id (aref/wide data 0 4))
@@ -1016,7 +1015,7 @@ CONTINUATION frame without the END_HEADERS flag set."
     (lambda (connection data http-stream flags)
       "Raise condition CONNECTION-ERROR. The continuation frame should be read only when
 expected, and then it is parsed by a different function."
-      (declare (ignore data http-stream flags))
+      (declare (ignore data))
       (connection-error 'unexpected-continuation-frame connection)))
 
 (defun read-continuation-frame-on-demand (expected-stream old-data old-data-start old-data-end header-flags)
