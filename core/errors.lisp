@@ -36,7 +36,7 @@ NETWORK-STREAM."))
 (defun connection-error (class connection &rest args)
   "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
 NETWORK-STREAM used."
-  (let ((err (apply #'make-instance class :connection connection args)))
+  (let ((err (apply #'make-condition class :connection connection args)))
     (with-slots (code) err
       (write-goaway-frame connection
                           0             ; fixme: last processed stream
@@ -68,7 +68,7 @@ NETWORK-STREAM used."
   ())
 
 (define-condition frame-type-needs-stream (protocol-error)
-  ()
+  ((frame-type :accessor get-frame-type :initarg :frame-type))
   (:documentation
    "Frame MUST be associated with a stream. If a frame is received whose
     stream identifier field is 0x0, the recipient MUST respond with a

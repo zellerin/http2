@@ -362,7 +362,7 @@ Also do some checks on the stream id based on the frame type."
         ((zerop id)
          (if (frame-type-connection-ok frame-type)
              connection
-             (connection-error 'frame-type-needs-stream connection)))
+             (connection-error 'frame-type-needs-stream connection :frame-type frame-type)))
         ((and (not our-id) (> id last-id-seen) new-stream-state)
          (peer-opens-http-stream-really-open connection id new-stream-state))
         ((and our-id (>= id (the stream-id (get-id-to-use connection))))
