@@ -41,7 +41,7 @@
    :name "A scheduler")
   (:documentation "Simple scheduler of delayed tasks. Holds a list of tasks to run."))
 
-(defun schedule-task (scheduler delay action name)
+(defun schedule-task (scheduler delay action &optional (name 'nameless))
   "Add a new action to a scheduler to be run in DELAY seconds.
 
 Returns SCHEDULER."

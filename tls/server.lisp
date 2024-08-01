@@ -175,8 +175,7 @@ This is a simple wrapper over CL+SSL."
 (defclass threaded-dispatcher (base-dispatcher)
   ())
 
-(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher)
-                              &key)
+(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
   (let ((socket (usocket:socket-accept listening-socket
                                        :element-type '(unsigned-byte 8))))
     (bt:make-thread

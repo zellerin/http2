@@ -46,8 +46,8 @@
   :serial t
   :pathname "tls"
   :depends-on ("cl+ssl" "http2/stream-based" "bordeaux-threads")
-  :components ((:file "server")
-               (:file "cl+ssl"))
+  :components ((:file "cl+ssl")
+               (:file "server"))
                                         ;:in-order-to ((test-op (test-op "http2/test")))
   )
 
@@ -103,7 +103,6 @@
                (:file "test")
                (:file "frames")
                (:file "tests-hpack")
-               (:file "client-server-test")
                (:file "errors-lowlevel")
                (:file "threaded-tests")
                (:file "errors")

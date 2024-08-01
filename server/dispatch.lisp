@@ -87,7 +87,8 @@ another thread) responses:
                 (force-output (get-network-stream connection)))
               (schedule (delay action)
                 (schedule-task-wake-thread (get-scheduler connection) delay action
-                                           'scheduling-handler)))
+                                           'scheduling-handler)
+                'send-delayed))
          (declare (ignorable #'send-goaway #'schedule))
          ,@body))))
 
