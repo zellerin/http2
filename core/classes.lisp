@@ -1,4 +1,4 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 (in-package :http2)
 
@@ -714,8 +714,8 @@ error was reported.")
                        :debug-data debug-data)
       (invoke-restart 'close-connection))))
 
-(defgeneric handle-undefined-frame (type flags length)
-  (:method (type flags length))
+(defgeneric handle-undefined-frame (connection type flags data)
+  (:method (connection type flags data))
   (:documentation
    "Callback that is called when a frame of unknown type is received - see
 extensions."))

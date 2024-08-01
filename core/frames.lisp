@@ -116,13 +116,15 @@ Apart from name and documentation, each frame type keeps this:
                             collect
                             (make-frame-type
                              :name (intern (format nil "UNKNOWN-FRAME-~D" type))
+                             :old-stream-ok t :connection-ok t
                              :documentation
                              "Frames of an unknown or unsupported types."
-                             :receive-fn  (lambda (connection http-stream length flags)
-                                       (declare (ignore http-stream))
-                                       (handle-undefined-frame type flags length)
-                                       (let ((stream (get-network-stream connection)))
-                                         (dotimes (i length) (read-byte stream)))))))))
+                             :receive-fn (let ((type type))
+                                           (lambda (connection data http-stream flags)
+                                             (declare (ignore http-stream))
+                                             (handle-undefined-frame connection type flags data)
+                                             (values
+                                              #'parse-frame-header 9))))))))
     res)
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE-OLD.")
 
