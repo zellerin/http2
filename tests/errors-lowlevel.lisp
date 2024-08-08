@@ -5,38 +5,39 @@
   (fiasco:signals too-big-frame
     (with-test-client-to-server-setup
       (read-frames-from-octets receiver
-                  (write-frame sender 65536 +settings-frame+ nil
-                               (lambda (a start)
-                                 (fill a 0 :start start)))
-                  0 65536))))
+                               (write-frame sender 65536 +settings-frame+ nil
+                                            (lambda (a start)
+                                              (fill a 0 :start start)))
+                               0 65536))))
 
 (fiasco:deftest error/too-big-padding ()
   ;; make payload smaller than padding
   (fiasco:signals end-of-file
     (with-test-client-to-server-setup
       (read-frame-from-octets receiver
-       (write-frame
-        (create-new-local-stream sender)
-        -1 +headers-frame+
-        (list :padded (make-octet-buffer 10))
-        (constantly nil) #())
-       0 9))))
-
-(fiasco:signals end-of-file
-  (with-test-client-to-server-setup
-    (let ((stream (create-new-local-stream sender)))
-      (read-frame-from-octets
-       receiver
-       (write-frame stream
-                    0 +headers-frame+ (list :end-headers t)
-                    (constantly nil) #())
-       0 9)
-      (read-frame-from-octets receiver
-                              (write-frame stream
-                                           -1 +data-frame+
-                                           (list :padded (make-octet-buffer 10))
-                                           (constantly nil) #())
+                              (write-frame
+                               (create-new-local-stream sender)
+                               -1 +headers-frame+
+                               (list :padded (make-octet-buffer 10))
+                               (constantly nil) #())
                               0 9))))
+
+(fiasco:deftest error/end-of-file ()
+    (fiasco:signals end-of-file
+      (with-test-client-to-server-setup
+        (let ((stream (create-new-local-stream sender)))
+          (read-frame-from-octets
+           receiver
+           (write-frame stream
+                        0 +headers-frame+ (list :end-headers t)
+                        (constantly nil) #())
+           0 9)
+          (read-frame-from-octets receiver
+                                  (write-frame stream
+                                               -1 +data-frame+
+                                               (list :padded (make-octet-buffer 10))
+                                               (constantly nil) #())
+                                  0 9)))))
 
 (fiasco:deftest error/null-connection-window-update ()
   (fiasco:signals null-connection-window-update
