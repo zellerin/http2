@@ -226,7 +226,6 @@ signalled."
           (unwind-protect
                (progn
                  (setf (get-network-stream connection) stream)
-                 (read-client-preface connection)
-                 (process-pending-frames connection))
+                 (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+)))
             (cleanup-connection connection))
         (end-of-file ())))))

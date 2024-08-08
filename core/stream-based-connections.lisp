@@ -33,7 +33,7 @@ events)."))
     (make-octet-buffer 9) 0 length type flags (get-stream-id http-stream) R)
    stream))
 
-(defun process-pending-frames (connection &optional just-pending)
+(defun process-pending-frames (connection &optional just-pending (initial-action #'parse-frame-header) (initial-size 9))
   "@FRAME-HANDLER built atop CL streams.
 
 Read and process frames on the input stream taken from the CONNECTION's network-stream.
@@ -50,8 +50,8 @@ May block."
   (declare (stream-based-connection-mixin connection))
   (handler-case
       (loop
-        with frame-action = #'parse-frame-header
-        and size = 9
+        with frame-action = initial-action
+        and size = initial-size
         and stream = (get-network-stream connection)
                   ;; Prevent ending when waiting for payload
         while (or (null just-pending)

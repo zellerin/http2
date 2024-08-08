@@ -750,6 +750,17 @@ extensions."))
       (error 'client-preface-mismatch :received preface-buffer)))
   (write-settings-frame connection (get-settings connection)))
 
+(defun parse-client-preface (connection buffer)
+  "Parse client preface.
+
+Check that buffer contains a client preface, or raise an error.
+
+Then write the initial settings frame, and expect normal frame. Actually, this should be a settings frame, but this is not enforced now."
+  (unless (equalp buffer +client-preface-start+)
+    (error 'client-preface-mismatch :received buffer))
+  (write-settings-frame connection (get-settings connection))
+  (values #'parse-frame-header 9))
+
 (defmethod initialize-instance :after ((connection client-http2-connection) &key &allow-other-keys)
   "In HTTP/2, each endpoint is required to send a connection preface as a
    final confirmation of the protocol in use and to establish the

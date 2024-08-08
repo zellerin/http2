@@ -409,6 +409,15 @@ pretty short so we do not care."
   R)
 
 (defun decode-frame-header (header start)
+  "Decode frame header into several values:
+
+- frame type object,
+- length of the frame,
+- flags,
+- relevant stream, and
+- R (reserved bit).
+
+This function is primarily factored out to be TRACEd to see arriving frames."
   (declare (optimize speed)
            ((simple-array (unsigned-byte 8) *) header)
            (fixnum start)
