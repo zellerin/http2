@@ -25,7 +25,7 @@
     (:title "Frame handler")
   "Frame handler implements data moving from outside world to the connection. The generic structure is:
 
-- set current frame parser to an initial one (e.g., PARSE-FRAME-HEADER)  and expected length to expected (e.g., 9)
+- set current frame parser to an initial one (e.g., PARSE-FRAME-HEADER or PARSE-CLIENT-PREFACE)  and expected length to expected (e.g., 9)
 - loop:
    - set up a space to write data in the connection
    - wait for some data to arrive (or obtain them somehow)

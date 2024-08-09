@@ -4,11 +4,11 @@
     (:title "Overview")
   "\\HTTP2 API library.
 
-First, it has some high level interface to \\HTTP2 @CLIENT and
-@SERVER; default is a sane vanilla behaviour. On this level, The communication is done mostly by writing to and reading from (Lisp) streams and sending/parsing/receiving headers.
+For quick start, it provides high level interface to \\HTTP2 as a client (@CLIENT) and
+server (@SERVER). This provides a sane vanilla behaviour for client and dispatch-on-url based behaviour on server.
 
-The vanilla behaviour can be configured by @PARAMETERS and extended with @CALLBACK-API.
-This is an object oriented interface that allows to customize how the client or server acts in some situations by extending generic functions.
+The vanilla behaviour can be configured and extended using generic functions
+based @CALLBACK-API.
 
 On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
 
@@ -17,7 +17,7 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
   (@overview section)
   (http2/client::@client section)
   (@frames-api section)
-  (@server/threaded section)
+  (@server section)
   (@client section)
   (@base-classes section)
 

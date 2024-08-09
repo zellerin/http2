@@ -1,19 +1,25 @@
-;;;; Copyright 2022, 2023, 2024 by Tomáš Zellerin
-
-;;;; As an example of how a server could be built, define class
-;;;; vanilla-server-connection that dispatches incoming requests based on their
-;;;; path to a handler function.  Handlers are mapped either to specific path
-;;;; (exact handler) or to a prefix (prefix handler).
-;;;;
-;;;; use HANDLER macro to wrap handlers; it provides convenient and exported
-;;;; function for the handler to use (SEND-DATA, SEND-TEXT, SEND-HEADERS,
-;;;; SEND-GOAWAY).
-;;;;
-;;;; Of course, existing framework arount http/1.1 (Hunchentoot, ...) provide
-;;;; much more. I would prefer not do duplicate.
-
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 (in-package :http2)
+
+(defsection @server
+    (:title "Running a server")
+  "To create a server, two major definitions are needed:
+
+- what content to serve based on the client request (this is closely http2 related), and
+- how to dispatch requests from the (possibly multiple) clients - this is mostly unrelated
+  to http2, but still need to be decided.
+
+The first question - how to handle requests - is handled in the example servers by DISPATCHER-MIXIN.
+
+The second question - how to handle incoming TCP connections - has several implementations that can be accessed with a single interface, "
+  (dispatcher-mixin class)
+  (define-prefix-handler mgl-pax:macro)
+  (define-exact-handler mgl-pax:macro)
+  (send-text-handler function)
+  (redirect-handler function)
+  (@server/threaded section)
+  )
 
 (defclass dispatcher-mixin ()
   ((exact-handlers  :accessor get-exact-handlers  :initarg :exact-handlers)
@@ -22,8 +28,8 @@
   (:documentation
    "Server with behaviour that is defined by two sets of handlers, exact and
 prefix. Appropriate handler is run to process the request when peer closes the
-http2 stream. The exact handler must match fully the path (i.e., excluding
-query), the path must start with the prefix handler to match.
+http2 stream. The exact handler must match fully the path (so not the query),
+prefix handlers matches when the path starts with the prefix.
 
 Protocol and domain are not checked. The behaviour is implemented in the
 appropriate PEER-ENDS-HTTP-STREAM method.
@@ -134,7 +140,7 @@ headers."
 
 (defun redirect-handler (target &key (code "301") (content-type "text/html; charset=UTF-8") content)
   "A handler that emits redirect response with http status being CODE, and
-optionally provided CONTENT wit CONTENT-TYPE."
+optionally provides CONTENT with CONTENT-TYPE."
   (handler (out :utf-8 nil)
     (send-headers `((:status ,code)
                     ("location" ,target)
