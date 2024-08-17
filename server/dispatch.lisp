@@ -53,7 +53,9 @@ REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
 
 The SEND-HEADERS sends the provided headers to the STREAM.
 
-The SEND-GOAWAY sends go away frame to the client to close connection."
+The SEND-GOAWAY sends go away frame to the client to close connection.
+
+It does NOT close the FLEXI-STREAM-NAME."
 ;  (warn "Handler macro is a relic no longer to use.")
   `(lambda (connection stream)
      (let ((,flexi-stream-name
@@ -82,7 +84,7 @@ constant (static) page is served every time as-is."
 (defmacro scheduling-handler ((flexi-stream-name encoding gzip) &body body)
   "Version of HANDLER that is to be used for scheduled (or otherwise processed in
 another thread) responses:
-- It makes accessible in BODY function SCHEDULE that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage. "
+- It makes accessible in BODY function SCHEDULE that takes two parameters, delay in miliseconds and action to run after delay. See event stream implementation in the example server for the possible usage."
   `(lambda (connection stream)
      (let ((,flexi-stream-name (make-transport-output-stream stream
                                                              ,encoding ,gzip)))
@@ -142,12 +144,13 @@ headers."
   "A handler that emits redirect response with http status being CODE, and
 optionally provides CONTENT with CONTENT-TYPE."
   (handler (out :utf-8 nil)
-    (send-headers `((:status ,code)
-                    ("location" ,target)
-                    ,@(when content `(("content-type" ,content-type))))
-                  :end-stream (null content))
-    (when content
-      (princ content out))))
+    (with-open-stream (out out)
+      (send-headers `((:status ,code)
+                      ("location" ,target)
+                      ,@(when content `(("content-type" ,content-type))))
+                    :end-stream (null content))
+      (when content
+        (princ content out)))))
 
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection

@@ -1,4 +1,4 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 ;;;; Create a specific server. Use dispatch handlers to define behaviour of the
 ;;;; server, and actually bind it to a TLS socket.
@@ -20,10 +20,11 @@
 
 (define-exact-handler "/slow"
     (handler (foo :utf-8 nil)
-      (send-headers
-       '((:status "200")
-         ("content-type" "text/html; charset=utf-8")))
-      (princ "Hello World" foo)))
+      (with-open-stream (foo foo)
+        (send-headers
+         '((:status "200")
+           ("content-type" "text/html; charset=utf-8")))
+        (princ "Hello World" foo))))
 
 
 (define-exact-handler "/"

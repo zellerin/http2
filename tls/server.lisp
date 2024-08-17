@@ -180,10 +180,9 @@ This is a simple wrapper over CL+SSL."
                                        :element-type '(unsigned-byte 8))))
     (bt:make-thread
      (lambda ()
-       (unwind-protect
-            (process-server-stream (wrap-server-socket socket dispatcher)
-                                   :connection-class (get-connection-class dispatcher))
-         (usocket:socket-close socket)))
+       (with-open-stream (stream (wrap-server-socket socket dispatcher))
+         (process-server-stream stream
+                                :connection-class (get-connection-class dispatcher))))
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
 
