@@ -86,32 +86,31 @@
                                                                 (values)) )
                                                         (values)))))))))))))
 
+(defun schedule-repeated-fn (connection stream delay period fn)
+  (labels ((send-event-and-plan-next ()
+             (funcall fn connection stream)
+             (schedule-task http2::*scheduler* period
+                            #'send-event-and-plan-next
+                            stream)))
+    (schedule-task http2::*scheduler* delay
+                          #'send-event-and-plan-next 'stream)))
+
 (define-exact-handler "/event-stream"
     (lambda (connection stream)
       (send-headers stream `((:status "200") ("content-type" "text/event-stream")))
       (let ((i 0))
-        (labels ((send-event-and-plan-next ()
-                   (handler-case
-                       ;; FIXME: lock? (bordeaux-threads:with-lock-held ((get-lock connection)))
-                       (http2::write-binary-payload connection stream
-                                                    (trivial-utf-8:string-to-utf-8-bytes
-                                                     (with-output-to-string (out)
-                                                       (format out "id: ~d~%" (incf i))
-                                                       (multiple-value-bind (sec min hr day)
-                                                           (decode-universal-time (get-universal-time))
-                                                         (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day
-                                                                 hr min sec))
-                                                       (schedule-task (get-scheduler connection) 1000000
-                                                                      #'send-event-and-plan-next)))
-                                                    :end-stream nil))
-                   (force-output (http2::get-network-stream connection))
-                   #+chunking                   (dolist (chunk (http2::get-to-write connection))
-                                                  (write-sequence chunk
-                                                                  (http2::get-network-stream connection))
-                                                  (setf (http2::get-to-write connection) nil)
-                                                  (force-output (http2::get-network-stream connection)))))
-          (schedule-task (get-scheduler connection) 0
-                         #'send-event-and-plan-next)))))
+        (schedule-repeated-fn connection stream 0.0 1.0
+                              (lambda (connection stream)
+                                (http2::write-data-frame stream
+                                                         (trivial-utf-8:string-to-utf-8-bytes
+                                                          (with-output-to-string (out)
+                                                            (format out "id: ~d~%" (incf i))
+                                                            (multiple-value-bind (sec min hr day)
+                                                                (decode-universal-time (get-universal-time))
+                                                              (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day
+                                                                      hr min sec))))
+                                                         :end-stream nil)
+                                (force-output (http2::get-network-stream connection)))))))
 
 (define-exact-handler "/body"
     (lambda (connection stream)

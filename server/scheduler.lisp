@@ -5,7 +5,7 @@
   (scheduled-task class)
   (scheduler class)
   (scheduler-in-thread class)
-  (schedule-task function)
+  (schedule-task generic-function)
   (run-scheduler-in-thread function)
   (threaded-server-mixin class))
 
@@ -28,7 +28,7 @@
   (print-unreadable-object (task stream)
     (if (eq task *dummy-last-task*)
         (format stream "dummy last task")
-        (format stream "~a in ~ds"
+        (format stream "~a in ~as"
                 (or (get-action-name task) (get-action-to-run task))
                 (time-to-action task)))))
 
@@ -41,7 +41,7 @@
    :name "A scheduler")
   (:documentation "Simple scheduler of delayed tasks. Holds a list of tasks to run."))
 
-(defun schedule-task (scheduler delay action &optional (name 'nameless))
+(defmethod schedule-task ((scheduler scheduler) delay action name)
   "Add a new action to a scheduler to be run in DELAY seconds.
 
 Returns SCHEDULER."
@@ -84,15 +84,13 @@ Returns SCHEDULER."
   (:documentation
    "Simple scheduler of delayed tasks that runs in a thread."))
 
-(defun schedule-task-wake-thread (scheduler delay action name)
+(defmethod schedule-task :after ((scheduler scheduler-in-thread) delay action name)
   "Add a new action to server with scheduler. If scheduler already has a thread,
 wake it up by invoking CONTINUE restart."
-  (schedule-task scheduler delay action name)
   (with-slots (thread) scheduler
     (if thread
       (bt:interrupt-thread thread #'continue)
-      (run-scheduler-in-thread scheduler)))
-  scheduler)
+      (run-scheduler-in-thread scheduler))))
 
 (defun run-scheduler-in-thread (scheduler)
   "Make a thread that runs tasks as they mature. CONTINUE restart can be used

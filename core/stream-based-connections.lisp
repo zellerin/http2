@@ -14,8 +14,7 @@ slot NETWORK-STREAM)."))
   ((scheduler :accessor get-scheduler :initarg :scheduler)
    (lock      :accessor get-lock      :initarg :lock))
   (:default-initargs
-   :scheduler (make-instance 'scheduler-in-thread
-                             :name "Scheduler for connection")
+   :scheduler *scheduler*
    :lock (bt:make-lock))
   (:documentation
    "A mixin for a connection that holds a lock in actions that write to the output network
