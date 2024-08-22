@@ -85,6 +85,63 @@ relate to the known flags."
   (frame-type class)
   (*frame-types* variable))
 
+(defsection @stream-states
+    (:title "Stream states")
+
+  "
+The lifecycle of a stream is shown below.
+```
+                        +--------+
+                send PP |        | recv PP
+               ,--------|  idle  |--------.
+              /         |        |         \
+             v          +--------+          v
+         +----------+          |           +----------+
+         |          |          | send H /  |          |
+  ,------| reserved |          | recv H    | reserved |------.
+  |      | (local)  |          |           | (remote) |      |
+  |      +----------+          v           +----------+      |
+  |          |             +--------+             |          |
+  |          |     recv ES |        | send ES     |          |
+  |   send H |     ,-------|  open  |-------.     | recv H   |
+  |          |    /        |        |        \    |          |
+  |          v   v         +--------+         v   v          |
+  |      +----------+          |           +----------+      |
+  |      |   half   |          |           |   half   |      |
+  |      |  closed  |          | send R /  |  closed  |      |
+  |      | (remote) |          | recv R    | (local)  |      |
+  |      +----------+          |           +----------+      |
+  |           |                |                 |           |
+  |           | send ES /      |       recv ES / |           |
+  |           | send R /       v        send R / |           |
+  |           | recv R     +--------+   recv R   |           |
+  | send R /  `----------->|        |<-----------'  send R / |
+  | recv R                 | closed |               recv R   |
+  `----------------------->|        |<----------------------'
+                           +--------+
+
+  send:   endpoint sends this frame
+  recv:   endpoint receives this frame
+
+  H:  HEADERS frame (with implied CONTINUATIONs)
+  PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
+  ES: END_STREAM flag
+  R:  RST_STREAM frame
+```
+
+CREATE-NEW-LOCAL-STREAM can be used to create open stream.
+
+FIND-HTTP-STREAM-BY-ID possibly creates new streams in various states based on
+received frame. Note that IDLE and CLOSED symbols can stand for actual streams.
+
+MAYBE-END-STREAM "
+  (create-new-local-stream function)
+  (find-http-stream-by-id function)
+  (maybe-end-stream function)
+  (close-http2-stream function))
+
+
+
 
 (defstruct (frame-type
             (:print-object (lambda (type stream)
@@ -352,8 +409,8 @@ passed to the make-instance"
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
 
-Returns either HTTP2-STREAM object (existing or new), CONNECTION or one of :IDLE
-:CLOSED for yet or already nonexistent streams.
+Returns either HTTP2-STREAM object (existing or new), CONNECTION or one of IDLE
+and CLOSED for yet or already nonexistent streams.
 
 Also do some checks on the stream id based on the frame type."
   (declare (optimize speed (safety 1) (debug 0))
@@ -482,7 +539,9 @@ and size of data that the following function expects."
                  length))))))
 
 (defun maybe-end-stream (flags stream)
+  "Close the STREAM if FLAGS indicates so. It changes state to either of"
   (when (get-flag flags :end-stream)
+    ;; 20240822 TODO: give specific error instead of ecase
     (ecase (get-state stream)
       (half-closed/local (close-http2-stream stream))
       (open (setf (get-state stream) 'half-closed/remote)))

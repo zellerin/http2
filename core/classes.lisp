@@ -12,7 +12,7 @@
   ((window-size      :accessor get-window-size      :initarg :window-size)
    (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size))
   (:documentation
-   "The flow control parameters are used both for streams and connections."))
+   "The flow control parameters that are kept both per-stream and per-connection."))
 
 (defclass http2-connection (flow-control-mixin)
   ((streams                  :accessor get-streams                  :initarg :streams
@@ -68,7 +68,10 @@
    :peer-accepts-push t))
 
 (defgeneric get-state (state)
-  (:method ((state (eql :closed))) 'closed))
+  (:method ((state (eql :closed))) 'closed)
+  (:documentation
+   "State of a HTTP stream. The parameter is either a HTTP2-STREAM object (that
+keeps state in an appropriate slot) or placeholder values CLOSED or IDLE"))
 
 (defclass http2-stream (flow-control-mixin)
   ((connection       :accessor get-connection       :initarg :connection)
@@ -250,48 +253,11 @@ when relevant stream or connection has logging-object as superclass."
 
 #|
 
-The lifecycle of a stream is shown in Figure 2.
-
-                        +--------+
-                send PP |        | recv PP
-               ,--------|  idle  |--------.
-              /         |        |         \
-             v          +--------+          v
-         +----------+          |           +----------+
-         |          |          | send H /  |          |
-  ,------| reserved |          | recv H    | reserved |------.
-  |      | (local)  |          |           | (remote) |      |
-  |      +----------+          v           +----------+      |
-  |          |             +--------+             |          |
-  |          |     recv ES |        | send ES     |          |
-  |   send H |     ,-------|  open  |-------.     | recv H   |
-  |          |    /        |        |        \    |          |
-  |          v   v         +--------+         v   v          |
-  |      +----------+          |           +----------+      |
-  |      |   half   |          |           |   half   |      |
-  |      |  closed  |          | send R /  |  closed  |      |
-  |      | (remote) |          | recv R    | (local)  |      |
-  |      +----------+          |           +----------+      |
-  |           |                |                 |           |
-  |           | send ES /      |       recv ES / |           |
-  |           | send R /       v        send R / |           |
-  |           | recv R     +--------+   recv R   |           |
-  | send R /  `----------->|        |<-----------'  send R / |
-  | recv R                 | closed |               recv R   |
-  `----------------------->|        |<----------------------'
-                           +--------+
-
-  send:   endpoint sends this frame
-  recv:   endpoint receives this frame
-
-  H:  HEADERS frame (with implied CONTINUATIONs)
-  PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
-  ES: END_STREAM flag
-  R:  RST_STREAM frame
 
 |#
 
 (defun count-open-streams (connection)
+  ;; 20240822 TODO: unused - remove or use to check when creating new stream.
   (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))
 
 (defmethod (setf get-state) :around (value (stream logging-object))
@@ -370,8 +336,7 @@ other solution would be to send go-away after the number of streams is too high;
 however some clients (e.g., h2load) do not retry when they receive this.
 
 This stream removal should be done with lock on the appropriate stream when in
-multiple threads. When this is called from the read-frame callbacks it is done
-automatically, otherwise caller must ensure it."
+multiple threads."
   (with-slots (connection state) stream
     (with-slots (streams) connection
       (setf streams (remove stream streams :test 'eq)
