@@ -29,10 +29,7 @@
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
    (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size)
    (max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
-   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size)
-   (stream-id                :accessor get-stream-id                :initarg :stream-id
-                             :initform      0
-                             :allocation :class))
+   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -52,6 +49,10 @@
 
 (defmethod print-object ((connection http2-connection) out)
   (print-unreadable-object (connection out :type t :identity nil)))
+
+(defmethod get-stream-id ((c http2-connection))
+  "It is useful sometimes to treat http connection as a stream with ID 0."
+  0)
 
 (defmethod get-connection ((c http2-connection))
   c)
