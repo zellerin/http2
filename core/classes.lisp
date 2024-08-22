@@ -141,7 +141,7 @@ than :status allowed, etc."))
   (if *print-escape*
       (print-unreadable-object (stream out :type t)
         (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
-      (format out (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))))
+      (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
 
 (defclass log-headers-mixin ()
   ()
