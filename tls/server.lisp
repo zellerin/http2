@@ -103,13 +103,17 @@ We should also limit allowed ciphers, but we do not."
                           #x40000000) ; no renegotiation
            ;; do not requiest client cert
            :verify-mode cl+ssl:+ssl-verify-none+)))
-    (let ((topdir (asdf:component-pathname (asdf:find-system "tls-server"))))
-      (ssl-ctx-use-certificate-chain-file context (namestring (merge-pathnames "certs/server.pem" topdir)))
+    (let ((topdir (asdf:component-pathname (asdf:find-system "http2"))))
+      (ssl-ctx-use-certificate-chain-file context (namestring (merge-pathnames "certs/server.crt" topdir)))
       (ssl-ctx-use-private-key-file context (namestring (merge-pathnames "certs/server.key" topdir)) cl+ssl::+ssl-filetype-pem+))
     (cl+ssl::ssl-ctx-set-alpn-select-cb
      context
      (cffi:get-callback 'cl+ssl::select-h2-callback))
-    context))
+    (let ((address (cffi:pointer-address context)))
+      ;; make sure it is deallocated when no longer needed
+      ;; 20240827 TODO: What happens on save-and-die?
+      (trivial-garbage:finalize context
+                                (lambda () (cl+ssl:ssl-ctx-free (cffi:make-pointer address)))))))
 
 (defun create-https-server (port key cert &key
                                             (announce-open-fn (constantly nil))
@@ -152,15 +156,14 @@ thread) to start testing it."
 Use TLS KEY and CERT for server identity, and *HTTP2-TLS-CONTEXT* for the contex.
 
 This is a simple wrapper over CL+SSL."
-  (cl+ssl:with-global-context (*http2-tls-context* :auto-free-p nil)
-    (let* ((topdir (asdf:component-pathname (asdf:find-system "tls-server")))
-           (tls-stream
-             (cl+ssl:make-ssl-server-stream
-              (usocket:socket-stream raw-stream)
-              :certificate
-              (namestring (merge-pathnames #P"certs/server.pem" topdir))
-              :key (namestring (merge-pathnames #P"certs/server.key" topdir)))))
-      tls-stream)))
+  (let* ((topdir (asdf:component-pathname (asdf:find-system "http2")))
+         (tls-stream
+           (cl+ssl:make-ssl-server-stream
+            (usocket:socket-stream raw-stream)
+            :certificate
+            (namestring (merge-pathnames #P"certs/server.crt" topdir))
+            :key (namestring (merge-pathnames #P"certs/server.key" topdir)))))
+    tls-stream))
 
 (defclass tls-dispatcher-mixin ()
   ((tls :reader get-tls :initform :tls

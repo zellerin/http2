@@ -14,6 +14,8 @@
 (ql:quickload "cl-who")
 (ql:quickload "gzip-stream")
 (ql:quickload "mgl-pax")
+(map nil 'ql:quickload '("chipz" "cl-ppcre"))
+
 
 (asdf::load-asd (truename "./http2.asd"))
 
@@ -27,7 +29,7 @@
 (asdf:load-system :http2/all :force t)
 
 (in-package http2)
-(http2/server-example::maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
+(http2/server-example::maybe-create-certificate "certs/server.key" "certs/server.crt" :system "http2")
 
 (setf *dispatch-fn* #'funcall)
 (unwind-protect

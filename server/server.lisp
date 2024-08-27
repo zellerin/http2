@@ -316,13 +316,16 @@ be other ones."
               (process-server-stream stream :connection connection)))))
     (apply #'create-https-server port *default-certificate-pair*)))
 
-(defun maybe-create-certificate (key certificate)
+(defun maybe-create-certificate (key certificate &key system (base
+                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
   "Generate key and a self-signed certificate to it for localhost using openssl
 cli."
   (unless (and (probe-file key)
                (probe-file certificate))
     (format t "~%Generating temporary certificates")
-    (uiop:run-program "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
+    (uiop:run-program
+     `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring (ensure-directories-exist (merge-pathnames key base)))
+                       "-outform" "PEM" "-out" ,(namestring (ensure-directories-exist (merge-pathnames certificate base)))))
     (terpri)))
 
 (defun run-demo-server (&key (key (car *default-certificate-pair*))
