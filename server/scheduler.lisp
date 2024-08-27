@@ -107,3 +107,5 @@ during the sleep to re-asses next tasks."
 (defun stop-scheduler-in-thread (scheduler)
   (when (get-thread scheduler)
     (bt:destroy-thread (get-thread scheduler))))
+
+(defvar *scheduler* (make-instance 'scheduler-in-thread))

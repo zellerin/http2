@@ -378,7 +378,7 @@ multiple threads."
 
   (:method (stream payload start end)
     "Just ignore the data and warn about it."
-    (warn 'implement-by-user :format-control "No payload action defined."))
+    (warn 'no-payload-action :class stream))
 
   (:method ((stream body-collecting-mixin) data start end)
     "Concatenate received data to the BODY slot of the object."
@@ -560,8 +560,7 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
                           ((vector (unsigned-byte 8)) (decode-huffman value))))))
 
   (:method (connection stream name value)
-    (warn 'implement-by-user
-          :format-control "You should overwrite default method for adding new header."))
+    (warn 'no-new-header-action :header name :stream stream))
 
   (:method (connection (stream server-stream) (name symbol) value)
     (when (get-seen-text-header stream)

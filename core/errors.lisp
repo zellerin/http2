@@ -1,7 +1,7 @@
 (in-package :http2)
 
 (defsection @errors
-  (:title "Errors handlers")
+    (:title "Errors handlers")
   (connection-error condition)
   (connection-error function)
   (http-stream-error condition)
@@ -237,10 +237,24 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   ()
   (:documentation "Reserved bit is set in received frame header. We ignore it."))
 
+(defsection @warnings ())
+
+(define-condition http2-warning (warning)
+  ())
+
+(define-condition implement-by-user (http2-warning simple-condition)
+  ()
+  (:documentation "Something that the HTTP2 library expects to be implemented by server/client."))
+
 (define-condition unimplemented-feature (warning simple-condition)
   ()
   (:documentation "Something that can be implemented to better match RFC suggestions or that we are obliged to ignore"))
 
-(define-condition implement-by-user (warning simple-condition)
-  ()
-  (:documentation "Something that the HTTP2 library expects to be implemented by server/client."))
+(define-condition no-payload-action (http2-warning)
+  ((class :accessor get-class :initarg :class))
+  (:documentation "No payload action defined, and payload received."))
+
+(define-condition no-new-header-action (http2-warning)
+  ((header :accessor get-header :initarg :header)
+   (stream :accessor get-stream :initarg :stream))
+  (:documentation "Header that could not be handled arrived."))
