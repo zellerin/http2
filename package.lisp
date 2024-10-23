@@ -1,4 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 ;;;; package.lisp
 
