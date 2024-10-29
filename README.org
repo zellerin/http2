@@ -5,39 +5,43 @@
 This is an implementation of HTTP/2 protocol as described in RFC9113 (and
 RFC7540 before) and RFC7541 (HPACK).
 
-The core part of the library implements [[https://doc.zellerin.cz/http2/#HTTP2:@CALLBACKS%20MGL-PAX:SECTION][writing]] HTTP/2 frames, [[https://doc.zellerin.cz/http2/#HTTP2:READ-FRAME%20FUNCTION][reading them]], and
-[[https://doc.zellerin.cz/http2/#HTTP2:@CALLBACKS%20MGL-PAX:SECTION][reacting on read frames]]. Applications can define what to do with received frames by customizing callback in for of generic functions. Baseline class hierarchy to provide reasonable behaviour is defined.
+The core part of the library implements [[https://doc.zellerin.cz/http2/#HTTP2:@CALLBACKS%20MGL-PAX:SECTION][writing]] HTTP/2 frames, [[https://doc.zellerin.cz/http2/#HTTP2:READ-FRAME%20FUNCTION][reading, and
+proceesing them]]. Applications can customize what to do with received frames by
+defining callbacks in form of generic functions. Baseline class hierarchy to
+provide reasonable behaviour is defined.
 
-In addition, helper functions to create server and to make client calls are
-provided.  Based on these helpers, demo client and demo server is also provided,
-see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]. The best way to make servers and clients
-includes decisions on how to handle asynchronicity, HTTP/2 window management,
-etc, and may be still subject to change.
+In addition, simple client and pieces to build a server (as well as an example
+server) are provided, see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]. The best way to make
+servers and clients includes decisions on how to handle asynchronicity, HTTP/2
+window management, etc, and may be still subject to change.
 
-** Status and quick start
-In quicklisp. Tested primarily on sbcl, occasionally on ecl.
+** Status
+In quicklisp. Load either ~http2/client~, ~http2/server~, or ~http2/all~.
+
+Tested primarily on sbcl, occasionally on ecl.
 
 Almost all parts of the listed standards implemented, see below for exceptions.
 
-The library definitely allows to implement a client or server, and a simple ones
-are attached to it as examples.
+**  Quick start
 
 *** Client
 
-The bundled client requests remote page and returns values of body (converted to
-string), result status, and response headers.
-
-Improvements to allow for cookie management, ... are out of scope of this
-library, as they would probably be better taken over from some existing HTTP/1.x
-library or incorporated there.
-
-Improvements to query several resources on one server, and to receive pushes are
-considered for future, as they are HTTP/2 specific.
-
+Use ~retrieve-url~ to fetch pages:
 #+begin_src lisp
   (ql:quickload 'http2/client)
   (http2/client:retrieve-url "https://example.com")
 #+end_src
+
+It returns values of body (converted to string), result status, and response
+headers.
+
+Improvements to allow for cookie management, ... are out of scope of this
+library, as they would probably be better taken over from some existing HTTP/1.x
+library or incorporated there.*
+
+Improvements to query several resources on one server, and to receive pushes are
+considered for future, as they are HTTP/2 specific.
+
 
 #+RESULTS:
 #+begin_src text

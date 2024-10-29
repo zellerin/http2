@@ -4,8 +4,21 @@
 
 (defsection @base-classes
     (:title "Classes")
+  "There are two parallel class hierarchies, one for HTTP2 connections, one for the HTTP2 streams.
+
+In general, CLIENT- and SERVER- classes implement required minimal behaviour for
+the client, resp. server, and are supposed to be stable, while VANILLA classes
+implement \"typical\" or best practice behaviour and may change in time. They
+should be good for ad-hoc activities and experiments; for stable behaviour,
+make your class using appropriate mixins.
+
+![Class hierarchy](./classes.svg)"
   (http2-connection class)
-  (flow-control-mixin class))
+  #+nil  (http2-stream class)
+  (get-stream-class generic-function))
+
+(defgeneric get-stream-class (connection)
+  (:documentation "Called when new connection stream is created to get its class."))
 
 ;;;; Classes
 (defclass flow-control-mixin ()
