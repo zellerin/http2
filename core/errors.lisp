@@ -59,6 +59,10 @@ NETWORK-STREAM used."
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
 
+(defmethod print-object ((o too-big-frame) stream)
+  (print-unreadable-object (o stream :type t)
+    (format stream "Frame size 0x~x, max ~x." (get-frame-size o) (get-max-frame-size o))))
+
 (define-condition too-big-padding (protocol-error)
   ()
   (:documentation
