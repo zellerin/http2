@@ -16,6 +16,7 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (http2/client::@client section)
+  (http2/client::@tutorial section)
   (@frames-api section)
   (@server section)
   (@client section)
@@ -31,3 +32,53 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
 (defsection @test
     ()
   (foobar foobar))
+
+(in-package http2/client)
+
+(mgl-pax:defsection @tutorial
+    (:title "Build your own client")
+    "Let us see what it takes to build simplified RETRIEVE-URL function from
+components. It will use CL+SSL to build a Lisp stream over TLS stream over
+network stream.
+
+HTTP/2 requests are done over TLS connection created with an ALPN indication that it is to
+be used for  HTTP/2. The helper function here is CONNECT-TO-TLS-SERVER, and then
+WITH-OPEN-STREAM can be used:
+
+```
+  (defun my-retrieve-url (url)
+    (let ((parsed-url (puri:parse-uri url)))
+      (with-open-stream (network-stream
+                         (connect-to-tls-server (puri:uri-host parsed-url)
+                                                :sni (puri:uri-host parsed-url)
+                                                :port (or (puri:uri-port parsed-url) 443)))
+        (my-retrieve-url-using-network-stream network-stream url))))
+```
+
+Now that we have a Lisp STREAM to communicate over, we can establish HTTP/2
+connection over it, send client request, and then PROCESS-PENDING-FRAMES until
+server fully sends the response. That invokes restart FINISH-STREAM with the
+processed stream that we handle. We can get the data from it using
+DRAKMA-STYLE-STREAM-VALUES.
+
+```
+  (defun my-retrieve-url-using-network-stream (network-stream url)
+    (with-http2-connection (connection 'vanilla-client-connection :network-stream network-stream)
+      (my-send-client-request connection url)
+      (restart-case
+          (process-pending-frames connection nil)
+        (finish-stream (stream)
+          (drakma-style-stream-values stream)))))
+```
+
+Sending the request involves creating a new HTTP2 stream with OPEN-HTTP2-STREAM
+and proper parameters.
+
+```
+  (defun my-send-client-request (connection url)
+    (open-http2-stream connection
+                              (request-headers :GET (puri:uri-path (puri:parse-uri url))
+                                               (puri:uri-host (puri:parse-uri url)))
+                              :end-stream t))
+```
+")

@@ -15,6 +15,7 @@
   (vanilla-client-stream class)
   (vanilla-client-connection class)
   (client-stream class)
+  (finish-stream restart)
   (header-collecting-mixin class)
   (client-http2-connection class)
   (extract-charset-from-content-type function))
@@ -60,10 +61,8 @@ converted to proper encoding) into a TEXT slot."))
                                  http2::header-collecting-mixin
                                  http2::history-printing-object
                                  text-collecting-stream)
-  ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn)
-   (end-stream-fn  :accessor get-end-stream-fn  :initarg :end-stream-fn))
-  (:default-initargs :end-stream-fn (constantly nil)
-                     :end-headers-fn (constantly nil))
+  ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn))
+  (:default-initargs :end-headers-fn (constantly nil))
   (:documentation
    "Stream class for retrieve-url style functions. Behaves as a client stream,
    allows one to treat data frames as streams, collect headers to slot HEADERS
@@ -74,8 +73,11 @@ converted to proper encoding) into a TEXT slot."))
 (defmethod process-end-headers :after (connection (stream vanilla-client-stream))
   (funcall (get-end-headers-fn stream) stream))
 
+(mgl-pax:define-restart finish-stream (http2-stream)
+  "Invoked when server fully sends the response to the VANILLA-CLIENT-STREAM.")
+
 (defmethod peer-ends-http-stream ((stream vanilla-client-stream))
-  (funcall (get-end-stream-fn stream) stream))
+  (invoke-restart 'finish-stream stream))
 
 (defvar *charset-names*
   '(("UTF-8" . :utf-8))

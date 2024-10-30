@@ -15,7 +15,8 @@ make your class using appropriate mixins.
 ![Class hierarchy](./classes.svg)"
   (http2-connection class)
   #+nil  (http2-stream class)
-  (get-stream-class generic-function))
+  (get-stream-class generic-function)
+  (open-http2-stream function))
 
 (defgeneric get-stream-class (connection)
   (:documentation "Called when new connection stream is created to get its class."))
@@ -281,7 +282,16 @@ when relevant stream or connection has logging-object as superclass."
   (call-next-method))
 
 (defun open-http2-stream (connection headers &key end-stream (end-headers t) stream-pars)
-  "Open http2 stream by sending headers."
+  "Open HTTP/2 stream (typically, from client side) by sending headers.
+
+- STREAM-PARS are used as parameters for creating new stream instance.
+
+- HEADERS are headers to be send for the client. You can use REQUEST-HEADERS to
+  get necessary headers.
+
+- END-HEADERS is aflag to the server that no more headers would be sent; true by default.
+
+- END-STREAM is a flag to the server that there would be no payload."
   (send-headers (create-new-local-stream connection stream-pars)
                 headers
                 :end-stream end-stream
