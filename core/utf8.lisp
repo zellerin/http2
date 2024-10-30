@@ -34,30 +34,34 @@ the stream and the text."))
   ;; beginning, add all before it to the broken-char
   ;; this might be slow but rare enough
   (if (is-utf8-p (get-headers stream))
-      (let* ((first-start-char-position
-               (position-if #'utf-is-first-char payload :start start :end end)))
-        (when (null first-start-char-position)
-          (error "FIXME: no start-char in buffer"))
-        (unless (= first-start-char-position start)
-          ;; FIXME: print broken char
-          (assert (get-broken-char stream))
-          (apply-text-data-frame
-           stream
-           (trivial-utf-8:utf-8-bytes-to-string
-            (concatenate '(vector (unsigned-byte 8)) (get-broken-char stream)
-                         (subseq payload start first-start-char-position))))
-          (setf start first-start-char-position))
-        ;; 2) find whether last starting char is fully in the buffer
-        (let* ((last-start-char-position
-                 (position-if #'utf-is-first-char payload :from-end t
-                                                          :start start
-                                                          :end end))
-               (last-start-char (aref payload last-start-char-position)))
-          (unless (= (+ last-start-char-position (utf-first-char-size last-start-char))
-                     end)
-            (setf (get-broken-char stream) (subseq payload last-start-char-position end)
-                  end last-start-char-position))
-          (apply-text-data-frame
-           stream
-           (trivial-utf-8:utf-8-bytes-to-string payload :start start :end  end))))
+      (unless (= start end) ; Google sends empty payload sometimes. Remove when
+                            ; we can handle that.
+        (let* ((first-start-char-position
+                 (position-if #'utf-is-first-char payload :start start :end end)))
+          (when (null first-start-char-position)
+            (error 'unimplemented-feature :format-control "FIXME: no start-char in payload ~s"
+                   :format-arguments (list  (subseq payload start end))))
+          (unless (= first-start-char-position start)
+            ;; FIXME: print broken char
+            (assert (get-broken-char stream))
+            (apply-text-data-frame
+             stream
+             (trivial-utf-8:utf-8-bytes-to-string
+              (concatenate '(vector (unsigned-byte 8)) (get-broken-char stream)
+                           (subseq payload start first-start-char-position))))
+            (setf start first-start-char-position))
+          ;; 2) find whether last starting char is fully in the buffer
+          (let* ((last-start-char-position
+                   (position-if #'utf-is-first-char payload :from-end t
+                                                            :start start
+                                                            :end end))
+                 (last-start-char (aref payload last-start-char-position)))
+            (unless (= (+ last-start-char-position (utf-first-char-size last-start-char))
+                       end)
+              (setf (get-broken-char stream) (subseq payload last-start-char-position end)
+                    end last-start-char-position))
+            (apply-text-data-frame
+             stream
+             (trivial-utf-8:utf-8-bytes-to-string payload :start start :end  end)))))
+
       (call-next-method)))

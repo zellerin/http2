@@ -15,7 +15,11 @@
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
   (:documentation "Signaled when GO-AWAY frame is received."))
 
-(define-condition client-preface-mismatch (error)
+(define-condition http2-error (error)
+  ()
+  (:documentation "All errors raised from HTTP2 package inherit from this error."))
+
+(define-condition client-preface-mismatch (http2-error)
   ((received :accessor get-received :initarg :received)))
 
 (defmethod print-object ((err go-away) out)
@@ -23,7 +27,7 @@
     (print-unreadable-object (err out :type t)
       (format out "~a (~s)" error-code (map 'string 'code-char debug-data)))))
 
-(define-condition connection-error (error)
+(define-condition connection-error (http2-error)
   ((connection :accessor get-connection :initarg :connection)
    (code       :accessor get-code       :initarg :code))
   (:documentation
@@ -250,7 +254,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   ()
   (:documentation "Something that the HTTP2 library expects to be implemented by server/client."))
 
-(define-condition unimplemented-feature (warning simple-condition)
+(define-condition unimplemented-feature (http2-warning simple-condition)
   ()
   (:documentation "Something that can be implemented to better match RFC suggestions or that we are obliged to ignore"))
 
