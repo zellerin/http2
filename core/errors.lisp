@@ -266,3 +266,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   ((header :accessor get-header :initarg :header)
    (stream :accessor get-stream :initarg :stream))
   (:documentation "Header that could not be handled arrived."))
+
+(define-condition h2-not-supported-by-server (error)
+  ((host :accessor get-host :initarg :host)
+   (port :accessor get-port :initarg :port)))

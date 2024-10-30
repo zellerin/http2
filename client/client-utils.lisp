@@ -32,10 +32,13 @@
                                  (alpn-protocols '("h2")))
   "Return a client TLS stream to HOST on PORT, created using SNI and with specified ALPN
 protocol (H2 by default)."
-  (cl+ssl:make-ssl-client-stream
-   (usocket:socket-stream
-    (usocket:socket-connect host port :element-type '(unsigned-byte 8)))
-   :verify verify :hostname sni :alpn-protocols alpn-protocols))
+  (let ((stream (cl+ssl:make-ssl-client-stream
+                 (usocket:socket-stream
+                  (usocket:socket-connect host port :element-type '(unsigned-byte 8)))
+                 :verify verify :hostname sni :alpn-protocols alpn-protocols)))
+    (unless (equal "h2" (cl+ssl:get-selected-alpn-protocol stream))
+      (error 'h2-not-supported-by-server :host host :port port))
+    stream))
 
 (defclass vanilla-client-connection (client-http2-connection
                                      stream-based-connection-mixin
