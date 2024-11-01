@@ -732,6 +732,7 @@ extensions."))
   "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
  \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
+#+obsolete
 (defun read-client-preface (connection)
   (let ((preface-buffer (make-octet-buffer (length +client-preface-start+))))
     (read-sequence preface-buffer (get-network-stream connection))

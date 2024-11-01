@@ -147,7 +147,7 @@ thread) to start testing it."
       :report "Kill server"
       value)))
 
-(defvar *http2-tls-context* (make-http2-tls-context)
+(defvar *http2-tls-context* nil
   "TLS context to use for our servers.")
 
 (defun wrap-to-tls (raw-stream)
