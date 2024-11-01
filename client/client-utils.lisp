@@ -18,6 +18,8 @@
   (finish-stream restart)
   (header-collecting-mixin class)
   (client-http2-connection class)
+  (text-collecting-stream class)
+  (utf8-parser-mixin class)
   (extract-charset-from-content-type function))
 
 

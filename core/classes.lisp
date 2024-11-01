@@ -395,7 +395,8 @@ multiple threads."
   (:documentation "This is called when a new frame is ready "))
 
 (defgeneric apply-data-frame (stream payload start end)
-  (:documentation "HTTP-STREAM should process received PAYLOAD from the data frame. Presently it is called once per data frame, but this can change in future to improve performance.")
+  (:documentation
+   "HTTP-STREAM should process received PAYLOAD from the data frame. Presently it is called once per data frame, but this can change in future to improve performance.")
 
   ;; FIXME: we should not send small updates
 

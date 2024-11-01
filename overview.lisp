@@ -16,7 +16,7 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (http2/client::@client section)
-  (http2/client::@tutorial section)
+  (@tutorials section)
   (@frames-api section)
   (@server section)
   (@client section)
@@ -33,11 +33,31 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
     ()
   (foobar foobar))
 
+(defsection @tutorials
+    (:title "Tutorials")
+  (http2/client::@tutorial section)
+  (http2/server-example::@hello-world-server section))
+
+(in-package http2/server-example)
+(mgl-pax:defsection @hello-world-server
+    (:title "Hello World server")
+  "Let us make a server that serves a \"Hello World\" web page. First, we define the handler to serve the page for URL \"/\":
+
+```
+(define-exact-handler \"/\"
+    (send-text-handler \"/Hello World\"
+                       :content-type \"text/plain; charset=UTF-8\"
+                       :gzip nil))
+```
+
+In addition to the DEFINE-EXACT-HANDLER, there is also DEFINE-PREFIX-HANDLER
+that serves the content when only prefix matches.")
+
 (in-package http2/client)
 
 (mgl-pax:defsection @tutorial
     (:title "Build your own client")
-    "Let us see what it takes to build simplified RETRIEVE-URL function from
+  "Let us see what it takes to build simplified RETRIEVE-URL function from
 components. It will use CL+SSL to build a Lisp stream over TLS stream over
 network stream.
 
@@ -56,14 +76,14 @@ WITH-OPEN-STREAM can be used:
 ```
 
 Now that we have a Lisp STREAM to communicate over, we can establish HTTP/2
-connection over it, send client request, and then PROCESS-PENDING-FRAMES until
+connection of class VANILLA-CLIENT-CONNECTION over it, send client request, and then PROCESS-PENDING-FRAMES until
 server fully sends the response. That invokes restart FINISH-STREAM with the
 processed stream that we handle. We can get the data from it using
 DRAKMA-STYLE-STREAM-VALUES.
 
 ```
-  (defun my-retrieve-url-using-network-stream (network-stream url)
-    (with-http2-connection (connection 'vanilla-client-connection :network-stream network-stream)
+  (defun my-retrieve-url-using-network-stream (lisp-stream url)
+    (with-http2-connection (connection 'vanilla-client-connection lisp-stream)
       (my-send-client-request connection url)
       (restart-case
           (process-pending-frames connection nil)
@@ -81,4 +101,5 @@ and proper parameters.
                                                (puri:uri-host (puri:parse-uri url)))
                               :end-stream t))
 ```
-")
+"
+  )
