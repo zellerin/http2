@@ -301,7 +301,9 @@ Presently returns list of arrays, may return single array in future. In any case
                           content-type
                           gzip-content
                           additional-headers)
-  "Encode standard request headers. The obligatory headers are passed as the positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing header name and value."
+  "Encode standard request headers. The obligatory headers are passed as the
+positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
+header name and value."
   (compile-headers
    `((:method, (if (symbolp method) (symbol-name method) method))
      (:scheme ,scheme)
