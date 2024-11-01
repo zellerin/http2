@@ -262,6 +262,10 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   ((class :accessor get-class :initarg :class))
   (:documentation "No payload action defined, and payload received."))
 
+(defmethod print-object ((o no-payload-action) out)
+  (print-unreadable-object (o out :type t)
+    (format out "No payload action defined for ~a" (class-name (class-of (get-class o))))))
+
 (define-condition no-new-header-action (http2-warning)
   ((header :accessor get-header :initarg :header)
    (stream :accessor get-stream :initarg :stream))

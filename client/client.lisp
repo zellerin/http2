@@ -27,7 +27,7 @@
        (content-fn (when content (curry #'write-sequence content)))
        (content-type "text/plain; charset=utf-8")
        (charset (extract-charset-from-content-type content-type))
-       gzip-content end-headers-fn end-stream-fn &allow-other-keys)
+       gzip-content end-headers-fn &allow-other-keys)
   "Return HTTP-STREAM object that represent a request sent on HTTP-CONNECTION.
 
 The stream does not necessarily contain response when returned. You can read its
@@ -53,7 +53,7 @@ Parameters:
                                          :gzip-content gzip-content
                                          :additional-headers additional-headers)
                         :end-stream (null (or content content-fn))
-                        :stream-pars `(:end-headers-fn ,end-headers-fn :end-stream-fn ,end-stream-fn))))
+                        :stream-pars `(:end-headers-fn ,end-headers-fn))))
     (when content-fn
       (let ((out (make-transport-output-stream raw-stream charset nil)))
         (funcall content-fn out)
@@ -77,7 +77,7 @@ Parameters:
   (with-output-to-string (*standard-output*)
     (mapc 'princ (nreverse (http2::get-text http-stream)))))
 
-(defmethod http2::apply-text-data-frame ((stream vanilla-client-stream) text)
+(defmethod http2::apply-text-data-frame ((stream text-collecting-stream) text)
   (push text (http2::get-text stream)))
 
 (defun retrieve-url-using-network-stream (network-stream parsed-url
@@ -87,8 +87,7 @@ Parameters:
                                           &allow-other-keys)
   "Open an HTTP/2 connection over NETWORK-STREAM and use it to request URL."
 
-  (with-http2-connection (connection connection-class
-                                     :network-stream network-stream)
+  (with-http2-connection (connection connection-class network-stream)
     (maybe-send-pings connection ping)
     (apply #'retrieve-url-using-http-connection connection parsed-url args)
     (restart-case

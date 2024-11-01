@@ -22,13 +22,13 @@
   (utf8-parser-mixin class)
   (extract-charset-from-content-type function))
 
-
-(defmacro with-http2-connection ((name class &rest params) &body body)
+(defmacro with-http2-connection ((name class lisp-stream &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters."
-  `(let ((,name (make-instance ,class ,@params)))
+  `(let ((,name (make-instance ,class :network-stream ,lisp-stream ,@params)))
      (unwind-protect
           (progn ,@body)
-       (process-pending-frames ,name t))))
+       (when ,name
+         (process-pending-frames ,name t)))))
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))
