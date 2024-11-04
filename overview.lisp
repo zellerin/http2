@@ -41,17 +41,47 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
 (in-package http2/server-example)
 (mgl-pax:defsection @hello-world-server
     (:title "Hello World server")
-  "Let us make a server that serves a \"Hello World\" web page. First, we define the handler to serve the page for URL \"/\":
+  "You can start empty server on a port using a TLS key and certificate files:
 
 ```
-(define-exact-handler \"/\"
+(create-https-server port key certificate)
+```
+
+Yes, you need certificate and key for the https protocol, and while you can run
+HTTP/2 over plain socket or even other kind of stream, the https is the only
+practical media for it. It is trivial to generate one with openssl, but still,
+there is a MAYBE-CREATE-CERTIFICATE function as a helper.
+
+CREATE-HTTPS-SERVER creates a multithreading server, that is, each client gets a
+thread to be served in."
+  "The server above does not serve anything useful (unless you consider 404 error useful).
+Let us make it serve a \"Hello World\" web page. First, we define the handler to
+serve the page for URL \"/\":
+
+```
+(define-exact-handler \"/1\"
     (send-text-handler \"/Hello World\"
                        :content-type \"text/plain; charset=UTF-8\"
                        :gzip nil))
 ```
 
 In addition to the DEFINE-EXACT-HANDLER, there is also DEFINE-PREFIX-HANDLER
-that serves the content when only prefix matches.")
+that serves the content when only prefix matches. SEND-TEXT-HANDLER takes a
+string at handler definition time, compiles it to binary payload (i.e., UTF-8
+conversion, compression), and serves the binary payload when requested by the
+client. This is good for a static content."
+  "However, most likely you want to generate at least some content
+dynamically. Macro HANDLER allows this by providing a OUTPUT-STREAM to write to:
+
+```
+(define-exact-handler \"/2\"
+    (handler (foo :utf-8 nil)
+      (with-open-stream (foo foo)
+        (send-headers
+         '((:status \"200\")
+           (\"content-type\" \"text/html; charset=utf-8\")))
+        (format foo \"Hello World, this is random: ~a\" foo (random 10))))
+```")
 
 (in-package http2/client)
 
@@ -76,10 +106,10 @@ WITH-OPEN-STREAM can be used:
 ```
 
 Now that we have a Lisp STREAM to communicate over, we can establish HTTP/2
-connection of class VANILLA-CLIENT-CONNECTION over it, send client request, and then PROCESS-PENDING-FRAMES until
-server fully sends the response. That invokes restart FINISH-STREAM with the
-processed stream that we handle. We can get the data from it using
-DRAKMA-STYLE-STREAM-VALUES.
+connection of class VANILLA-CLIENT-CONNECTION over it, send client request, and
+then PROCESS-PENDING-FRAMES until server fully sends the response. That invokes
+restart FINISH-STREAM with the processed stream that we handle. We can get the
+data from it using DRAKMA-STYLE-STREAM-VALUES.
 
 ```
   (defun my-retrieve-url-using-network-stream (lisp-stream url)
