@@ -1,24 +1,10 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 (in-package http2)
 
 (defsection @server/threaded
     (:title "Threaded server")
   (threaded-dispatch function))
-
-(defun threaded-dispatch (fn tls-stream &rest pars)
-  "Apply FN on the TLS-STREAM and PARS in a new thread
-
-To be used as *DISPATCH-FN* callback for thread-per-connection request handling."
-  (bt:make-thread (lambda ()
-                    (apply fn tls-stream pars))
-                  :name "HTTP/2 connection handler"))
-
-(defvar *dispatch-fn* #'threaded-dispatch
-  "How to call process-server-stream. Default is THREADED-DISPATCH.
-
-The function is called with PROCESS-SERVER-STREAM as the first parameter and its
-parameters following.")
 
 (define-condition not-http2-stream (serious-condition)
   ((tls-stream :accessor get-tls-stream :initarg :tls-stream)
@@ -29,48 +15,6 @@ parameters following.")
              (format stream "The TLS stream ~A is not a HTTP2 stream (ALPN ~s)"
                      (get-tls-stream condition)
                      (get-alpn condition)))))
-
-(defun wrap-to-tls-and-process-server-stream (raw-stream key cert &rest args)
-  "Establish TLS connection over RAW-STREAM, and run PROCESS-SERVER-STREAM over it.
-
-Use TLS KEY and CERT for server identity.
-
-ARGS are passed to PROCESS-SERVER-STREAM that is invoked using *DISPATCH-FN* to
-allow threading, pooling etc.
-
-Wrap call with an error handler for tls-level errors.
-
-Raise error when H2 is not the selected ALPN protocol. In this case, the TLS
-stream is kept open and caller is supposed to either use it or close it."
-  (let ((tls-stream
-          (handler-case
-              (cl+ssl:make-ssl-server-stream
-               raw-stream
-               :certificate cert
-               :key key)
-            (error (e)
-              (print e)
-              (close raw-stream)
-              (return-from wrap-to-tls-and-process-server-stream)))))
-    (cond ((equal "h2" (cl+ssl:get-selected-alpn-protocol tls-stream))
-           (apply *dispatch-fn*
-                  (lambda (tls-stream &rest args)
-                    (handler-case
-                        (unwind-protect
-                             (apply #'process-server-stream tls-stream args)
-                          ;; TODO: do closing properly. This is sometimes second
-                          ;; close and fails, why?
-                          (ignore-errors (close tls-stream)))
-                      (cl+ssl::ssl-error-ssl ()
-                        ;; Just ignore it for now, Maybe it should be
-                        ;; logged if not trivial - but what is trivial and
-                        ;; what is to log?
-                        )))
-                  tls-stream args))
-          (t (warn 'not-http2-stream
-                    :tls-stream tls-stream
-                    :alpn (cl+ssl:get-selected-alpn-protocol tls-stream))
-             (close tls-stream)))))
 
 (cl+ssl::define-ssl-function ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
   :int
@@ -89,7 +33,7 @@ stream is kept open and caller is supposed to either use it or close it."
 Practically, it means:
 - ALPN callback that selects h2 if present,
 - Do not request client certificates
-- Do not allow ssl compression adn renegotiation.
+- Do not allow ssl compression and renegotiation.
 We should also limit allowed ciphers, but we do not."
   (let ((context
           (cl+ssl:make-context
@@ -101,7 +45,7 @@ We should also limit allowed ciphers, but we do not."
            :options (list #x20000 ; +ssl-op-no-compression+
                           cl+ssl::+ssl-op-all+
                           #x40000000) ; no renegotiation
-           ;; do not requiest client cert
+           ;; do not request client cert
            :verify-mode cl+ssl:+ssl-verify-none+)))
     (let ((topdir (asdf:component-pathname (asdf:find-system "http2"))))
       (ssl-ctx-use-certificate-chain-file context (namestring (merge-pathnames "certs/server.crt" topdir)))
@@ -115,10 +59,10 @@ We should also limit allowed ciphers, but we do not."
       (trivial-garbage:finalize context
                                 (lambda () (cl+ssl:ssl-ctx-free (cffi:make-pointer address)))))))
 
+(defvar *h2-tls-context*)
+
 (defun create-https-server (port key cert &key
-                                            (announce-open-fn (constantly nil))
                                             (connection-class 'vanilla-server-connection)
-                                            connection
                                             (host "127.0.0.1"))
   "Open TLS wrapped HTTPS(/2) server on PORT on HOST (localhost by default).
 
@@ -128,54 +72,43 @@ establish TLS.
 ANNOUNCE-OPEN-FN is called, when set, to inform caller that the server is up and
 running. This is used for testing, when we need to have the server running (in a
 thread) to start testing it."
-  (restart-case
-    (usocket:with-server-socket (socket (usocket:socket-listen host port
-                                                               :reuse-address t
-                                                               :backlog 200
-                                                               :element-type '(unsigned-byte 8)))
-      (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
-        (funcall announce-open-fn socket)
-        (loop
-          (wrap-to-tls-and-process-server-stream
-           (usocket:socket-stream
-            (handler-case
-                (usocket:socket-accept socket :element-type '(unsigned-byte 8))
-              ;; ignore condition
-              (usocket:connection-aborted-error ())))
-           key cert :connection-class connection-class :connection connection))))
-    (kill-server (&optional value)
-      :report "Kill server"
-      value)))
+  (create-server port 'tls-single-client-dispatcher :key key :certificate cert
+                                                    :host host
+                                                    :connection-class connection-class))
 
-(defvar *http2-tls-context* nil
-  "TLS context to use for our servers.")
-
-(defun wrap-to-tls (raw-stream)
-  "Return a binary stream representing TLS server connection over RAW-STREAM.
-
-Use TLS KEY and CERT for server identity, and *HTTP2-TLS-CONTEXT* for the contex.
-
-This is a simple wrapper over CL+SSL."
-  (let* ((topdir (asdf:component-pathname (asdf:find-system "http2")))
-         (tls-stream
-           (cl+ssl:make-ssl-server-stream
-            (usocket:socket-stream raw-stream)
-            :certificate
-            (namestring (merge-pathnames #P"certs/server.crt" topdir))
-            :key (namestring (merge-pathnames #P"certs/server.key" topdir)))))
-    tls-stream))
-
+
+;;;; TLS dispatcher
 (defclass tls-dispatcher-mixin ()
-  ((tls :reader get-tls :initform :tls
-        :allocation :class)))
+  ((tls              :reader   get-tls              :initform :tls
+                     :allocation :class)
+   (certificate-file :accessor get-certificate-file :initarg  :certificate-file)
+   (private-key-file :accessor get-private-key-file :initarg  :private-key-file))
+  (:documentation "Adds TLS layer to the created sockets."))
 
-(defmethod wrap-server-socket (socket (dispatcher tls-dispatcher-mixin))
-  (wrap-to-tls socket))
+(defmethod server-socket-stream (socket (dispatcher tls-dispatcher-mixin))
+  "The cl-ssl server socket."
+  (with-slots (certificate-file private-key-file) dispatcher
+    (cl+ssl:with-global-context (*h2-tls-context* :auto-free-p nil)
+          (cl+ssl:make-ssl-server-stream
+     (call-next-method)
+     :certificate certificate-file
+     :key private-key-file))))
 
-(defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
+(defmethod start-server-on-socket ((dispatcher tls-dispatcher-mixin) socket)
+  "For a TLS server wrap the global context."
+  (let ((*h2-tls-context* (make-http2-tls-context)))
+    (unwind-protect (call-next-method)
+      (when *h2-tls-context*
+        (cl+ssl:ssl-ctx-free *h2-tls-context*)
+        (setf *h2-tls-context* nil)))))
+
+(defclass tls-single-client-dispatcher (tls-dispatcher-mixin detached-server-mixin single-client-dispatcher)
   ())
 
 (defclass threaded-dispatcher (base-dispatcher)
+  ())
+
+(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin detached-server-mixin)
   ())
 
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
@@ -183,12 +116,13 @@ This is a simple wrapper over CL+SSL."
                                        :element-type '(unsigned-byte 8))))
     (bt:make-thread
      (lambda ()
-       (with-open-stream (stream (wrap-server-socket socket dispatcher))
+       (with-open-stream (stream (server-socket-stream socket dispatcher))
          (process-server-stream stream
                                 :connection-class (get-connection-class dispatcher))))
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
 
+#+obsolete
 (defun create-http-server (port &key
                                   (announce-open-fn (constantly nil))
                                   (connection-class 'vanilla-server-connection))

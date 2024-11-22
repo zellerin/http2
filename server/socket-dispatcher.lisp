@@ -59,13 +59,15 @@ this package. The default value is intentionally unspecified."
   (when (symbolp dispatcher)
     (setf dispatcher (apply #'make-instance dispatcher :allow-other-keys t keys)))
   (restart-case
-      (usocket:with-socket-listener (listening-socket host port
-                                                      :reuse-address t
-                                                      :element-type '(unsigned-byte 8))
-        (funcall announce-url-callback (url-from-socket listening-socket host
-                                                        (get-tls dispatcher)))
-        (loop
-          (do-new-connection listening-socket dispatcher)))
+      (let ((listening-socket (usocket:socket-listen host port
+                                                     :reuse-address t
+                                                     :element-type '(unsigned-byte 8))))
+        (start-server-on-socket dispatcher listening-socket)
+        #+nil(server-startup-wrapper dispatcher
+                                (lambda (dispatcher socket)
+                                  (loop
+                                    (do-new-connection socket dispatcher)))
+                                listening-socket))
     (kill-server (&optional value) :report "Kill server" value)))
 
 (defun url-from-socket (socket host tls)
@@ -167,11 +169,10 @@ connection and be ready to serve another client.
 Obviously, there is little overhead and this version is actually pretty fast -
 for one client and in ideal conditions (especially with request pilelining)."))
 
-(defmethod wrap-server-socket (socket dispatcher)
+(defmethod server-socket-stream (socket dispatcher)
   (usocket:socket-stream socket))
 
 (defmethod do-new-connection (listening-socket (dispatcher single-client-dispatcher))
   (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
                                                                :element-type '(unsigned-byte 8)))
-
-    (process-server-stream (wrap-server-socket plain dispatcher) :connection-class (get-connection-class dispatcher))))
+    (process-server-stream (server-socket-stream plain dispatcher) :connection-class (get-connection-class dispatcher))))
