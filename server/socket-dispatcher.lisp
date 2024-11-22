@@ -23,11 +23,22 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (*buffer* variable)
   (unsupported-server-setup condition))
 
+(defclass detached-server-mixin ()
+  ())
+
+(defgeneric start-server-on-socket (dispatcher socket)
+  (:method (dispatcher listening-socket)
+    (usocket:with-server-socket (socket listening-socket)
+      (loop
+        (do-new-connection listening-socket dispatcher))))
+  (:method ((dispatcher detached-server-mixin) socket)
+    (values (bordeaux-threads:make-thread (lambda () (call-next-method)) :name "HTTP(s) server thread")
+            socket)))
+
 (defun create-server (port dispatcher
                       &rest keys
                       &key
                         (host "127.0.0.1")
-                        (announce-url-callback (constantly nil))
                       &allow-other-keys)
   "Create a server on HOST and PORT that handles connections using DISPATCH-METHOD.
 
