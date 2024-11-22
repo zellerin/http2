@@ -60,7 +60,14 @@ protocol (H2 by default)."
    "Mixin that collect all the received body (possibly unzipped data frames
 converted to proper encoding) into a TEXT slot."))
 
-(defclass vanilla-client-stream (http2::utf8-parser-mixin
+(defclass fallback-all-is-ascii ()
+  ())
+
+(defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
+  (apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
+
+(defclass vanilla-client-stream (utf8-parser-mixin
+                                 fallback-all-is-ascii
                                  http2::gzip-decoding-mixin
                                  client-stream
                                  http2::header-collecting-mixin
