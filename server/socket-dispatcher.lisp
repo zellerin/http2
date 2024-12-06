@@ -21,7 +21,9 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (url-from-port function)
   ;; TODO: remove/fix
   (*buffer* variable)
-  (unsupported-server-setup condition))
+  (unsupported-server-setup condition)
+  (server-socket-stream generic-function)
+  (start-server-on-socket generic-function))
 
 (defclass detached-server-mixin ()
   ())

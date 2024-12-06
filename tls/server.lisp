@@ -4,7 +4,10 @@
 
 (defsection @server/threaded
     (:title "Threaded server")
-  (threaded-dispatch function))
+  (make-http2-tls-context function)
+  (create-https-server function)
+  (@server-classes section)
+  (@server-actions section))
 
 (define-condition not-http2-stream (serious-condition)
   ((tls-stream :accessor get-tls-stream :initarg :tls-stream)
