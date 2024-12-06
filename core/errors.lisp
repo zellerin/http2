@@ -22,6 +22,11 @@
 (define-condition client-preface-mismatch (http2-error)
   ((received :accessor get-received :initarg :received)))
 
+(defmethod print-object ((err client-preface-mismatch) out)
+  (with-slots (received) err
+    (print-unreadable-object (err out :type t)
+      (format out "~a ~a" received  (map 'string 'code-char received)))))
+
 (defmethod print-object ((err go-away) out)
   (with-slots (error-code debug-data last-stream-id) err
     (print-unreadable-object (err out :type t)
