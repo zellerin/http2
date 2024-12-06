@@ -34,7 +34,9 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
       (loop
         (do-new-connection listening-socket dispatcher))))
   (:method ((dispatcher detached-server-mixin) socket)
-    (values (bordeaux-threads:make-thread (lambda () (call-next-method)) :name "HTTP(s) server thread")
+    (values (bordeaux-threads:make-thread
+             #'call-next-method
+             :name "HTTP(s) server thread")
             socket)))
 
 (defun create-server (port dispatcher
