@@ -173,8 +173,13 @@ connection and be ready to serve another client.
 Obviously, there is little overhead and this version is actually pretty fast -
 for one client and in ideal conditions (especially with request pilelining)."))
 
-(defmethod server-socket-stream (socket dispatcher)
-  (usocket:socket-stream socket))
+
+(defgeneric server-socket-stream (socket dispatcher)
+  (:method (socket dispatcher)
+    (usocket:socket-stream socket))
+  (:documentation
+   "Make a Lisp stream from a socket. This is primarily used as a hook to insert TLS
+layer when needed."))
 
 (defmethod do-new-connection (listening-socket (dispatcher single-client-dispatcher))
   (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
