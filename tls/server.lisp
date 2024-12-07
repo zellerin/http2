@@ -95,14 +95,7 @@ and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT.")
     (cl+ssl:make-ssl-server-stream
      (call-next-method)
      :certificate certificate-file
-     :key private-key-file))
-
-  #+nil(with-slots (certificate-file private-key-file) dispatcher
-    (cl+ssl:with-global-context (*h2-tls-context* :auto-free-p nil)
-      (cl+ssl:make-ssl-server-stream
-       (call-next-method)
-       :certificate certificate-file
-       :key private-key-file))))
+     :key private-key-file)))
 
 "For a TLS server wrap the global context."
 (defmethod start-server-on-socket ((server tls-dispatcher-mixin) socket)
@@ -112,7 +105,8 @@ and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT.")
 (defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
   ())
 
-(defclass tls-detached-single-client-dispatcher (tls-dispatcher-mixin detached-server-mixin single-client-dispatcher)
+
+(defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
   ())
 
 (defclass threaded-dispatcher (base-dispatcher)
@@ -123,7 +117,7 @@ and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT.")
 (defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
   ())
 
-(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
+(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
   ())
 
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
