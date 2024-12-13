@@ -140,6 +140,8 @@ Endpoints are defined to cover some situations:
                              :output-file "/tmp/foo2.clasp")
           (bordeaux-threads:destroy-thread thread))))))
 
-(delete-file "/tmp/real-life-targets.clasp")
+(ignore-errors(delete-file "/tmp/real-life-targets.clasp"))
 (run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
-(test-servers)
+
+(http2/server-example::maybe-create-certificate "certs/server.key" "certs/server.crt" :system "http2")
+(test-servers 0)
