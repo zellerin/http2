@@ -1,4 +1,4 @@
-(in-package http2)
+(in-package http2/stream-overlay)
 
 (mgl-pax:defsection @stream-based-connection
     (:title "Connections using CL streams")

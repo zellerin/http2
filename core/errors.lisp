@@ -1,4 +1,40 @@
-(in-package :http2)
+(in-package :http2/core)
+
+;;;; Error codes
+(defvar *error-codes*
+  (macrolet ((defcode (name code documentation)
+               `(progn
+                  (defconstant ,name ,code ,documentation))))
+    (vector
+     (defcode +no-error+            0  "graceful shutdown")
+     (defcode +protocol-error+      1  "protocol error detected")
+     (defcode +internal-error+      2  "implementation fault")
+     (defcode +flow-control-error+  3  "flow-control limits exceeded")
+     (defcode +settings-timeout+    4  "settings not acknowledged")
+     (defcode +stream-closed+       5  "frame received for closed stream")
+     (defcode +frame-size-error+    6  "frame size incorrect")
+     (defcode +refused-stream+      7  "stream not processed")
+     (defcode +cancel+              8  "stream cancelled")
+     (defcode +compression-error+   9  "compression state not updated")
+     (defcode +connect-error+       #xa  "tcp connection error for connect method")
+     (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
+     (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
+     (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request")))
+
+  "This table maps error codes to mnemonic names - symbols.
+
+   Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
+   frames to convey the reasons for the stream or connection error.
+
+   Error codes share a common code space.  Some error codes apply only
+   to either streams or the entire connection and have no defined
+   semantics in the other context.")
+
+(defun get-error-name (code)
+  "Get HTTP/2 error name from the error code."
+  (if (<= 0 code #xd)
+      (aref *error-codes* code)
+      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
 
 (defsection @errors
     (:title "Errors handlers")
@@ -41,17 +77,6 @@
 Use [CONNECTION-ERROR][function] function to signal it or its
 subclasses. Application must handle it, including closing associated
 NETWORK-STREAM."))
-
-(defun connection-error (class connection &rest args)
-  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
-NETWORK-STREAM used."
-  (let ((err (apply #'make-condition class :connection connection args)))
-    (with-slots (code) err
-      (write-goaway-frame connection
-                          0             ; fixme: last processed stream
-                          code
-                          (map 'vector 'char-code (symbol-name class))))
-    (error err)))
 
 (defmethod print-object ((ce connection-error) out)
   (print-unreadable-object (ce out :type t)
@@ -140,15 +165,6 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
         (format out "~a on ~s"
                 (documentation (aref *error-codes* code) 'variable)
                 stream))))
-
-(defun http-stream-error (e stream &rest args)
-  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise appropriate warning in case someone is interested, close affected stream, and continue."
-  (let ((e (apply #'make-instance e :stream stream args)))
-    (unless (eql stream :closed)
-      (write-rst-stream-frame stream (get-code e))
-      (force-output (get-network-stream stream)))
-    (warn e)
-    (close-http2-stream stream)))
 
 (define-condition incorrect-frame-size (http-stream-error)
   ()

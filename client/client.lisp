@@ -1,8 +1,4 @@
-;;;; Copyright 2022 by Tomáš Zellerin
-
-(mgl-pax:define-package :http2/client
-  (:use :cl :http2 :alexandria)
-  (:export #:retrieve-url))
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
 (in-package :http2/client)
 
@@ -15,9 +11,9 @@
 
 (defun maybe-send-pings (connection ping)
   (typecase ping
-    (integer (dotimes (i ping) (send-ping connection)))
+    (integer (dotimes (i ping) (http2/core::send-ping connection)))
     (null)
-    (t (send-ping connection))))
+    (t (http2/core::send-ping connection))))
 
 (defun retrieve-url-using-http-connection
     (http-connection parsed-url
@@ -45,8 +41,8 @@ Parameters:
 - if GZIP-CONTENT is set, the appropriate header is send, and the stream for
   CONTENT-FN is compressed transparently."
   (let ((raw-stream
-          (http2::open-http2-stream http-connection
-                        (request-headers method
+          (http2/stream-overlay::open-http2-stream http-connection
+                        (http2/hpack:request-headers method
                                          (puri:uri-path parsed-url)
                                          (puri:uri-host parsed-url)
                                          :content-type content-type
@@ -62,7 +58,7 @@ Parameters:
 
 (defun make-transport-output-stream (http2-stream charset gzip)
   "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
-  (let* ((transport (make-instance 'http2::payload-output-stream :base-http2-stream http2-stream)))
+  (let* ((transport (make-instance 'http2/stream-overlay::payload-output-stream :base-http2-stream http2-stream)))
     (when gzip
       (setf transport (gzip-stream:make-gzip-output-stream transport)))
     (when charset
@@ -75,10 +71,10 @@ Parameters:
 (defun http-stream-to-vector (http-stream)
   ;; 20240611 TODO: document
   (with-output-to-string (*standard-output*)
-    (mapc 'princ (nreverse (http2::get-text http-stream)))))
+    (mapc 'princ (nreverse (get-text http-stream)))))
 
-(defmethod http2::apply-text-data-frame ((stream text-collecting-stream) text)
-  (push text (http2::get-text stream)))
+(defmethod http2/core::apply-text-data-frame ((stream text-collecting-stream) text)
+  (push text (get-text stream)))
 
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
@@ -91,7 +87,7 @@ Parameters:
     (maybe-send-pings connection ping)
     (apply #'retrieve-url-using-http-connection connection parsed-url args)
     (restart-case
-             (http2::process-pending-frames connection nil)
+             (http2/stream-overlay::process-pending-frames connection nil)
            (finish-stream (stream)
              (drakma-style-stream-values stream)))))
 
@@ -109,10 +105,10 @@ but kept for compatibility purposes.
 - reason phrase (bogus value)"
   (values
    (http-stream-to-vector raw-stream)
-   (parse-integer (get-status raw-stream))
-   (get-headers raw-stream)
+   (parse-integer (http2/core::get-status raw-stream))
+   (http2/core::get-headers raw-stream)
    "/"
-   (get-connection raw-stream)
+   (http2/core::get-connection raw-stream)
    close-stream
    "HTTP2 does not provide reason phrases"))
 

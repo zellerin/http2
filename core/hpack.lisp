@@ -19,7 +19,11 @@
   (request-headers function)
   (update-dynamic-table-size function)
   (*use-huffman-coding-by-default* variable)
-  (header-writer function))
+  (header-writer function)
+  (hpack-context class)
+  (get-dynamic-table-size generic-function)
+  (request-headers function)
+  (get-updates-needed generic-function))
 
 (defvar static-headers-table
   (vector
@@ -281,7 +285,7 @@ Use Huffman when HUFFMAN is true."
 not, the headers are stored in the dynamic table and the CONTEXT it is updated
 appropriately.
 
-Presently returns list of arrays, may return single array in future. In any case, the result should be usable as the appropriate parameter for HTTP2::WRITE-HEADERS-FRAME."
+Presently returns list of arrays, may return single array in future. In any case, the result should be usable as the appropriate parameter for WRITE-HEADERS-FRAME."
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
     initially (when context
@@ -363,7 +367,7 @@ Return the fillable vector."
 (defun read-huffman (stream len)
   "Read Huffman coded text of length LEN from STREAM."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
-  (loop with res = (http2::make-octet-buffer len)
+  (loop with res = (make-octet-buffer len)
         for i from 0 to (1- len)
         do (setf (aref res i) (read-byte* stream))
         finally (return (decode-huffman res))))

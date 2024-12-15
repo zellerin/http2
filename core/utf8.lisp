@@ -1,4 +1,8 @@
-(in-package http2)
+(in-package http2/core)
+
+(defsection @utf8
+    (:title "UTF-8 streams")
+  (utf8-parser-mixin class))
 
 (defun utf-is-first-char (octet)
   (not (= (logand octet #xc0) #x80)))
@@ -14,9 +18,20 @@
 
 (defun is-utf8-p (headers)
   "Test headers to see if the encoding is UTF-8."
-  (eq :utf-8 (extract-charset-from-content-type
-              (cdr (assoc "content-type" headers
-                          :test 'string-equal)))))
+  (let ((content-type (cdr (assoc "content-type" headers
+                                  :test 'string-equal))))
+    (anaphora:acond
+      ((null content-type)
+       (warn "No content type specified, using UTF-8")
+       nil)
+      ((search #1="charset=" content-type)
+       (string-equal "UTF-8" (subseq content-type (+ (length #1#) it))))
+      ((alexandria:starts-with-subseq "text/" content-type)
+       (warn "Text without specified encoding, guessing utf-8")
+       t)
+      ;; see RFC8259. Note that there should not be charset in json CT
+      ((string-equal content-type "application/json") t)
+      (t nil))))
 
 (defgeneric apply-text-data-frame (stream text))
 

@@ -1,4 +1,6 @@
-(in-package http2)
+(in-package http2/core)
+
+;;;; FIXME: document the role of this file and classes
 
 (defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream binary-stream)
   ((output-buffer   :accessor get-output-buffer))
@@ -33,7 +35,7 @@
   ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
   (:default-initargs :window-size-increment-callback nil))
 
-(defmethod http2::apply-window-size-increment :after ((object multi-part-data-stream) increment)
+(defmethod apply-window-size-increment :after ((object multi-part-data-stream) increment)
   (with-slots (window-size-increment-callback) object
     (when window-size-increment-callback
       (funcall window-size-increment-callback object))))

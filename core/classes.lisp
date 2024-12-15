@@ -1,6 +1,6 @@
 ;;;; Copyright 2022-2024 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/core)
 
 (defsection @base-classes
     (:title "Classes")
@@ -16,7 +16,8 @@ make your class using appropriate mixins.
   (http2-connection class)
   #+nil  (http2-stream class)
   (get-stream-class generic-function)
-  (open-http2-stream function))
+  (open-http2-stream function)
+  (get-network-stream function))
 
 (defgeneric get-stream-class (connection)
   (:documentation "Called when new connection stream is created to get its class."))
@@ -310,22 +311,6 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
                          :end-headers end-headers)
     (setf (get-updates-needed (get-compression-context connection)) nil))
   stream)
-
-(defun peer-opens-http-stream-really-open (connection stream-id state)
-  (unless (> stream-id (get-last-id-seen connection))
-    (connection-error 'new-stream-id-too-low connection
-                      :stream-id stream-id
-                      :max-seen-so-far (get-last-id-seen connection)))
-    ;; todo: count and check open streams
-  (setf (get-last-id-seen connection) stream-id)
-  (push (make-instance (get-stream-class connection)
-                         :stream-id stream-id
-                         :state state
-                         :window-size (get-initial-window-size connection)
-                         :peer-window-size (get-initial-peer-window-size connection)
-                         :connection connection)
-          (get-streams connection))
-  (car (get-streams connection)))
 
 (defgeneric is-our-stream-id (connection stream-id)
   (:documentation

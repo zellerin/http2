@@ -3,7 +3,7 @@
 ;;;; define VANILLA-CLIENT-CONNECTION with relatively sane client side
 ;;;; behaviour. Define WITH-HTTP-CONNECTION macro that allows to talk to other
 ;;;; ports.
-(in-package :http2)
+(in-package :http2/client)
 
 (mgl-pax:defsection @client
   (:title "Creating a client")
@@ -28,7 +28,7 @@
      (unwind-protect
           (progn ,@body)
        (when ,name
-         (process-pending-frames ,name t)))))
+         (http2/stream-overlay::process-pending-frames ,name t)))))
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))
@@ -42,10 +42,10 @@ protocol (H2 by default)."
       (error 'h2-not-supported-by-server :host host :port port))
     stream))
 
-(defclass vanilla-client-connection (client-http2-connection
-                                     stream-based-connection-mixin
-                                     http2::history-printing-object
-                                     http2::timeshift-pinging-connection)
+(defclass vanilla-client-connection (http2/core::client-http2-connection
+                                     http2/stream-overlay:stream-based-connection-mixin
+                                     http2/core::history-printing-object
+                                     http2/core::timeshift-pinging-connection)
   ()
   (:default-initargs :stream-class 'vanilla-client-stream)
   (:documentation
@@ -64,14 +64,14 @@ converted to proper encoding) into a TEXT slot."))
   ())
 
 (defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
-  (apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
+  (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
 
 (defclass vanilla-client-stream (utf8-parser-mixin
                                  fallback-all-is-ascii
-                                 http2::gzip-decoding-mixin
-                                 client-stream
-                                 http2::header-collecting-mixin
-                                 http2::history-printing-object
+                                 http2/core::gzip-decoding-mixin
+                                 http2/core::client-stream
+                                 http2/core::header-collecting-mixin
+                                 http2/core::history-printing-object
                                  text-collecting-stream)
   ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn))
   (:default-initargs :end-headers-fn (constantly nil))

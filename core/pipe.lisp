@@ -1,4 +1,4 @@
-(in-package #:http2)
+(in-package #:http2/utils)
 
 (defsection  @buffer-stream-and-pipes
     (:title "Vector backed streams and (buffered) octet pipes")
@@ -21,6 +21,8 @@ At the moment, it is strictly for the purpose of testing, so not generally usabl
   (make-full-pipe function)
   (pipe-end-for-read class)
   (pipe-end-for-write class)
+  (get-index generic-function)
+  (binary-stream class)
   (@buffer-stream-and-pipes-impl section))
 
 (mgl-pax:defsection @buffer-stream-and-pipes-impl
@@ -29,6 +31,9 @@ At the moment, it is strictly for the purpose of testing, so not generally usabl
   (trivial-gray-streams:stream-read-byte (method () (pipe-end-for-read)))
   (trivial-gray-streams:stream-listen (method () (pipe-end-for-read)))
   (trivial-gray-streams:stream-write-byte (method () (pipe-end-for-write t))))
+
+(defclass binary-stream ()
+  ())
 
 (defclass pipe-end-for-read (binary-stream trivial-gray-streams:fundamental-binary-input-stream)
   ((buffer :accessor get-buffer :initarg :buffer)

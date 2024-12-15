@@ -1,4 +1,4 @@
-(in-package http2)
+(in-package http2/core)
 
 (defclass gzip-decoding-mixin ()
   ((dstate :accessor get-dstate :initarg :dstate)))
@@ -14,7 +14,7 @@
   (write-window-update-frame stream (- end start))
   ;; 20240607 TODO: test on dstate, not on header
 
-  (if (equal (cdr (assoc "content-encoding" (http2:get-headers stream) :test 'equal)) "gzip")
+  (if (equal (cdr (assoc "content-encoding" (get-headers stream) :test 'equal)) "gzip")
       (let* ((buffer (make-array 4096 :element-type '(unsigned-byte 8))))
         (loop
           (multiple-value-bind (consumed produced)

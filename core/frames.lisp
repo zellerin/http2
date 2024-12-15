@@ -1,9 +1,52 @@
-;;;; Copyright 2022, 2023, 2024 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/core)
+
+
+(defstruct priority
+  "Structure capturing stream priority parameters." exclusive stream-dependency weight)
+
+(defgeneric handle-undefined-frame (type flags data))
+(defgeneric get-state (http-stream))
+(defgeneric (setf get-state) (value http-stream))
+(defgeneric queue-frame (connection frame))
+(defgeneric get-stream-class (connection))
+(defgeneric get-initial-peer-window-size (connection))
+(defgeneric get-initial-window-size (connection))
+(defgeneric (setf get-id-to-use) (value connection))
+(defgeneric get-streams (connection))
+(defgeneric (setf get-streams) (value connection))
+(defgeneric is-our-stream-id (connection id))
+(defgeneric get-id-to-use (connection))
+(defgeneric get-window-size (something))
+(defgeneric (setf get-window-size) (value something))
+(defgeneric get-peer-window-size (something))
+(defgeneric (setf get-peer-window-size) (value something))
+(defgeneric handle-undefined-frame (connection type flags data))
+(defgeneric get-last-id-seen (connection))
+(defgeneric (setf get-last-id-seen) (value connection))
+(defgeneric peer-ends-http-stream (stream))
+(defgeneric apply-data-frame (stream data start end))
+(defgeneric get-decompression-context (connection))
+(defgeneric add-header (connection http-stream name value))
+(defgeneric process-end-headers (connection http-stream))
+(defgeneric apply-stream-priority (stream exclusive weight dependency))
+(defgeneric peer-resets-stream (stream reason))
+(defgeneric get-network-stream (stream))
+(defgeneric peer-acks-settings (connection))
+(defgeneric set-peer-setting (connection name value))
+(defgeneric peer-expects-settings-ack (connection))
+
+(defgeneric do-ping (connection data))
+(defgeneric do-pong (connection data))
+(defgeneric do-goaway (connection code last-id data))
+(defgeneric apply-window-size-increment (stream increment))
+(defgeneric handle-alt-svc (connection origin value))
+
+
 
 (defsection @frames-api
-  (:title "API for sending and receiving frames")
+    (:title "API for sending and receiving frames")
   "![image](../frames.png) There are several main low-level components:
 
 - @FRAME-HANDLERS that reads data from some source (typically, a socket) related
@@ -257,7 +300,7 @@ where it is used.")
             (,end (if padded (- ,length (aref data 0)) ,length))
             (,start (if padded 1 0)))
        (when (< ,end ,start)
-         (http2:connection-error 'too-big-padding ,connection))
+         (connection-error 'too-big-padding ,connection))
        ,@body)))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
@@ -406,6 +449,24 @@ passed to the make-instance"
   (setf (aref vector (incf start))  (ldb (byte 8 0) stream-id))
   vector)
 
+(defun peer-opens-http-stream-really-open (connection stream-id state)
+  (unless (> stream-id (get-last-id-seen connection))
+    (connection-error 'new-stream-id-too-low connection
+                      :stream-id stream-id
+                      :max-seen-so-far (get-last-id-seen connection)))
+    ;; todo: count and check open streams
+  (setf (get-last-id-seen connection) stream-id)
+  (push (make-instance (get-stream-class connection)
+                         :stream-id stream-id
+                         :state state
+                         :window-size (get-initial-window-size connection)
+                         :peer-window-size (get-initial-peer-window-size connection)
+                         :connection connection)
+          (get-streams connection))
+  (car (get-streams connection)))
+
+
+
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
 
@@ -525,8 +586,7 @@ and size of data that the following function expects."
                         :max-frame-size (get-max-frame-size connection)))
     (if (plusp R) (warn 'reserved-bit-set))
     (let* ((stream-or-connection
-             (find-http-stream-by-id connection http-stream frame-type-object))
-           (flag-keywords (frame-type-flag-keywords frame-type-object)))
+             (find-http-stream-by-id connection http-stream frame-type-object)))
       (cond
         ((zerop length)
          ;; e.g., empty HEADER-FRAME still can have end-streams or end-headers flag
@@ -793,6 +853,16 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
       (peer-resets-stream http-stream (aref/wide data 0 4))
       (values #'parse-frame-header 9)))
 
+(defun http-stream-error (e stream &rest args)
+  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise appropriate warning in case someone is interested, close affected stream, and continue."
+  (let ((e (apply #'make-instance e :stream stream args)))
+    (unless (eql stream :closed)
+      (write-rst-stream-frame stream (get-code e))
+      (force-output (get-network-stream stream)))
+    (warn e)
+    (close-http2-stream stream)))
+
+
 
 (define-frame-type 4 :settings-frame
     "```
@@ -815,15 +885,15 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     ;; writer
     (lambda (buffer start settings)
       (loop
-            for i from start by 6
-            and setting in settings
-            do
-               (setf (aref/wide buffer i 2)
-                     (if (numberp (car setting)) (car setting)
-                         (find-setting-code (car setting)))
-                     (aref/wide buffer (+ i 2) 4)
-                     (cdr setting))
-            finally (return buffer)))
+        for i from start by 6
+        and setting in settings
+        do
+           (setf (aref/wide buffer i 2)
+                 (if (numberp (car setting)) (car setting)
+                     (find-setting-code (car setting)))
+                 (aref/wide buffer (+ i 2) 4)
+                 (cdr setting))
+        finally (return buffer)))
     ;;reader
     (lambda (connection data http-stream flags)
 
@@ -1016,6 +1086,17 @@ do."
         (do-goaway connection (get-error-name error-code) last-id data))
       (invoke-restart 'close-connection)))
 
+(defun connection-error (class connection &rest args)
+  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
+NETWORK-STREAM used."
+  (let ((err (apply #'make-condition class :connection connection args)))
+    (with-slots (code) err
+      (write-goaway-frame connection
+                          0             ; fixme: last processed stream
+                          code
+                          (map 'vector 'char-code (symbol-name class))))
+    (error err)))
+
 (define-frame-type 8 :window-update-frame
     "```
     +-+-------------------------------------------------------------+
@@ -1115,8 +1196,7 @@ expected, and then it is parsed by a different function."
            (error "Expected continuation for ~d, got ~d" http-stream
                   expected-stream-id))
          ;; Note: we use headers-frame for this...
-         (let* ((stream-or-connection expected-stream)
-                (flag-keywords (frame-type-flag-keywords frame-type-object)))
+         (let* ((stream-or-connection expected-stream))
            (cond
              ((and (get-flag flags :end-headers) (zerop length))
               ;; empty HEADER-FRAME still can have end-streams or end-headers flag

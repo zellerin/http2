@@ -1,4 +1,4 @@
-(in-package http2)
+(in-package http2/stream-overlay)
 
 ;;;; What does "stream" mean here?
 ;;;;
@@ -13,9 +13,6 @@
 ;;;; 6. and over it we have a flexi stream with charset encoding
 ;;;; -> transport stream
 ;;;;
-
-(defclass binary-stream ()
-  ())
 
 (defmethod stream-element-type ((stream binary-stream))
   '(unsigned-byte 8))
@@ -291,5 +288,5 @@ Guess encoding and need to gunzip from headers:
 - apply zip decompression if gzip is set
 - if charset is not null, use it to convert to text."
   (make-transport-input-stream-from-stream
-   (make-instance 'http2::payload-input-stream :base-http2-stream raw-stream)
+   (make-instance 'payload-input-stream :base-http2-stream raw-stream)
    charset gzip))

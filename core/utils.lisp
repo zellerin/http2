@@ -1,6 +1,6 @@
-;;;; Copyright 2022, 2023 by Tomáš Zellerin
+;;;; Copyright 2022-2024 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/utils)
 
 (defsection @utils (:title "Utilities")
   (read-bytes function)
@@ -12,17 +12,15 @@
   (find-setting-by-id function)
 
   (stream-id type)
-  (http2-stream-state type))
+  (http2-stream-state type)
+
+  (make-octet-buffer function)
+  (aref/wide function)
+  (vector-from-hex-text function))
 
 (declaim (inline make-octet-buffer))
 (defun make-octet-buffer (size)
   (make-array size :element-type '(unsigned-byte 8)))
-
-#+obsolete
-(defvar *bytes-left* nil "Number of bytes left in frame")
-
-#+obsolete
-(defvar *when-no-bytes-left-fn* nil "Function to call when no bytes are left. Either errors or calls continuations.")
 
 #|
 The size of a frame payload is limited by the maximum size that a
@@ -84,43 +82,6 @@ setting can have any value between 2^14 (16,384) and 2^24-1
         for i from 0 to (1- (length prefix)) by 2
         collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
         finally (return (map 'simple-vector 'identity l))))
-
-;;;; Error codes
-(defvar *error-codes*
-  (macrolet ((defcode (name code documentation)
-               `(progn
-                  (defconstant ,name ,code ,documentation))))
-    (vector
-     (defcode +no-error+            0  "graceful shutdown")
-     (defcode +protocol-error+      1  "protocol error detected")
-     (defcode +internal-error+      2  "implementation fault")
-     (defcode +flow-control-error+  3  "flow-control limits exceeded")
-     (defcode +settings-timeout+    4  "settings not acknowledged")
-     (defcode +stream-closed+       5  "frame received for closed stream")
-     (defcode +frame-size-error+    6  "frame size incorrect")
-     (defcode +refused-stream+      7  "stream not processed")
-     (defcode +cancel+              8  "stream cancelled")
-     (defcode +compression-error+   9  "compression state not updated")
-     (defcode +connect-error+       #xa  "tcp connection error for connect method")
-     (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
-     (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
-     (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request")))
-
-  "This table maps error codes to mnemonic names - symbols.
-
-   Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
-   frames to convey the reasons for the stream or connection error.
-
-   Error codes share a common code space.  Some error codes apply only
-   to either streams or the entire connection and have no defined
-   semantics in the other context.")
-
-(defun get-error-name (code)
-  "Get HTTP/2 error name from the error code."
-  (if (<= 0 code #xd)
-      (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
-
 
 ;;;; Settings
 (defvar *settings*
@@ -245,6 +206,3 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   '(member idle open closed
     half-closed/local half-closed/remote
     reserved/local reserved/remote))
-
-(defstruct priority
-  "Structure capturing stream priority parameters." exclusive stream-dependency weight)
