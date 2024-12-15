@@ -39,16 +39,45 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
              :name "HTTP(s) server thread")
             socket)))
 
+(defvar *vanilla-server-dispatcher* 'http2::detached-tls-threaded-dispatcher)
+(defvar *vanilla-host* "localhost")
+
+(defun find-private-key-file (hostname)
+  (let* ((key-name (make-pathname :name hostname :defaults "/tmp/foo.key"))
+         (cert-name (make-pathname :type "crt" :defaults key-name)))
+    (unless (probe-file key-name)
+      (http2/server-example::maybe-create-certificate key-name cert-name :base "/tmp"))
+    key-name))
+
+(defun find-certificate-file (keypath)
+  (or
+   (probe-file (make-pathname :type "crt" :defaults keypath))
+   (error "Cannot find cert file")))
+
+(defun start (port &key
+                     (host *vanilla-host*)
+                     (dispatcher *vanilla-server-dispatcher*)
+                     (certificate-file 'find-certificate-file)
+                     (private-key-file 'find-private-key-file))
+  "High-level user interface to start a HTTP/2 server.
+
+Tries to use sensible defaults:
+- *VANILLA-SERVER-DISPATCHER* for the dispatcher class,"
+  (when (symbolp private-key-file)
+    (setf private-key-file (namestring (funcall private-key-file host))))
+  (when (symbolp certificate-file)
+    (setf certificate-file (namestring (funcall certificate-file private-key-file))))
+  (create-server port dispatcher
+                 :certificate-file certificate-file
+                 :private-key-file private-key-file
+                 :host host))
+
 (defun create-server (port dispatcher
                       &rest keys
                       &key
                         (host "127.0.0.1")
                       &allow-other-keys)
   "Create a server on HOST and PORT that handles connections using DISPATCH-METHOD.
-
-ANNOUNCE-URL-CALLBACK is called when server is set up on the TCP level and
-receives one parameter, URL that server listens on. The idea is to be able to connect
-to server when PORT is 0, that is, random port, especially for automated tests.
 
 Establishes restart KILL-SERVER to close the TCP connection and return.
 
@@ -57,21 +86,14 @@ returns This function also receives the listening socket and TLS and
 DISPATCH-METHOD as parameters.
 
 Additional keyword parameters are allowed; they are defined and consumed by
-individual connection methods. One of them is FULL-HTTP. Some methods use that
-to use HTTP/2 library instead of simplified HTTP/2 implementation defined in
-this package. The default value is intentionally unspecified."
+the dispatcher."
   (when (symbolp dispatcher)
     (setf dispatcher (apply #'make-instance dispatcher :allow-other-keys t keys)))
   (restart-case
       (let ((listening-socket (usocket:socket-listen host port
                                                      :reuse-address t
                                                      :element-type '(unsigned-byte 8))))
-        (start-server-on-socket dispatcher listening-socket)
-        #+nil(server-startup-wrapper dispatcher
-                                (lambda (dispatcher socket)
-                                  (loop
-                                    (do-new-connection socket dispatcher)))
-                                listening-socket))
+        (start-server-on-socket dispatcher listening-socket))
     (kill-server (&optional value) :report "Kill server" value)))
 
 (defun url-from-socket (socket host tls)
@@ -185,3 +207,15 @@ layer when needed."))
   (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
                                                                :element-type '(unsigned-byte 8)))
     (process-server-stream (server-socket-stream plain dispatcher) :connection-class (get-connection-class dispatcher))))
+
+(defun maybe-create-certificate (key certificate &key system (base
+                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
+  "Generate key and a self-signed certificate to it for localhost using openssl
+cli."
+  (unless (and (probe-file key)
+               (probe-file certificate))
+    (format t "~%Generating temporary certificates")
+    (uiop:run-program
+     `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring (ensure-directories-exist (merge-pathnames key base)))
+                       "-outform" "PEM" "-out" ,(namestring (ensure-directories-exist (merge-pathnames certificate base)))))
+    (terpri)))

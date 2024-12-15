@@ -18,8 +18,7 @@ The second question - how to handle incoming TCP connections - has several imple
   (define-exact-handler mgl-pax:macro)
   (send-text-handler function)
   (redirect-handler function)
-  (@server/threaded section)
-  )
+  (@server/threaded section))
 
 (defclass dispatcher-mixin ()
   ((exact-handlers  :accessor get-exact-handlers  :initarg :exact-handlers)

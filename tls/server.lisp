@@ -126,9 +126,10 @@ and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT.")
     (let ((stream (server-socket-stream socket dispatcher)))
       (bt:make-thread
        (lambda ()
-         (unwind-protect
-              (process-server-stream stream
-                                     :connection-class (get-connection-class dispatcher))
-           (close stream)))
+         (with-open-stream (stream stream)
+           (restart-case
+               (process-server-stream stream
+                                      :connection-class (get-connection-class dispatcher))
+             (kill-client-connection () nil)))) ; FIXME:
        ;; TODO: peer IP and port to name?
        :name "HTTP2 server thread for connection" ))))

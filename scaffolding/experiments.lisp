@@ -116,6 +116,66 @@ the server."
          ("content-type" "text/html; charset=utf-8")))
       (format foo "Hello World, this is random: ~a" (random 10)))))
 
+(define-exact-handler "/3"
+  (handler (foo :utf-8 nil)
+      (send-headers
+       '((:status "200")
+         ("content-type" "text/html; charset=utf-8")))
+    (with-open-stream (foo foo)
+        (cl-who:with-html-output (foo)
+          (:h1 "Hello World")))))
+
+(define-exact-handler "/4"
+    (constant-handler (foo :utf-8 nil
+                           '((:status "200")
+                             ("content-type" "text/html; charset=utf-8")))
+      (cl-who:with-html-output (foo)
+        (:h1 "Hello World"))))
+
+(define-simulator h2load-test
+  :description
+  "Run the h2load test on the URL.
+
+Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
+
+  :system-name "h2load"
+  :start-system (handler-case
+                    (with-saved-warnings
+                      (setf *result*
+                            (list
+                             (unwind-protect
+                                  (uiop:run-program
+                                   (destructuring-bind (iterations threads clients)
+                                       iterations-threads-clients
+                                     `("h2load" ,url
+                                                "-n" ,(princ-to-string iterations)
+                                                "-m" ,(princ-to-string threads)
+                                                "-c" ,(princ-to-string clients)))
+                                   :output :string)))))
+                  #+nil                  (error (e)
+                                           (push e *warnings*)
+                                           (setf *result* (list ""))
+                                           (shutdown-and-run-next-trial))) )
+
+(defclip h2load-req/s ()
+  (:components (min-req/s max-req/s mean-req/s))
+  (multiple-value-bind (match val)
+      (cl-ppcre:scan-to-strings "req/s[ :]*([0-9\\.]+)[ ]*([0-9\\.]+)[ ]*([0-9\\.]+)" (car *result*))
+    (declare (ignore match))
+    (unless val (error "Not proper result: ~a" (car *result*)))
+    (apply 'values (map 'list 'read-from-string val))))
+
+(define-experiment h2load-on-url (url-list n-m-c-list version)
+  :simulator h2load-test
+  :system-version (identity version)
+  :variables ((url in url-list)
+              (iterations-threads-clients in n-m-c-list))
+
+  :instrumentation (h2load-req/s warnings real-time)
+  :after-trial (write-current-experiment-data))
+
+;;; e.g., (run-experiment 'h2load-on-url :args '(("https://www.example.com") ((5 1 1)) 'dummy) :output-file "/tmp/ex.clasp")
+
 (defun test-servers (port)
   "For each of tested server classes, open server on a random PORT (could be 0 for
 testing to select random one, but for tracking changes is better a fixed one),
@@ -125,20 +185,28 @@ Endpoints are defined to cover some situations:
 
 - / - not found"
   (format t "Test servers~%")
-  (dolist (class '(http2::detached-tls-single-client-dispatcher http2::detached-tls-threaded-dispatcher))
-    (multiple-value-bind (thread socket)
-        (create-server 0 class
-                       :certificate-file "certs/server.crt"
-                       :private-key-file "certs/server.key")
-      (let ((base-url (url-from-socket socket "localhost" t)))
-        (unwind-protect
-             (run-experiment 'client-on-many-targets
-                             :args (list (mapcar (lambda (a)
-                                                   (princ-to-string  (puri:merge-uris a base-url)))
-                                                 '("/" "/1" "/2"))
-                                         class)
-                             :output-file "/tmp/foo2.clasp")
-          (bordeaux-threads:destroy-thread thread))))))
+  (let (urls threads)
+    (dolist (class '(http2::detached-tls-single-client-dispatcher http2::detached-tls-threaded-dispatcher))
+      (multiple-value-bind (thread socket)
+          (create-server port class
+                         :certificate-file "certs/server.crt"
+                         :private-key-file "certs/server.key")
+        (push (puri:merge-uris (format nil "~(#~a~)" class) (url-from-socket socket "localhost" t)) urls)
+        (push thread threads)))
+    (unwind-protect
+         (progn
+           (run-experiment 'client-on-many-targets
+                           :args (list (mapcan (lambda (base-url)
+                                                 (mapcar (lambda (a)
+                                                           (princ-to-string (puri:merge-uris a base-url)))
+                                                         '("/" "/1" "/2" "/3")))
+                                               urls)
+                                       'dummy)
+                           :output-file "/tmp/foo2.clasp")
+           (run-experiment 'h2load-on-url :args `(,(mapcar' princ-to-string urls)
+                                                  ((20000 1 1) (20000 10 1)) dummy)
+                                          :output-file "/tmp/h2load.clasp"))
+      (map nil #'bordeaux-threads:destroy-thread threads))))
 
 (ignore-errors(delete-file "/tmp/real-life-targets.clasp"))
 (run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")

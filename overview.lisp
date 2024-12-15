@@ -44,16 +44,12 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
   "You can start empty server on a port using a TLS key and certificate files:
 
 ```
-(create-https-server port key certificate)
+(http2-server:start port)
 ```
 
-Yes, you need certificate and key for the https protocol, and while you can run
-HTTP/2 over plain socket or even other kind of stream, the https is the only
-practical media for it. It is trivial to generate one with openssl, but still,
-there is a MAYBE-CREATE-CERTIFICATE function as a helper.
+It generates a fresh pair of private key and certificate on background, but of
+course, you will want to provide your own certificates."
 
-CREATE-HTTPS-SERVER creates a multithreading server, that is, each client gets a
-thread to be served in."
   "The server above does not serve anything useful (unless you consider 404 error useful).
 Let us make it serve a \"Hello World\" web page. First, we define the handler to
 serve the page for URL \"/\":
