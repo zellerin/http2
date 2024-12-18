@@ -80,8 +80,9 @@
   ;; FIXME: is /tls really needed?
   :depends-on ("puri" "http2/tls")
   :components ((:file "socket-dispatcher")
+               (:file "scheduler")
                (:file "dispatch")
-               (:file "scheduler")))
+))
 
 (defsystem "http2/server/example"
   :description "An example of http/2 server."

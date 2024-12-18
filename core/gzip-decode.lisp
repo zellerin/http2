@@ -10,7 +10,7 @@
 (defmethod apply-data-frame :around ((stream gzip-decoding-mixin) payload start end)
   ;; 20240607 TODO: Window update should go elsewhere
 
-  (write-window-update-frame (get-connection stream) (- end start))
+  (write-window-update-frame (http2/core::get-connection stream) (- end start))
   (write-window-update-frame stream (- end start))
   ;; 20240607 TODO: test on dstate, not on header
 

@@ -1,6 +1,6 @@
 ;;;; Copyright 2022-2024 by Tomáš Zellerin
 
-(in-package http2)
+(in-package http2/cl+ssl)
 
 (defsection @server/threaded
     (:title "Threaded server")
@@ -56,8 +56,8 @@ We should also limit allowed ciphers, but we do not."
     (cl+ssl::ssl-ctx-set-alpn-select-cb context (cffi:get-callback 'cl+ssl::select-h2-callback))
     context))
 
-(defun create-https-server (port key cert &key
-                                            (connection-class 'vanilla-server-connection)
+#+nil(defun create-https-server (port key cert &key
+                                            (connection-class 'tls-single-client-dispatcher)
                                             (host "127.0.0.1"))
   "Open TLS wrapped HTTPS(/2) server on PORT on HOST (localhost by default).
 
@@ -68,7 +68,7 @@ User provided KEY and CERT-ificate.
 
 It is actually a wrapper over CREATE-SERVER with a default server
 class (TLS-SINGLE-CLIENT-DISPATCHER)."
-  (create-server port 'tls-single-client-dispatcher :certificate-file cert
+  (create-server port connection-class :certificate-file cert
                  :private-key-file key))
 
 (defsection @server-classes
@@ -89,7 +89,7 @@ class (TLS-SINGLE-CLIENT-DISPATCHER)."
    "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,
 and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT."))
 
-(defmethod server-socket-stream (socket (dispatcher tls-dispatcher-mixin))
+(defmethod http2/server::server-socket-stream (socket (dispatcher tls-dispatcher-mixin))
   "The cl-ssl server socket."
   (with-slots (certificate-file private-key-file) dispatcher
     (cl+ssl:make-ssl-server-stream
@@ -98,38 +98,6 @@ and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT.")
      :key private-key-file)))
 
 "For a TLS server wrap the global context."
-(defmethod start-server-on-socket ((server tls-dispatcher-mixin) socket)
+(defmethod http2/server::start-server-on-socket ((server tls-dispatcher-mixin) socket)
   (cl+ssl:with-global-context ((make-http2-tls-context) :auto-free-p t)
     (call-next-method)))
-
-(defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
-  ())
-
-
-(defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
-  ())
-
-(defclass threaded-dispatcher (base-dispatcher)
-  ()
-  (:documentation
-   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
-
-(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
-  ())
-
-(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
-  ())
-
-(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
-  (let ((socket (usocket:socket-accept listening-socket
-                                       :element-type '(unsigned-byte 8))))
-    (let ((stream (server-socket-stream socket dispatcher)))
-      (bt:make-thread
-       (lambda ()
-         (with-open-stream (stream stream)
-           (restart-case
-               (process-server-stream stream
-                                      :connection-class (get-connection-class dispatcher))
-             (kill-client-connection () nil)))) ; FIXME:
-       ;; TODO: peer IP and port to name?
-       :name "HTTP2 server thread for connection" ))))

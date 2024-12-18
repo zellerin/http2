@@ -56,26 +56,6 @@ Parameters:
         (close out)))
     raw-stream))
 
-(defun make-transport-output-stream (http2-stream charset gzip)
-  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
-  (let* ((transport (make-instance 'http2/stream-overlay::payload-output-stream :base-http2-stream http2-stream)))
-    (when gzip
-      (setf transport (gzip-stream:make-gzip-output-stream transport)))
-    (when charset
-      (setf transport
-            (flexi-streams:make-flexi-stream
-             transport
-             :external-format charset)))
-    transport))
-
-(defun http-stream-to-vector (http-stream)
-  ;; 20240611 TODO: document
-  (with-output-to-string (*standard-output*)
-    (mapc 'princ (nreverse (get-text http-stream)))))
-
-(defmethod http2/core::apply-text-data-frame ((stream text-collecting-stream) text)
-  (push text (get-text stream)))
-
 (defun retrieve-url-using-network-stream (network-stream parsed-url
                                           &rest args
                                           &key (connection-class 'vanilla-client-connection)

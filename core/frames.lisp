@@ -2,6 +2,8 @@
 
 (in-package :http2/core)
 
+(export '(get-max-peer-frame-size get-max-frame-size get-peer-window-size))
+
 (defclass frame-context ()
   ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
    (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))

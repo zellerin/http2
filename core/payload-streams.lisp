@@ -33,8 +33,8 @@ enough to send the data as a data frame on BASE-HTTP2-STREAM (or forced to by cl
 (defmethod initialize-instance :after ((stream payload-output-stream)
                                        &key
                                          base-http2-stream
-                                         (connection (get-connection base-http2-stream))
-                                         (window-size (min 65536 (get-initial-peer-window-size connection)))  &allow-other-keys)
+                                         (connection (http2/core::get-connection base-http2-stream))
+                                         (window-size (min 65536 (http2/core::get-initial-peer-window-size connection)))  &allow-other-keys)
   (setf (get-output-buffer stream)
         (make-array window-size :element-type '(unsigned-byte 8)
                                 :fill-pointer 0 :adjustable nil)))
@@ -53,7 +53,7 @@ enough to send the data as a data frame on BASE-HTTP2-STREAM (or forced to by cl
     (when (>= (min (fill-pointer output-buffer))
               (get-max-peer-frame-size connection))
       (loop while (<  (min peer-window-size
-                           (get-peer-window-size connection))
+                           (http2/core::get-peer-window-size connection))
                       (length output-buffer))
             ;; we want to send more than window allows, so lets wait for more
             ;; window
@@ -125,7 +125,7 @@ Return new START."
                               (length (get-output-buffer stream)))
                            start)))
       (loop
-        for frame-size = (get-max-peer-frame-size connection)
+        for frame-size = (http2/core::get-max-peer-frame-size connection)
         while (and (>= total-length frame-size))
         do
            (wait-for-window-is-at-least-frame-size connection base-http2-stream)

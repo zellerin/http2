@@ -1,8 +1,39 @@
 (in-package http2/core)
 
+(export 'compile-payload-from-stream)
+(export 'write-binary-payload)
+(export '(send-headers make-transport-output-stream text-collecting-stream
+           multi-part-data-stream http-stream-to-vector))
 ;;;; FIXME: document the role of this file and classes
 
-(defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream binary-stream)
+(defun make-transport-output-stream (http2-stream charset gzip)
+  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
+  (let* ((transport (make-instance 'http2/stream-overlay::payload-output-stream :base-http2-stream http2-stream)))
+    (when gzip
+      (setf transport (gzip-stream:make-gzip-output-stream transport)))
+    (when charset
+      (setf transport
+            (flexi-streams:make-flexi-stream
+             transport
+             :external-format charset)))
+    transport))
+
+(defclass text-collecting-stream ()
+  ((text :accessor get-text :initarg :text))
+  (:default-initargs :text nil)
+  (:documentation
+   "Mixin that collect all the received body (possibly unzipped data frames
+converted to proper encoding) into a TEXT slot."))
+
+(defmethod http2/core::apply-text-data-frame ((stream text-collecting-stream) text)
+  (push text (get-text stream)))
+
+(defun http-stream-to-vector (http-stream)
+  ;; 20240611 TODO: document
+  (with-output-to-string (*standard-output*)
+    (mapc 'princ (nreverse (get-text http-stream)))))
+
+(defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream http2/stream-overlay::binary-stream)
   ((output-buffer   :accessor get-output-buffer))
   (:default-initargs :to-write 0 :to-store 0)
   (:documentation

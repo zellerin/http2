@@ -2,24 +2,16 @@
 
 (mgl-pax:defsection @stream-based-connection
     (:title "Connections using CL streams")
-  (stream-based-connection-mixin class))
+  (stream-based-connection-mixin class)
+  (get-scheduler generic-function)
+  (get-lock generic-function)
+  (process-pending-frames function))
 
 (defclass stream-based-connection-mixin ()
   ((network-stream :accessor get-network-stream :initarg :network-stream))
   (:documentation
-   "A mixin for connections that ead frames from and write to Common Lisp stream (in
+   "A mixin for connections that read frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
-
-(defclass threaded-server-mixin ()
-  ((scheduler :accessor get-scheduler :initarg :scheduler)
-   (lock      :accessor get-lock      :initarg :lock))
-  (:default-initargs
-   :scheduler *scheduler*
-   :lock (bt:make-lock))
-  (:documentation
-   "A mixin for a connection that holds a lock in actions that write to the output network
-stream, and provides a second thread for scheduled activities (e.g., periodical
-events)."))
 
 (defmethod queue-frame ((connection stream-based-connection-mixin) frame)
   (write-sequence frame (get-network-stream connection))

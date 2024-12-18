@@ -1,6 +1,6 @@
 ;;;; Copyright 2022-2024 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/server)
 
 (defsection @server
     (:title "Running a server")
@@ -18,7 +18,15 @@ The second question - how to handle incoming TCP connections - has several imple
   (define-exact-handler mgl-pax:macro)
   (send-text-handler function)
   (redirect-handler function)
-  (@server/threaded section))
+  (@server/threaded section)
+  (handler macro)
+  (constant-handler macro)
+  (detached-tls-threaded-dispatcher class)
+  (tls-threaded-dispatcher class)
+  (threaded-dispatcher class)
+  (single-client-dispatcher class)
+  (tls-single-client-dispatcher class)
+  (detached-tls-single-client-dispatcher class))
 
 (defclass dispatcher-mixin ()
   ((exact-handlers  :accessor get-exact-handlers  :initarg :exact-handlers)
@@ -151,6 +159,32 @@ optionally provides CONTENT with CONTENT-TYPE."
       (when content
         (princ content out)))))
 
+(defclass threaded-dispatcher (base-dispatcher)
+  ()
+  (:documentation
+   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
+
+(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
+  ())
+
+(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
+  ())
+
+(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
+  (let ((socket (usocket:socket-accept listening-socket
+                                       :element-type '(unsigned-byte 8))))
+    (let ((stream (server-socket-stream socket dispatcher)))
+      (bt:make-thread
+       (lambda ()
+         (with-open-stream (stream stream)
+           (restart-case
+               (http2/server::process-server-stream stream
+                                      :connection-class (http2/server::get-connection-class dispatcher))
+             (kill-client-connection () nil)))) ; FIXME:
+       ;; TODO: peer IP and port to name?
+       :name "HTTP2 server thread for connection" ))))
+
+
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
@@ -199,18 +233,12 @@ CONNECTION."
 
 (defmethod peer-ends-http-stream ((stream vanilla-server-stream))
   "Send appropriate payload, or an error page."
-  (with-slots (connection) stream
+  (let ((connection (http2/core::get-connection stream)))
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
 (defmethod queue-frame :around ((server threaded-server-mixin) frame)
   (bt:with-lock-held ((get-lock server))
     (call-next-method)))
-
-(defmethod maybe-lock-for-write ((c threaded-server-mixin))
-  (error "Do not call me"))
-
-(defmethod maybe-unlock-for-write ((c threaded-server-mixin))
-  (error "Do not callme"))
 
 (defgeneric cleanup-connection (connection)
   (:method (connection) nil)
@@ -237,3 +265,10 @@ signalled."
                  (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+)))
             (cleanup-connection connection))
         (end-of-file ())))))
+
+(defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
+  ())
+
+
+(defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
+  ())

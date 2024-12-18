@@ -110,12 +110,20 @@
 
 (mgl-pax:define-package #:http2/stream-overlay
     (:use #:cl #:http2/core #:http2/utils)
-  (:import-from #:anaphora #:acond #:aif #:it))
+  (:import-from #:anaphora #:acond #:awhen #:aif #:it))
+
+(mgl-pax:define-package #:http2/cl+ssl
+  (:use #:cl #:http2/core #:cl+ssl #:mgl-pax))
 
 (mgl-pax:define-package #:http2/client
-    (:use #:cl #:http2/core #:http2/stream-overlay #:alexandria)
+    (:use #:cl #:http2/core #:http2/stream-overlay #:alexandria
+          #:http2/utils)
   (:import-from #:anaphora #:acond #:aif #:it))
 
 (mgl-pax:define-package #:http2-server
     (:nicknames #:http2/server)
-  (:use #:http2/core))
+  (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
+        #:http2/cl+ssl))
+
+(mgl-pax:define-package #:http2
+  (:use #:cl #:mgl-pax))

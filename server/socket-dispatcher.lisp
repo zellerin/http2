@@ -1,4 +1,4 @@
-(in-package http2)
+(in-package http2/server)
 
 ;;; This is adapted from TLS-SERVER experiments package with some changes,
 ;;; biggest one being replacement of keywords with a class hierarchy.
@@ -23,7 +23,8 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (*buffer* variable)
   (unsupported-server-setup condition)
   (server-socket-stream generic-function)
-  (start-server-on-socket generic-function))
+  (start-server-on-socket generic-function)
+  (maybe-create-certificate function))
 
 (defclass detached-server-mixin ()
   ())
@@ -39,14 +40,14 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
              :name "HTTP(s) server thread")
             socket)))
 
-(defvar *vanilla-server-dispatcher* 'http2::detached-tls-threaded-dispatcher)
+(defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher)
 (defvar *vanilla-host* "localhost")
 
 (defun find-private-key-file (hostname)
   (let* ((key-name (make-pathname :name hostname :defaults "/tmp/foo.key"))
          (cert-name (make-pathname :type "crt" :defaults key-name)))
     (unless (probe-file key-name)
-      (http2/server-example::maybe-create-certificate key-name cert-name :base "/tmp"))
+      (maybe-create-certificate key-name cert-name :base "/tmp"))
     key-name))
 
 (defun find-certificate-file (keypath)

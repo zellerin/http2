@@ -1,10 +1,12 @@
 (ql:quickload 'clip-1994/doc)
 (ql:quickload 'http2/client)
 (ql:quickload 'http2/server)
+(ql:quickload 'cl-who)
 
 (mgl-pax:define-package http-experiments
-  (:use #:cl #:clip #:http2/client #:http2
-        #:mgl-pax #:clip/doc))
+    (:use #:cl #:clip #:http2/client #:http2/core
+          #:mgl-pax #:clip/doc
+          #:http2/server))
 
 (in-package http-experiments)
 
@@ -186,7 +188,7 @@ Endpoints are defined to cover some situations:
 - / - not found"
   (format t "Test servers~%")
   (let (urls threads)
-    (dolist (class '(http2::detached-tls-single-client-dispatcher http2::detached-tls-threaded-dispatcher))
+    (dolist (class '(detached-tls-single-client-dispatcher detached-tls-threaded-dispatcher))
       (multiple-value-bind (thread socket)
           (create-server port class
                          :certificate-file "certs/server.crt"
@@ -209,7 +211,7 @@ Endpoints are defined to cover some situations:
       (map nil #'bordeaux-threads:destroy-thread threads))))
 
 (ignore-errors(delete-file "/tmp/real-life-targets.clasp"))
-(run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
 
-(http2/server-example::maybe-create-certificate "certs/server.key" "certs/server.crt" :system "http2")
+(run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
+(maybe-create-certificate "certs/server.key" "certs/server.crt" :system "http2")
 (test-servers 0)

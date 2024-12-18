@@ -11,7 +11,6 @@
 #+nil  (with-http2-connection macro)
   (send-headers function)
   (process-pending-frames function)
-  (http-stream-to-vector function)
   (vanilla-client-stream class)
   (vanilla-client-connection class)
   (client-stream class)
@@ -52,13 +51,6 @@ protocol (H2 by default)."
    "Connection class for retrieve-url style functions that uses streams of
    VANILLA-CLIENT-STREAM. Behaves as client, can send pings to measure roundtrip
    time and optionally prints history. See individual superclasses for details."))
-
-(defclass text-collecting-stream ()
-  ((text :accessor get-text :initarg :text))
-  (:default-initargs :text nil)
-  (:documentation
-   "Mixin that collect all the received body (possibly unzipped data frames
-converted to proper encoding) into a TEXT slot."))
 
 (defclass fallback-all-is-ascii ()
   ())

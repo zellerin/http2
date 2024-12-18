@@ -17,10 +17,10 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
   (@overview section)
   (http2/client::@client section)
   (@tutorials section)
-  (@frames-api section)
-  (@server section)
-  (@client section)
-  (@base-classes section)
+  (http2/core::@frames-api section)
+  (http2/server::@server section)
+  (http2/client::@client section)
+  (http2/core::@base-classes section)
 
   (@utils section)
   (@scheduling section)
@@ -35,49 +35,7 @@ On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
 
 (defsection @tutorials
     (:title "Tutorials")
-  (http2/client::@tutorial section)
-  (http2/server-example::@hello-world-server section))
-
-(in-package http2/server-example)
-(mgl-pax:defsection @hello-world-server
-    (:title "Hello World server")
-  "You can start empty server on a port using a TLS key and certificate files:
-
-```
-(http2-server:start port)
-```
-
-It generates a fresh pair of private key and certificate on background, but of
-course, you will want to provide your own certificates."
-
-  "The server above does not serve anything useful (unless you consider 404 error useful).
-Let us make it serve a \"Hello World\" web page. First, we define the handler to
-serve the page for URL \"/\":
-
-```
-(define-exact-handler \"/1\"
-    (send-text-handler \"/Hello World\"
-                       :content-type \"text/plain; charset=UTF-8\"
-                       :gzip nil))
-```
-
-In addition to the DEFINE-EXACT-HANDLER, there is also DEFINE-PREFIX-HANDLER
-that serves the content when only prefix matches. SEND-TEXT-HANDLER takes a
-string at handler definition time, compiles it to binary payload (i.e., UTF-8
-conversion, compression), and serves the binary payload when requested by the
-client. This is good for a static content."
-  "However, most likely you want to generate at least some content
-dynamically. Macro HANDLER allows this by providing a OUTPUT-STREAM to write to:
-
-```
-(define-exact-handler \"/2\"
-    (handler (foo :utf-8 nil)
-      (with-open-stream (foo foo)
-        (send-headers
-         '((:status \"200\")
-           (\"content-type\" \"text/html; charset=utf-8\")))
-        (format foo \"Hello World, this is random: ~a\" foo (random 10))))
-```")
+  (http2/client::@tutorial section))
 
 (in-package http2/client)
 

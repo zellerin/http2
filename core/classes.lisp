@@ -2,6 +2,8 @@
 
 (in-package :http2/core)
 
+(export '(get-path))
+
 (defsection @base-classes
     (:title "Classes")
   "There are two parallel class hierarchies, one for HTTP2 connections, one for the HTTP2 streams.
@@ -17,7 +19,9 @@ make your class using appropriate mixins.
   #+nil  (http2-stream class)
   (get-stream-class generic-function)
   (open-http2-stream function)
-  (get-network-stream function))
+  (get-network-stream function)
+  (server-stream class)
+  (close-connection restart))
 
 ;;;; Classes
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
@@ -25,9 +29,7 @@ make your class using appropriate mixins.
    (stream-class             :accessor get-stream-class             :initarg :stream-class
                              :documentation "Class for new streams")
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
-   (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size)
-   (max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
-   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))
+   (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -38,8 +40,6 @@ make your class using appropriate mixins.
                      :stream-class 'http2-stream
                      :initial-peer-window-size 65535
                      :initial-window-size 65535
-                     :max-frame-size 16384
-                     :max-peer-frame-size 16384
                      :peer-window-size 65535)
 
   (:documentation
@@ -162,7 +162,10 @@ write them to a stream, or store them for future. They specialize QUEUE-FRAME
 generic function to actually store the data."
   (write-buffer-connection-mixin class)
   (stream-based-connection-mixin class)
-  (queue-frame generic-function))
+  (queue-frame generic-function)
+  (parse-client-preface function)
+  (+client-preface-start+ variable)
+  (server-http2-connection class))
 
 (defclass write-buffer-connection-mixin ()
   ((to-write :accessor get-to-write :initarg :to-write))
@@ -283,18 +286,11 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags."
     (setf (get-updates-needed (get-compression-context connection)) nil))
   stream)
 
-(defgeneric is-our-stream-id (connection stream-id)
-  (:documentation
-   "Return true if the STREAM-ID should be initiated on our side. The ID is known
-not to be zero.")
-  (:method ((connection client-http2-connection) stream-id)
-    (when (oddp stream-id) :even))
+(defmethod is-our-stream-id ((connection client-http2-connection) stream-id)
+  (when (oddp stream-id) :even))
 
-  (:method ((connection logging-connection) stream-id)
-    (when (oddp stream-id) nil))
-
-  (:method ((connection server-http2-connection) stream-id)
-    (when (evenp stream-id) :odd)))
+(defmethod is-our-stream-id ((connection server-http2-connection) stream-id)
+  (when (evenp stream-id) :odd))
 
 (defgeneric peer-sends-push-promise (stream)
   (:method (stream) (error "Push promises not supported."))
@@ -541,7 +537,7 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
                            (http2/hpack::decode-huffman value))))))
 
   (:method (connection stream name value)
-    (warn 'no-new-header-action :header name :stream stream))
+#+nil    (warn 'no-new-header-action :header name :stream stream))
 
   (:method (connection (stream server-stream) (name symbol) value)
     (when (get-seen-text-header stream)
@@ -654,14 +650,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
   #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
   "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
  \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
-
-#+obsolete
-(defun read-client-preface (connection)
-  (let ((preface-buffer (make-octet-buffer (length +client-preface-start+))))
-    (read-sequence preface-buffer (get-network-stream connection))
-    (unless (equalp preface-buffer +client-preface-start+)
-      (error 'client-preface-mismatch :received preface-buffer)))
-  (write-settings-frame connection (get-settings connection)))
 
 (defun parse-client-preface (connection buffer)
   "Parse client preface.
