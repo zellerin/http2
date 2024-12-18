@@ -23,7 +23,8 @@
   (hpack-context class)
   (get-dynamic-table-size generic-function)
   (request-headers function)
-  (get-updates-needed generic-function))
+  (get-updates-needed generic-function)
+  (decode-huffman function))
 
 (defvar static-headers-table
   (vector

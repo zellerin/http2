@@ -19,26 +19,9 @@ make your class using appropriate mixins.
   (open-http2-stream function)
   (get-network-stream function))
 
-(defgeneric get-stream-class (connection)
-  (:documentation "Called when new connection stream is created to get its class."))
-
 ;;;; Classes
-(defclass flow-control-mixin ()
-  ((window-size      :accessor get-window-size      :initarg :window-size)
-   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size))
-  (:documentation
-   "The flow control parameters that are kept both per-stream and per-connection."))
-
-(defclass http2-connection (flow-control-mixin)
-  ((streams                  :accessor get-streams                  :initarg :streams
-                             :documentation "Sequence of HTTP2 streams")
-   (acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
-   (compression-context      :accessor get-compression-context      :initarg :compression-context)
-   (decompression-context    :accessor get-decompression-context    :initarg :decompression-context)
-   (last-id-seen             :accessor get-last-id-seen             :initarg :last-id-seen
-                             :type stream-id)
-   (id-to-use                :accessor get-id-to-use                :initarg :id-to-use
-                             :type stream-id)
+(defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
+  ((acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
    (stream-class             :accessor get-stream-class             :initarg :stream-class
                              :documentation "Class for new streams")
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
@@ -83,25 +66,14 @@ make your class using appropriate mixins.
   (:default-initargs :id-to-use 2
    :peer-accepts-push t))
 
-(defgeneric get-state (state)
-  (:method ((state (eql :closed))) 'closed)
-  (:documentation
-   "State of a HTTP stream. The parameter is either a HTTP2-STREAM object (that
-keeps state in an appropriate slot) or placeholder values CLOSED or IDLE"))
-
-(defclass http2-stream (flow-control-mixin)
-  ((connection       :accessor get-connection       :initarg :connection)
-   (stream-id        :accessor get-stream-id        :initarg :stream-id
-                     :type stream-id)
-   (state            :accessor get-state            :initarg :state
-                     :type http2-stream-state)
-   (data             :accessor get-data             :initarg :data)
+(defclass http2-stream (http2-stream-minimal flow-control-mixin)
+  ((data             :accessor get-data             :initarg :data)
    (weight           :accessor get-weight           :initarg :weight)
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
    (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
                      :documentation
                      "Set if in the header block a non-pseudo header was already seen."))
-  (:default-initargs :state 'idle :window-size 0
+  (:default-initargs :window-size 0
    ;;   All streams are initially assigned a non-exclusive dependency on
    ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
    ;;   associated stream.  In both cases, streams are assigned a default
@@ -201,10 +173,9 @@ generic function to actually store the data."
    "Stores queued frame in a per-connection write buffer. The internals of the
 buffer are opaque."))
 
-(defgeneric queue-frame (connection frame)
-  (:method ((connection write-buffer-connection-mixin) frame)
-    (vector-push-extend frame (get-to-write connection))
-    frame))
+(defmethod queue-frame ((connection write-buffer-connection-mixin) frame)
+  (vector-push-extend frame (get-to-write connection))
+  frame)
 
 ;;;; Connection and stream for logging: tracks every callback in (reversed)
 ;;;; history.
@@ -346,10 +317,10 @@ however some clients (e.g., h2load) do not retry when they receive this.
 
 This stream removal should be done with lock on the appropriate stream when in
 multiple threads."
-  (with-slots (connection state) stream
+  (with-slots (connection) stream
     (with-slots (streams) connection
       (setf streams (remove stream streams :test 'eq)
-            state 'closed))))
+            (get-state stream) 'closed))))
 
 (defgeneric peer-resets-stream (stream error-code)
   (:method ((stram (eql :closed)) error-code))
@@ -559,14 +530,15 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
     (let ((decoded-name
             (etypecase name
               ((or string symbol) name)
-              ((vector (unsigned-byte 8)) (decode-huffman name)))))
+              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name)))))
       (when (and (stringp name) (some #'upper-case-p name))
         (http-stream-error 'lowercase-header-field-name stream))
       (call-next-method connection stream
                         decoded-name
                         (etypecase value
                           (string value) ; integer can be removed if we removed "200"
-                          ((vector (unsigned-byte 8)) (decode-huffman value))))))
+                          ((vector (unsigned-byte 8))
+                           (http2/hpack::decode-huffman value))))))
 
   (:method (connection stream name value)
     (warn 'no-new-header-action :header name :stream stream))
@@ -646,53 +618,19 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
                          :name "One of pseudo headers"
                          :value 'missing))))
 
-(defgeneric do-ping (connection data)
-  (:documentation
-   "Called when ping-frame without ACK is received. By default send ping-frame with
-ACK and same data.")
+(defmethod do-pong ((connection timeshift-pinging-connection) data)
+  (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second)))
 
-  (:method (connection data)
-    (write-ping-frame connection data :ack t))
-  (:method :before ((connection logging-object) data)
-    (add-log connection `(:ping ,data))))
+(defmethod do-goaway ((connection logging-object) error-code last-stream-id debug-data)
+  (add-log connection `(:go-away :last-stream-id ,last-stream-id
+                                 :error-code ,error-code)))
 
-(defgeneric do-pong (connection data)
-
-  (:documentation
-   "Called when ping-frame with ACK is received. By default warns about unexpected ping response; see also TIMESHIFT-PINGING-CONNECTION mixin.")
-  (:method (connection data)
-    (warn 'implement-by-user
-          :format-control "The connection ~a did not expect ping response"
-          :format-arguments (list connection)))
-  (:method ((connection timeshift-pinging-connection) data)
-    (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second))))
-
-(defgeneric do-goaway (connection error-code last-stream-id debug-data)
-  (:documentation
-   "Called when a go-away frame is received. By default throws GO-AWAY condition if
-error was reported.")
-  (:method ((connection logging-object) error-code last-stream-id debug-data)
-    (add-log connection `(:go-away :last-stream-id ,last-stream-id
-                                   :error-code ,error-code)))
-
-  (:method ((connection client-http2-connection) error-code last-stream-id debug-data)
-    (unless (eq error-code '+no-error+)
-      (error 'go-away :last-stream-id last-stream-id
-                      :error-code error-code
-                      :debug-data debug-data)))
-
-  (:method ((connection server-http2-connection) error-code last-stream-id debug-data)
-    (unless (eq error-code '+no-error+)
-      (signal 'go-away :last-stream-id last-stream-id
-                       :error-code error-code
-                       :debug-data debug-data)
-      (invoke-restart 'close-connection))))
-
-(defgeneric handle-undefined-frame (connection type flags data)
-  (:method (connection type flags data))
-  (:documentation
-   "Callback that is called when a frame of unknown type is received - see
-extensions."))
+(defmethod do-goaway ((connection server-http2-connection) error-code last-stream-id debug-data)
+  (unless (eq error-code '+no-error+)
+    (signal 'go-away :last-stream-id last-stream-id
+                     :error-code error-code
+                     :debug-data debug-data)
+    (invoke-restart 'close-connection)))
 
 
 (defvar *do-print-log* nil
@@ -757,25 +695,6 @@ Then write the initial settings frame, and expect normal frame. Actually, this s
   (break "This should not happen")
   (when (get-network-stream connection)
     (close (get-network-stream connection))))
-
-(defgeneric handle-alt-svc (stream origin value)
-  (:documentation
-   "An ALTSVC frame from a server to a client on a stream other than
-   stream 0 indicates that the conveyed alternative service is
-   associated with the origin of that stream.
-
-   An ALTSVC frame from a server to a client on stream 0 indicates that
-   the conveyed alternative service is associated with the origin
-   contained in the Origin field of the frame.  An association with an
-   origin that the client does not consider authoritative for the
-   current connection MUST be ignored.")
-
-  (:method (stream origin value)
-    "Default method ignores alt-svc info."
-    (declare (ignore stream origin value)))
-
-  (:method ((stream logging-object) origin value)
-    (add-log stream `(:alt-svc ,origin ,value))))
 
 
 (defsection @old-frame-functions
