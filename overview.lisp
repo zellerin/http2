@@ -7,27 +7,24 @@
 For quick start, it provides high level interface to \\HTTP2 as a client (@CLIENT) and
 server (@SERVER). This provides a sane vanilla behaviour for client and dispatch-on-url based behaviour on server.
 
-The vanilla behaviour can be configured and extended using generic functions
-based @CALLBACK-API.
-
-On background there is a @FRAMES-API and HTTP2/HPACK::@HPACK-API.")
+The behaviour can be configured and extended using generic functions
+based @CALLBACK-API.")
 
 (defsection @index
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (http2/client::@client section)
-  (@tutorials section)
-  (http2/core::@frames-api section)
+#+nil  (@tutorials section)
+#+nil  (http2/core::@frames-api section)
   (http2/server::@server section)
-  (http2/client::@client section)
-  (http2/core::@base-classes section)
+#+nil  (http2/core::@base-classes section)
 
-  (@utils section)
-  (@scheduling section)
-  (#:http2 asdf/system:system)
-  (http2/hpack::@hpack-api section)
-  (http2::@buffer-stream-and-pipes section)
-  (@terms section))
+#+nil  (@utils section)
+#+nil  (@scheduling section)
+#+nil  (#:http2 asdf/system:system)
+#+nil  (http2/hpack::@hpack-api section)
+#+nil  (http2::@buffer-stream-and-pipes section)
+#+nil  (@terms section))
 
 (defsection @test
     ()

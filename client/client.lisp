@@ -3,11 +3,10 @@
 (in-package :http2/client)
 
 (mgl-pax:defsection @client
-  (:title "Client sample implementation")
+  (:title "HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
-  (drakma-style-stream-values function)
-  (retrieve-url-using-http-connection function))
+  (drakma-style-stream-values function))
 
 (defun maybe-send-pings (connection ping)
   (typecase ping

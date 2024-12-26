@@ -3,7 +3,13 @@
 (in-package :http2/server)
 
 (defsection @server
-    (:title "Running a server")
+    (:title "HTTP/2 server")
+  "Start server on foreground with RUN, or on background with START."
+  (run function)
+  (start function))
+
+(defsection @server-old
+    (:title "HTTP/2 server")
   "To create a server, two major definitions are needed:
 
 - what content to serve based on the client request (this is closely http2 related), and
@@ -172,17 +178,18 @@ optionally provides CONTENT with CONTENT-TYPE."
 
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
   (let ((socket (usocket:socket-accept listening-socket
-                                       :element-type '(unsigned-byte 8))))
-    (let ((stream (server-socket-stream socket dispatcher)))
-      (bt:make-thread
-       (lambda ()
-         (with-open-stream (stream stream)
+                                       :element-type '(unsigned-byte 8)))
+        (context cl+ssl::*ssl-global-context*))
+    (bt:make-thread
+     (lambda ()
+       (cl+ssl:with-global-context (context)
+         (with-open-stream (stream (server-socket-stream socket dispatcher))
            (restart-case
                (http2/server::process-server-stream stream
-                                      :connection-class (http2/server::get-connection-class dispatcher))
-             (kill-client-connection () nil)))) ; FIXME:
-       ;; TODO: peer IP and port to name?
-       :name "HTTP2 server thread for connection" ))))
+                                                    :connection-class (http2/server::get-connection-class dispatcher))
+             (kill-client-connection () nil))))) ; FIXME:
+     ;; TODO: peer IP and port to name?
+     :name "HTTP2 server thread for connection" )))
 
 
 ;;;; Sample server with constant payload
@@ -272,3 +279,46 @@ signalled."
 
 (defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
   ())
+
+(defvar *last-server*)
+
+(defun start (port &rest pars &key (host "localhost") certificate-file private-key-file)
+  (declare (ignore certificate-file private-key-file))
+
+)
+
+(defun start (port &key
+                     (host *vanilla-host*)
+                     (dispatcher *vanilla-server-dispatcher*)
+                     (certificate-file 'find-certificate-file)
+                     (private-key-file 'find-private-key-file))
+  "Start a default HTTP/2 https server on PORT on background.
+
+Returns two values:
+
+- thread with the server (to be able to close the server). The specific object
+  returned is subject to change, what is guaranteed is that it is suitable
+  parameter for STOP.
+
+- base url of the server (most useful when PORT was 0 - any free port)"
+  (when (symbolp private-key-file)
+    (setf private-key-file (namestring (funcall private-key-file host))))
+  (when (symbolp certificate-file)
+    (setf certificate-file (namestring (funcall certificate-file private-key-file))))
+  (multiple-value-bind (server socket)
+      (create-server port dispatcher
+                     :certificate-file certificate-file
+                 :private-key-file private-key-file
+                     :host host)
+    (values (setf *last-server* server)
+            (url-from-socket socket host t))))
+
+
+
+(defun run (port &rest pars &key certificate-file private-key-file)
+  "Run a default HTTP/2 server on PORT on foreground."
+  (declare (ignore certificate-file private-key-file))
+  (apply 'start port :dispatcher 'tls-threaded-dispatcher pars))
+
+(defun stop (&optional (server *last-server*))
+  (bordeaux-threads:destroy-thread server))

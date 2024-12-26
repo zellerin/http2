@@ -55,24 +55,6 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
    (probe-file (make-pathname :type "crt" :defaults keypath))
    (error "Cannot find cert file")))
 
-(defun start (port &key
-                     (host *vanilla-host*)
-                     (dispatcher *vanilla-server-dispatcher*)
-                     (certificate-file 'find-certificate-file)
-                     (private-key-file 'find-private-key-file))
-  "High-level user interface to start a HTTP/2 server.
-
-Tries to use sensible defaults:
-- *VANILLA-SERVER-DISPATCHER* for the dispatcher class,"
-  (when (symbolp private-key-file)
-    (setf private-key-file (namestring (funcall private-key-file host))))
-  (when (symbolp certificate-file)
-    (setf certificate-file (namestring (funcall certificate-file private-key-file))))
-  (create-server port dispatcher
-                 :certificate-file certificate-file
-                 :private-key-file private-key-file
-                 :host host))
-
 (defun create-server (port dispatcher
                       &rest keys
                       &key
