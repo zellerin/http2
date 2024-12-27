@@ -4,7 +4,7 @@
 ;;;; server, and actually bind it to a TLS socket.
 
 (defpackage :http2/server-example
-  (:use :cl :http2 :cl-who :ps)
+  (:use :cl :http2 :cl-who :ps #:http2/server)
   (:export #:maybe-create-certificate
            #:run-demo-server #:create-one-shot-server))
 
@@ -25,7 +25,6 @@
          '((:status "200")
            ("content-type" "text/html; charset=utf-8")))
         (princ "Hello World" foo))))
-
 
 (define-exact-handler "/"
     (constant-handler
@@ -66,7 +65,7 @@
     (lambda (connection stream)
       (send-headers stream `((:status "200") ("content-type" "text/html; charset=utf-8")
                       ("refresh" "30; url=/")))
-      (http2::write-binary-payload connection stream
+      (write-binary-payload connection stream
                                    (trivial-utf-8:string-to-utf-8-bytes
                                     (with-output-to-string (out)
                                       (with-html-output (out out :prologue "<!DOCTYPE html>")
@@ -89,10 +88,10 @@
 (defun schedule-repeated-fn (connection stream delay period fn)
   (labels ((send-event-and-plan-next ()
              (funcall fn connection stream)
-             (schedule-task http2::*scheduler* period
+             (schedule-task http2/server::*scheduler* period
                             #'send-event-and-plan-next
                             stream)))
-    (schedule-task http2::*scheduler* delay
+    (schedule-task http2/server::*scheduler* delay
                           #'send-event-and-plan-next 'stream)))
 
 (define-exact-handler "/event-stream"
@@ -101,7 +100,7 @@
       (let ((i 0))
         (schedule-repeated-fn connection stream 0.0 1.0
                               (lambda (connection stream)
-                                (http2::write-data-frame stream
+                                (http2/core::write-data-frame stream
                                                          (trivial-utf-8:string-to-utf-8-bytes
                                                           (with-output-to-string (out)
                                                             (format out "id: ~d~%" (incf i))
@@ -110,15 +109,15 @@
                                                               (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day
                                                                       hr min sec))))
                                                          :end-stream nil)
-                                (force-output (http2::get-network-stream connection)))))))
+                                (force-output (http2/core::get-network-stream connection)))))))
 
 (define-exact-handler "/body"
     (lambda (connection stream)
       (send-headers stream
                     `((:status "200") ("content-type" "text/plain; charset=utf-8")
                       ("refresh" "3; url=/")))
-      (http2::write-binary-payload connection stream
-                                   (trivial-utf-8:string-to-utf-8-bytes  (get-body stream)))))
+      (write-binary-payload connection stream
+                                   (trivial-utf-8:string-to-utf-8-bytes  (http2/core::get-body stream)))))
 
 (defmethod add-header (connection (stream server-stream) name value)
   (handler-bind ((warning #'muffle-warning))
@@ -297,7 +296,7 @@ longer than PASS text and table width changes on fly.")
   (:documentation
    "A variant of the vanilla-server-connection without any default handlers."))
 
-(defun create-one-shot-server (handler port)
+#+nil(defun create-one-shot-server (handler port)
   "Open server on PORT that handles just one request and returns value from HANDLER.
 
 The original use case is server for oauth2 authentication redirect, there might
@@ -315,19 +314,3 @@ be other ones."
                 connection)
               (process-server-stream stream :connection connection)))))
     (apply #'create-https-server port *default-certificate-pair*)))
-
-(defun run-demo-server (&key (key (car *default-certificate-pair*))
-                          (certificate (second *default-certificate-pair*))
-                          (port 1230))
-  "Start a http2 server on localhost on PORT that servers some test content.
-
-Create certficates if they do not exist.
-
-Do something (see code) with conditions."
-
-  (maybe-create-certificate key certificate)
-  (handler-bind (#+nil(warning 'muffle-warning)
-                #+nil (error (lambda (e)
-                          (describe e)
-                          (invoke-restart 'abort))))
-    (create-https-server port key certificate)))

@@ -3,36 +3,65 @@
 (in-package :http2/server)
 
 (defsection @server
-    (:title "HTTP/2 server")
-  "Start server on foreground with RUN, or on background with START."
+    (:title "Starting HTTP/2 server")
+  "Start server on foreground with RUN, or on background with START.
+
+This creates (as of this version) a multithreaded server that serves 404 Not
+found responses on any request."
   (run function)
   (start function))
 
-(defsection @server-old
-    (:title "HTTP/2 server")
-  "To create a server, two major definitions are needed:
+(defsection @server-content
+    (:title "Define content for HTTP/2 server")
+  "To server something else than 404 Not found, you need to define handlers for specific paths. Simple handler definition can look like
 
-- what content to serve based on the client request (this is closely http2 related), and
-- how to dispatch requests from the (possibly multiple) clients - this is mostly unrelated
-  to http2, but still need to be decided.
+```
+(define-exact-handler \"/hello-world\"
+  (handler (foo :utf-8 nil)
+    (with-open-stream (foo foo)
+      (send-headers
+       '((:status \"200\")
+         (\"content-type\" \"text/html; charset=utf-8\")))
+      (format foo \"Hello World, this is random: ~a\" (random 10)))))
+```
 
-The first question - how to handle requests - is handled in the example servers by DISPATCHER-MIXIN.
+This defines a handler on \"/hello-world\" path that sends reasonable headers, writes some text to the stream and closes the stream (via WITH-OPEN-STREAM). The text written is passed  to the client as data (body).
 
-The second question - how to handle incoming TCP connections - has several implementations that can be accessed with a single interface, "
-  (dispatcher-mixin class)
+In general, the handlers are set using DEFINE-PREFIX-HANDLER or
+DEFINE-EXACT-HANDLER, and are functions typically created by HANDLER macro,
+or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
   (define-prefix-handler mgl-pax:macro)
   (define-exact-handler mgl-pax:macro)
-  (send-text-handler function)
-  (redirect-handler function)
-  (@server/threaded section)
+  (handler type)
   (handler macro)
   (constant-handler macro)
-  (detached-tls-threaded-dispatcher class)
-  (tls-threaded-dispatcher class)
-  (threaded-dispatcher class)
-  (single-client-dispatcher class)
-  (tls-single-client-dispatcher class)
-  (detached-tls-single-client-dispatcher class))
+  (redirect-handler function)
+  (send-text-handler function)
+  (send-headers function)
+  (send-goaway function)
+  (get-path generic-function)
+  (get-body generic-function)
+  (write-binary-payload function)
+  #+nil((dispatcher-mixin class)
+
+        (send-text-handler function)
+        (redirect-handler function)
+        (@server/threaded section)
+
+        (server-stream class)
+        (detached-tls-threaded-dispatcher class)
+        (tls-threaded-dispatcher class)
+        (threaded-dispatcher class)
+        (single-client-dispatcher class)
+        (tls-single-client-dispatcher class)
+        (detached-tls-single-client-dispatcher class)
+        (send-headers function)))
+
+(defun send-goaway (code debug-data)
+  "Start closing connection, sending CODE and DEBUG-DATA in the go-away frame to
+peer. Must be called from inside of HANDLER."
+  (declare (ignore code debug-data))
+  (error "SEND-GOAWAY must be used inside HANDLER macro."))
 
 (defclass dispatcher-mixin ()
   ((exact-handlers  :accessor get-exact-handlers  :initarg :exact-handlers)
@@ -46,10 +75,7 @@ prefix handlers matches when the path starts with the prefix.
 
 Protocol and domain are not checked. The behaviour is implemented in the
 appropriate PEER-ENDS-HTTP-STREAM method.
-
-The handlers are set using DEFINE-PREFIX-HANDLER or DEFINE-EXACT-HANDLER, and
-are functions typically created by HANDLER macro, or (in simple cases) by
-REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
+"))
 
 (eval-when (:compile-toplevel :load-toplevel)
   (defun define-some-handler (target prefix fn)
@@ -57,19 +83,25 @@ REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."))
            (acons ,prefix ,fn
                   (remove ,prefix ,target :key 'car :test 'equal)))))
 
+(deftype handler ()
+  "Function that can be called with CONNECTION and HTTP2-STREAM to write a response to
+the http request described by STREAM object."
+  `(function (connection http2-stream)))
+
 (defmacro handler ((flexi-stream-name charset gzip) &body body)
-  "Runs BODY in a context with
-- FLEXI-STREAM-NAME bound to a flexi stream,
-- and two available functions, SEND-HEADERS and SEND-GOAWAY to make a function
-  that has suitable format for an exact or prefix handler; that it, that takes
-  two parameters CONNECTION and (http2) STREAM and prepares response.
+  "Return a HANDLER type function.
+
+ This handler, when called, runs BODY in a context where
+
+- FLEXI-STREAM-NAME is bound to an open flexi stream that can be written to (to write response). On background, written text is converted from CHARSET to octets, possibly compressed by GZIP and split into frames,
+- and two lexical functions are defined, SEND-HEADERS and SEND-GOAWAY.
 
 The SEND-HEADERS sends the provided headers to the STREAM.
 
 The SEND-GOAWAY sends go away frame to the client to close connection.
 
-It does NOT close the FLEXI-STREAM-NAME."
-;  (warn "Handler macro is a relic no longer to use.")
+The handler body needs to close the underlying stream if the response is
+actually to be sent, or possibly schedule sending more data for later."
   `(lambda (connection stream)
      (let ((,flexi-stream-name
              (make-transport-output-stream stream ,charset ,gzip)))
@@ -139,19 +171,16 @@ server defined in future) if the path of the stream is PATH."
                                  (gzip t)
                                  additional-headers)
   "A handler that returns TEXT as content of CONTENT-TYPE.
+
+TEXT is evaluated when handler is defined, not when handler is invoked. For
+content that can change on individual invocations write to the stream.
+
 ADDITIONAL-HEADERS are sent along with :status and content-type
 headers."
-  (let ((headers
-          `((:status "200") ("content-type" ,content-type)
-            ,@(when gzip '(("content-encoding" "gzip")))
-            ,@additional-headers))
-        (res
-          ;; FIXME: use direct conversion, not streams
-          (compile-payload-from-stream (out :utf-8 gzip)
-            (princ text out))))
-    (lambda (connection stream)
-      (send-headers stream headers)
-      (write-binary-payload connection stream res))))
+  (constant-handler (out :utf-8 gzip
+                     `((:status "200") ("content-type" ,content-type)
+                       ,@additional-headers))
+    (princ text out)))
 
 (defun redirect-handler (target &key (code "301") (content-type "text/html; charset=UTF-8") content)
   "A handler that emits redirect response with http status being CODE, and
@@ -281,11 +310,6 @@ signalled."
   ())
 
 (defvar *last-server*)
-
-(defun start (port &rest pars &key (host "localhost") certificate-file private-key-file)
-  (declare (ignore certificate-file private-key-file))
-
-)
 
 (defun start (port &key
                      (host *vanilla-host*)

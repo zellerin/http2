@@ -3,7 +3,7 @@
 (in-package :http2/client)
 
 (mgl-pax:defsection @client
-  (:title "HTTP/2 client")
+  (:title "Using built-in HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
   (drakma-style-stream-values function))

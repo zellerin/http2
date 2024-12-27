@@ -120,6 +120,8 @@
           #:http2/utils)
   (:import-from #:anaphora #:acond #:aif #:it))
 
+; FIXME: 2024-12-26 this causes http2 package depend on cl+ssl, not ideal.
+; Fix this and then remove dependency.
 (mgl-pax:define-package #:http2-server
     (:nicknames #:http2/server)
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils

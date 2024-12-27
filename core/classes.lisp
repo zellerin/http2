@@ -2,8 +2,6 @@
 
 (in-package :http2/core)
 
-(export '(get-path))
-
 (defsection @base-classes
     (:title "Classes")
   "There are two parallel class hierarchies, one for HTTP2 connections, one for the HTTP2 streams.
@@ -21,7 +19,9 @@ make your class using appropriate mixins.
   (open-http2-stream function)
   (get-network-stream function)
   (server-stream class)
-  (close-connection restart))
+  (close-connection restart)
+  (get-body generic-function)
+  (get-path generic-function))
 
 ;;;; Classes
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
@@ -153,7 +153,6 @@ than :status allowed, etc."))
    "A mixin that implements specific DO-PING and DO-PONG so that the RTT is printed
 after DO-PING is send."))
 
-
 ;; 20240709 TODO: Link the section to documentation
 (defsection @write-data-handling ()
   (:section "Writing frames")
@@ -277,7 +276,10 @@ when relevant stream or connection has logging-object as superclass."
                           &allow-other-keys)
   "Send HEADERS to a HTTP2 stream. The stream is returned.
 
-The END-HEADERS and END-STREAM allow to set the appropriate flags."
+The END-HEADERS and END-STREAM allow to set the appropriate flags.
+
+Inside HTTP2-SERVER:HANDLER macro, this names a function that has the STREAM
+argument implicit and only HEADERS and key parameters are to be provided."
   (with-slots (connection) stream
     (write-headers-frame stream
                          (compile-headers headers (get-compression-context connection))

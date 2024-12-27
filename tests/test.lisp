@@ -1,10 +1,10 @@
 ;;;; Copyright 2022, 2024 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/core)
 
 ;; I do not want to make separate package for tests. I test too many internals.
 (fiasco:defsuite
-  (fiasco-suites::http2 :bind-to-package #:http2 :in
+  (fiasco-suites::http2/core :bind-to-package #:http2 :in
                         fiasco-suites::all-tests))
 
 

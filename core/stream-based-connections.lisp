@@ -63,7 +63,7 @@ May block."
       (error 'end-of-file :stream (get-network-stream connection)))
     (connection-error (ce)
       (format t "-> We close connection due to ~a~%" ce)
-      (invoke-restart 'close-connection))))
+      (invoke-restart 'http2/server::close-connection))))
 
 (defun read-frame (connection &optional (network-stream (get-network-stream connection)))
   "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to

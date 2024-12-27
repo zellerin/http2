@@ -13,10 +13,8 @@ based @CALLBACK-API.")
 (defsection @index
     (:title "HTTP2 in Common Lisp")
   (@overview section)
-  (http2/client::@client section)
-#+nil  (@tutorials section)
+  (@tutorials section)
 #+nil  (http2/core::@frames-api section)
-  (http2/server::@server section)
 #+nil  (http2/core::@base-classes section)
 
 #+nil  (@utils section)
@@ -32,7 +30,11 @@ based @CALLBACK-API.")
 
 (defsection @tutorials
     (:title "Tutorials")
-  (http2/client::@tutorial section))
+  (http2/client::@client section)
+  (http2/server::@server section)
+  (http2/server::@server-content section)
+  (http2/client::@tutorial section)
+  )
 
 (in-package http2/client)
 

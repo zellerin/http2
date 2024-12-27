@@ -10,7 +10,8 @@
                                       "anaphora" "gzip-stream" "alexandria"
                                       "trivial-utf-8"
                                       "chipz"
-                                      "mgl-pax")
+                                      "mgl-pax"
+                                      "cl+ssl")
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")
@@ -81,8 +82,7 @@
   :depends-on ("puri" "http2/tls")
   :components ((:file "socket-dispatcher")
                (:file "scheduler")
-               (:file "dispatch")
-))
+               (:file "dispatch")))
 
 (defsystem "http2/server/example"
   :description "An example of http/2 server."
@@ -96,7 +96,7 @@
                       "http2/server")
   :components ((:file "dispatch")
                (:file "scheduler")
-               (:file "server"))
+#+nil               (:file "server"))
   :entry-point "http2/server-example::run-demo-server")
 
 (defsystem "http2/test"
@@ -118,5 +118,5 @@
                (:file "streams")))
 
 (defsystem "http2/all"
-  :depends-on (http2 http2/test http2/client http2/server http2/server/example http2/tls)
+  :depends-on ("http2" #+nil http2/test http2/client http2/server http2/tls)
   :components ((:file "overview")))
