@@ -1,13 +1,19 @@
 (in-package http2/core)
 
-(export 'compile-payload-from-stream)
-(export 'write-binary-payload)
-(export '(send-headers make-transport-output-stream text-collecting-stream
-           multi-part-data-stream http-stream-to-vector))
+(defsection @lisp-stream-emulation
+    (:title "Emulate Lisp stream over frames")
+  (compile-payload-from-stream mgl-pax:macro)
+  (write-binary-payload function)
+  (make-transport-output-stream function)
+  (text-collecting-stream class)
+  (multi-part-data-stream class)
+  (http-stream-to-vector function))
+
 ;;;; FIXME: document the role of this file and classes
 
 (defun make-transport-output-stream (http2-stream charset gzip)
-  "An OUTPUT-STREAM built atop RAW STREAM with transformations based on HEADERS."
+  "An OUTPUT-STREAM built atop HTTP2-STREAM with possible translating CHARSET to
+octets and compression (if GZIP set)."
   (let* ((transport (make-instance 'http2/stream-overlay::payload-output-stream :base-http2-stream http2-stream)))
     (when gzip
       (setf transport (gzip-stream:make-gzip-output-stream transport)))
@@ -28,8 +34,11 @@ converted to proper encoding) into a TEXT slot."))
 (defmethod http2/core::apply-text-data-frame ((stream text-collecting-stream) text)
   (push text (get-text stream)))
 
+; TODO: 2024-12-27 How it works with GET-BODY and BODY-COLLECTING-MIXIN?
 (defun http-stream-to-vector (http-stream)
-  ;; 20240611 TODO: document
+  "HTTP-STREAM should be a TEXT-COLLECTING-STREAM.
+
+HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."
   (with-output-to-string (*standard-output*)
     (mapc 'princ (nreverse (get-text http-stream)))))
 
@@ -49,6 +58,15 @@ converted to proper encoding) into a TEXT slot."))
     (vector-push-extend byte output-buffer)))
 
 (defmacro compile-payload-from-stream ((stream-name charset gzip) &body body)
+  "Run BODY with STREAM-NAME bound to a stream named STREAM-NAME. Return octets
+that represent text written to that stream given specified CHARSET, possibly
+compressed.
+
+```cl-transcript
+(http2/core:compile-payload-from-stream (foo :utf8 nil) (princ \"Hello😃\" foo))
+=> #(72 101 108 108 111 240 159 152 131)
+```
+"
   `(let* ((transport (make-instance 'constant-output-stream))
           (base transport))
      (when ,gzip
@@ -64,7 +82,12 @@ converted to proper encoding) into a TEXT slot."))
 
 (defclass multi-part-data-stream ()
   ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
-  (:default-initargs :window-size-increment-callback nil))
+  (:default-initargs :window-size-increment-callback nil)
+  (:documentation
+   "When peer sends window size increment frame, call specified callback function.
+
+This works together with WRITE-BINARY-PAYLOAD to make sure that the payload is
+fully written, eventually."))
 
 (defmethod apply-window-size-increment :after ((object multi-part-data-stream) increment)
   (with-slots (window-size-increment-callback) object
@@ -75,9 +98,8 @@ converted to proper encoding) into a TEXT slot."))
   "Write binary PAYLOAD to the http2 STREAM.
 
 The payload is written in chunks of peer frame size, and if the available window
-is not big enough we wait for confirmation (note that other things may happen
-during waiting, such as receiving request for another data if we act as the
-server)."
+is not big enough we stop writing and return, making sure that the writing
+continues when window size increases."
   (let ((sent 0)
         (total-length (length payload)))
     (with-slots (window-size-increment-callback) stream

@@ -22,7 +22,8 @@ based @CALLBACK-API.")
 #+nil  (#:http2 asdf/system:system)
 #+nil  (http2/hpack::@hpack-api section)
 #+nil  (http2::@buffer-stream-and-pipes section)
-#+nil  (@terms section))
+#+nil  (@terms section)
+  (http2/core::@lisp-stream-emulation section))
 
 (defsection @test
     ()
