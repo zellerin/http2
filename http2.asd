@@ -1,6 +1,6 @@
 ;;;; http2.asd
 
-(defsystem "http2"
+(defsystem "http2/core"
   :description "HTTP2 protocol implementation"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
@@ -40,7 +40,7 @@
   :license  "MIT"
   :version "1.1"
   :serial t
-  :depends-on ("http2" "bordeaux-threads")
+  :depends-on ("http2/core" "bordeaux-threads")
   :components ((:file "package")
                (:module "core"
                 :components ((:file "stream-based-connections")
@@ -100,7 +100,7 @@
   :entry-point "http2/server-example::run-demo-server")
 
 (defsystem "http2/test"
-  :depends-on ("http2" "fiasco" "trivial-gray-streams"
+  :depends-on ("http2/core" "fiasco" "trivial-gray-streams"
                        "http2/server" "http2/client" "http2/server/example"
                        "bordeaux-threads")
   :perform (test-op (o s)
@@ -117,6 +117,8 @@
                (:file "errors")
                (:file "streams")))
 
-(defsystem "http2/all"
-  :depends-on ("http2" #+nil http2/test http2/client http2/server http2/tls)
-  :components ((:file "overview")))
+(defsystem "http2"
+  :depends-on (#+nil http2/test "http2/client" "http2/server")
+  :components ((:file "overview"))
+  :description "Load this system to load all HTTP/2 components - in particular, both client and
+server.")
