@@ -2,13 +2,15 @@
 
 (defsection @overview
     (:title "Overview")
-  "\\HTTP2 API library.
+  "This is an HTTP/2 implementation in Common Lisp. It provides both high-level
+interface as well as ways to fine tune its behaviour for better performance or
+specific use cases.
 
-For quick start, it provides high level interface to \\HTTP2 as a client (@CLIENT) and
-server (@SERVER). This provides a sane vanilla behaviour for client and dispatch-on-url based behaviour on server.
-
-The behaviour can be configured and extended using generic functions
-based @CALLBACK-API.")
+For quick start, quickload \"HTTP2\" and see @TUTORIALS that show how to use a
+simple client to fetch a resource or how to serve simple pages."
+  (http2 asdf:system)
+  (http2/client package)
+  (http2/server package))
 
 (defsection @index
     (:title "HTTP2 in Common Lisp")
@@ -34,8 +36,7 @@ based @CALLBACK-API.")
   (http2/client::@client section)
   (http2/server::@server section)
   (http2/server::@server-content section)
-  (http2/client::@tutorial section)
-  )
+  (http2/client::@tutorial section)  )
 
 (in-package http2/client)
 
