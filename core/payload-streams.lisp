@@ -44,6 +44,12 @@ enough to send the data as a data frame on BASE-HTTP2-STREAM (or forced to by cl
      (with-slots (connection peer-window-size state) base-http2-stream
        ,@body)))
 
+(define-condition http2-write-data-stall (warning)
+  ((sent :reader get-sent :initarg :sent)
+   (data :reader get-data :initarg :data))
+  (:documentation "Signalled when data are to be sent and there is not big enough window available
+to sent. Tracks DATA to sent and number of octets actually SENT."))
+
 (defmethod trivial-gray-streams:stream-write-byte ((stream payload-output-stream) byte)
   (with-output-payload-slots stream
     (if (< (fill-pointer output-buffer) (array-dimension output-buffer 0))

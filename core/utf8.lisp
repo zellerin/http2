@@ -48,14 +48,17 @@ the stream and the text."))
   ;; 1) find first start char, and if it is not in the
   ;; beginning, add all before it to the broken-char
   ;; this might be slow but rare enough
+  "When headers satisfy IS-UTF8-P, convert the the binary frame to text (taking
+care about UTF-8 characters possibly split between frames) and call
+APPLY-TEXT-DATA-FRAME on it."
   (if (is-utf8-p (get-headers stream))
-      (unless (= start end) ; Google sends empty payload sometimes. Remove when
-                            ; we can handle that.
+      (unless (= start end)  ; Google sends empty payload sometimes. Remove when
+                                        ; we can handle that.
         (let* ((first-start-char-position
                  (position-if #'utf-is-first-char payload :start start :end end)))
           (when (null first-start-char-position)
             (error 'unimplemented-feature :format-control "FIXME: no start-char in payload ~s"
-                   :format-arguments (list  (subseq payload start end))))
+                                          :format-arguments (list  (subseq payload start end))))
           (unless (= first-start-char-position start)
             ;; FIXME: print broken char
             (assert (get-broken-char stream))

@@ -180,18 +180,19 @@ buffer are opaque."))
   (vector-push-extend frame (get-to-write connection))
   frame)
 
-;;;; Connection and stream for logging: tracks every callback in (reversed)
-;;;; history.
+#+nil
 (defclass logging-object ()
   ()
   (:documentation
    "Objects with this mixin have ADD-LOG called in many situations so that the
 communication can be debugged or recorded."))
 
+#+nil
 (defclass history-keeping-object (logging-object)
   ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
   (:default-initargs :reversed-history nil))
 
+#+nil
 (defclass history-printing-object (logging-object)
   ()
   (:documentation
@@ -224,10 +225,7 @@ communication can be debugged or recorded."))
     (:title "Frame read callbacks")
   "The reader functions for individual frames may call a callback that is supposed
 to handle received frame in some way. All callbacks have stream or connection as
-the first parameter.
-
-In addition to the behaviour described below, all callback log the behaviour
-when relevant stream or connection has logging-object as superclass."
+the first parameter."
   (@data-received section)
   (@stream-closed section)
   (apply-stream-priority  generic-function)
@@ -351,7 +349,8 @@ multiple threads."
 
 (defgeneric apply-data-frame (stream payload start end)
   (:documentation
-   "HTTP-STREAM should process received PAYLOAD from the data frame. Presently it is called once per data frame, but this can change in future to improve performance.")
+   "STREAM (a HTTP/2 stream) should process received PAYLOAD from the data
+frame from START to END.")
 
   ;; FIXME: we should not send small updates
 
@@ -366,10 +365,7 @@ multiple threads."
                        (map 'string 'code-char (subseq data start end) )))
     (with-slots (connection) stream
       (write-window-update-frame connection (length data))
-      (write-window-update-frame stream (length data))))
-
-  (:method :before ((stream logging-object) payload start end)
-    (add-log stream `(:payload ,(subseq payload start end)))))
+      (write-window-update-frame stream (length data)))))
 
 
 (defgeneric apply-stream-priority (stream exclusive weight stream-dependency)

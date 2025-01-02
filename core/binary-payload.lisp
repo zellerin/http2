@@ -1,13 +1,32 @@
 (in-package http2/core)
 
+(defsection @accepting-data
+  (:title "Accepting data frames")
+  "When a data frame is received, APPLY-DATA-FRAME generic function is called. The specific
+action depends on the class of the receiving HTTP/2 stream. There are
+specializers for UTF8-PARSER-MIXIN, "
+  (apply-data-frame generic-function)
+  (utf8-parser-mixin class)
+  (is-utf8-p function)
+  (apply-data-frame (method nil (utf8-parser-mixin t t t)))
+  (gzip-decoding-mixin class)
+  (apply-data-frame (method (:around) (gzip-decoding-mixin t t t)))
+  (body-collecting-mixin class)
+  (apply-data-frame (method nil (BODY-COLLECTING-MIXIN t t t)))
+
+  (apply-text-data-frame generic-function)
+  (text-collecting-stream class))
+
 (defsection @lisp-stream-emulation
     (:title "Emulate Lisp stream over frames")
+
+  "TODO: sort docs below"
   (compile-payload-from-stream mgl-pax:macro)
   (write-binary-payload function)
   (make-transport-output-stream function)
-  (text-collecting-stream class)
   (multi-part-data-stream class)
-  (http-stream-to-vector function))
+  (http-stream-to-vector function)
+  (@accepting-data section))
 
 ;;;; FIXME: document the role of this file and classes
 
@@ -29,9 +48,9 @@ octets and compression (if GZIP set)."
   (:default-initargs :text nil)
   (:documentation
    "Mixin that collect all the received body (possibly unzipped data frames
-converted to proper encoding) into a TEXT slot."))
+converted to proper encoding) into its TEXT slot."))
 
-(defmethod http2/core::apply-text-data-frame ((stream text-collecting-stream) text)
+(defmethod apply-text-data-frame ((stream text-collecting-stream) text)
   (push text (get-text stream)))
 
 ; TODO: 2024-12-27 How it works with GET-BODY and BODY-COLLECTING-MIXIN?
@@ -84,10 +103,10 @@ compressed.
   ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
   (:default-initargs :window-size-increment-callback nil)
   (:documentation
-   "When peer sends window size increment frame, call specified callback function.
+   "Implement writing of data that may possibly be too big to send at once.
 
-This works together with WRITE-BINARY-PAYLOAD to make sure that the payload is
-fully written, eventually."))
+When peer sends window size increment frame, call specified callback
+function. This is set in WRITE-BINARY-PAYLOAD to write rest of data to write."))
 
 (defmethod apply-window-size-increment :after ((object multi-part-data-stream) increment)
   (with-slots (window-size-increment-callback) object
@@ -120,7 +139,7 @@ continues when window size increases."
                            (write-data-frame stream (subseq payload sent)
                                              :end-stream end-stream)
                            (setf window-size-increment-callback nil)))))
-#+nil        (when window-size-increment-callback
-          (error "FIXME: this is unsupported, do we really need :END-STREAM nil version?"))
+        #+nil        (when window-size-increment-callback
+                       (error "FIXME: this is unsupported, do we really need :END-STREAM nil version?"))
         (setf window-size-increment-callback #'write-chunk)
         (write-chunk stream)))))

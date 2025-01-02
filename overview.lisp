@@ -1,5 +1,27 @@
 (in-package :http2)
 
+;;;; This file provides skeleton for the documentation.  The documentation is in
+;;;; the mgl-pax format. There are several outputs:
+;;;;
+
+(defun make-release-documentation ()
+  "Make package documentation for the release:
+
+- HTML documentation files,
+- README to be distributed with the package
+
+"
+  (mgl-pax:update-asdf-system-readmes @overview "http2")
+  (mgl-pax:update-asdf-system-html-docs @index "http2"
+                                        :pages `((:objects (, @index)
+                                                  :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+                                                                                          :git-version "v2-main"))))
+  (mgl-pax:update-asdf-system-html-docs @index "http2"
+                                        :pages `((:objects (, @index)
+                                                  :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"
+                                                                                          :uri-format-string "~a/~*~A~*")))
+                                        :target-dir "/tmp/http2/"))
+
 (defsection @overview
     (:title "Overview")
   "This is an HTTP/2 implementation in Common Lisp. It provides both high-level

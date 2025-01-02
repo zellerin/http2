@@ -8,6 +8,8 @@
   (setf (get-dstate stream) (chipz:make-dstate 'chipz:gzip)))
 
 (defmethod apply-data-frame :around ((stream gzip-decoding-mixin) payload start end)
+  "When there is a `Content-Encoding: gzip` header, decompress the data and call next
+APPLY-DATA-FRAME methods."
   ;; 20240607 TODO: Window update should go elsewhere
 
   (write-window-update-frame (http2/core::get-connection stream) (- end start))
