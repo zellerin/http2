@@ -58,6 +58,7 @@ simple client to fetch a resource or how to serve simple pages."
   (http2/client::@client section)
   (http2/server::@server section)
   (http2/server::@server-content section)
+  (http2/server::@request-body section)
   (http2/client::@tutorial section)  )
 
 (in-package http2/client)

@@ -146,7 +146,6 @@ than :status allowed, etc."))
   (:default-initargs :body "")
   (:documentation
    "Mixin to collect all payload parts to one string."))
-;;;; Q: can one UTF-8 character be split into two frames?
 
 (defclass timeshift-pinging-connection ()
   ()
@@ -327,8 +326,9 @@ frame from START to END.")
   (:method ((stream body-collecting-mixin) data start end)
     "Concatenate received data to the BODY slot of the object."
     (setf (get-body stream)
-          (concatenate 'string (get-body stream)
-                       (map 'string 'code-char (subseq data start end) )))
+          (concatenate '(vector (unsigned-byte 8))
+                       (get-body stream)
+                       (subseq data start end) ))
     (with-slots (connection) stream
       (write-window-update-frame connection (length data))
       (write-window-update-frame stream (length data)))))

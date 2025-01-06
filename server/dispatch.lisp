@@ -41,7 +41,6 @@ or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
   (send-goaway function)
   (get-path generic-function)
   (get-body generic-function)
-  (write-binary-payload function)
   #+nil((dispatcher-mixin class)
 
         (send-text-handler function)
@@ -56,6 +55,14 @@ or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
         (tls-single-client-dispatcher class)
         (detached-tls-single-client-dispatcher class)
         (send-headers function)))
+
+(defsection @request-body
+    (:title "Getting request details")
+  "Sometimes you need to get some data from the request. "
+  (get-path generic-function)
+  (http2/core::get-method generic-function)
+  (http2/core::get-headers generic-function)
+  (get-body generic-function))
 
 (defun send-goaway (code debug-data)
   "Start closing connection, sending CODE and DEBUG-DATA in the go-away frame to
@@ -205,6 +212,11 @@ optionally provides CONTENT with CONTENT-TYPE."
 (defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
   ())
 
+(defmacro with-standard-handlers (() &body body)
+  `(handler-bind
+       ((CL+SSL::SSL-ERROR-SSL 'abort))
+     ,@body))
+
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
   (let ((socket (usocket:socket-accept listening-socket
                                        :element-type '(unsigned-byte 8)))
@@ -212,10 +224,11 @@ optionally provides CONTENT with CONTENT-TYPE."
     (bt:make-thread
      (lambda ()
        (cl+ssl:with-global-context (context)
-         (with-open-stream (stream (server-socket-stream socket dispatcher))
+         (with-standard-handlers ()
            (restart-case
-               (http2/server::process-server-stream stream
-                                                    :connection-class (http2/server::get-connection-class dispatcher))
+               (with-open-stream (stream (server-socket-stream socket dispatcher))
+                 (http2/server::process-server-stream stream
+                                                      :connection-class (http2/server::get-connection-class dispatcher)))
              (kill-client-connection () nil))))) ; FIXME:
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
@@ -234,6 +247,8 @@ new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream
+                                 utf8-parser-mixin text-collecting-stream
+                                 http2/core::header-collecting-mixin
                                  body-collecting-mixin
                                  multi-part-data-stream)
   ()
