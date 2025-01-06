@@ -180,31 +180,6 @@ buffer are opaque."))
   (vector-push-extend frame (get-to-write connection))
   frame)
 
-#+nil
-(defclass logging-object ()
-  ()
-  (:documentation
-   "Objects with this mixin have ADD-LOG called in many situations so that the
-communication can be debugged or recorded."))
-
-#+nil
-(defclass history-keeping-object (logging-object)
-  ((reversed-history :accessor get-reversed-history :initarg :reversed-history))
-  (:default-initargs :reversed-history nil))
-
-#+nil
-(defclass history-printing-object (logging-object)
-  ()
-  (:documentation
-   "A LOGGING-OBJECT that implements ADD-LOG to print all logs to
-*TRACE-OUTPUT* as soon as it receives them."))
-
-(defclass logging-connection (http2-connection history-keeping-object write-buffer-connection-mixin)
-  ())
-
-(defclass logging-stream (http2-stream history-keeping-object)
-  ())
-
 
 ;;;; Callbacks from frame reading functions
 (defsection @data-received
@@ -247,12 +222,6 @@ the first parameter."
 (defun count-open-streams (connection)
   ;; 20240822 TODO: unused - remove or use to check when creating new stream.
   (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))
-
-(defmethod (setf get-state) :around (value (stream logging-object))
-  (let ((before (get-state stream)))
-    (add-log stream `(:state-change ,before -> ,value))
-    (call-next-method))
-  (call-next-method))
 
 (defun open-http2-stream (connection headers &key end-stream (end-headers t) stream-pars)
   "Open HTTP/2 stream (typically, from client side) by sending headers.
@@ -326,9 +295,6 @@ multiple threads."
          (unless (eq error-code +cancel+)
            (warn 'http-stream-error :stream stream :code error-code))
       (close-http2-stream stream)))
-  (:method :before ((stream logging-object) error-code)
-    (add-log stream  `(:closed :error ,(get-error-name error-code))))
-
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
    causes it to enter the \"closed\" state.  After receiving a RST_STREAM
@@ -375,20 +341,13 @@ frame from START to END.")
           `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
   (:documentation
    "Called when priority frame - or other frame with priority settings set -
-arrives. Does nothing, as priorities are deprecated in RFC9113 anyway.")
-
-  (:method :before ((stream logging-object) exclusive weight stream-dependency)
-    (add-log stream `(:new-prio :exclusive ,exclusive
-                                :weight ,weight :dependency ,stream-dependency))))
+arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 
 (defgeneric apply-window-size-increment (object increment)
   (:documentation
    "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
 the strem or connection.")
   (:method ((object (eql :closed)) increment))
-  (:method :before ((object logging-object) increment)
-    (add-log object `(:window-size-increment ,(get-peer-window-size object) + ,increment)))
-
   (:method (object increment)
     (incf (get-peer-window-size object) increment)))
 
@@ -404,10 +363,6 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
     (declare (type (unsigned-byte 32) value))
     (warn 'unimplemented-feature :format-control "Peer settings not used - ~a ~a."
                                  :format-arguments (list name value)))
-
-  (:method :before ((connection logging-object) name value)
-    (declare (type (unsigned-byte 32) value))
-    (add-log connection `(:setting ,name ,value)))
 
   (:method (connection (name (eql :header-table-size)) value)
     (declare (type (unsigned-byte 32) value))
@@ -503,8 +458,6 @@ SET-PEER-SETTING calls. By default, send ACK frame.")
   (:documentation
    "Do relevant state changes when peer closes HTTP-STREAM (as part of received HEADERS or
 PAYLOAD). Does nothing by default; client and server would want to specialize it to send response or process it.")
-  (:method :after ((stream logging-object))
-    (add-log stream '(:closed-remotely)))
   (:method (stream)))
 
 (defmacro check-place-empty-and-set-it (new-value accessor)
@@ -573,10 +526,7 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
     (format t "~&header: ~a = ~a~%" name value))
 
   (:method (connection (stream header-collecting-mixin) name value)
-    (push (cons name value) (get-headers stream)))
-
-  (:method :before (connection (stream logging-object) name value)
-    (add-log stream `(:header ,name ,value))))
+    (push (cons name value) (get-headers stream))))
 
 
 
@@ -591,8 +541,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
     (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
 
 (defgeneric process-end-headers (connection stream)
-  (:method  :before (connection (stream logging-object))
-    (add-log stream '(:end-headers)))
 
   (:method (connection stream))
 
@@ -616,10 +564,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
 (defmethod do-pong ((connection timeshift-pinging-connection) data)
   (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second)))
 
-(defmethod do-goaway ((connection logging-object) error-code last-stream-id debug-data)
-  (add-log connection `(:go-away :last-stream-id ,last-stream-id
-                                 :error-code ,error-code)))
-
 (defmethod do-goaway ((connection server-http2-connection) error-code last-stream-id debug-data)
   (unless (eq error-code '+no-error+)
     (signal 'go-away :last-stream-id last-stream-id
@@ -628,23 +572,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
     (invoke-restart 'close-connection)))
 
 
-(defvar *do-print-log* nil
-  "Set to true value to log to the *TRACE-OUTPUT*.")
-
-(defgeneric add-log (object log-pars)
-  (:method ((object history-keeping-object) log-pars)
-    (push log-pars (get-reversed-history object)))
-
-  (:method ((object history-printing-object) log-pars)
-    (when (or (eq *do-print-log* t)
-              (member (car log-pars)  *do-print-log*))
-      (let ((*print-length* 10)
-            (*print-base* 16))
-        (format *trace-output* "~&~s: ~{~s~^ ~}~%" object log-pars)))))
-
-(defun get-history (object)
-  (reverse (get-reversed-history object)))
-
 (defvar +client-preface-start+
   #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")
   "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
@@ -673,9 +600,6 @@ Then write the initial settings frame, and expect normal frame. Actually, this s
   ;; 20240708 TODO: This should go to client, or at least not depend on network stream
   (write-sequence +client-preface-start+ (get-network-stream connection))
   (write-settings-frame connection (get-settings connection)))
-
-(defmethod do-pong :before ((connection logging-object) data)
-  (add-log connection `(:pong ,data)))
 
 ;;;; network comm simplifications
 (defmethod close ((connection http2-connection) &key &allow-other-keys)
