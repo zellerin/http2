@@ -83,7 +83,7 @@ but kept for compatibility purposes.
 - whether connection is closed (passed as parameter)
 - reason phrase (bogus value)"
   (values
-   (http-stream-to-vector raw-stream)
+   (or (get-body raw-stream) (http-stream-to-string raw-stream))
    (parse-integer (http2/core::get-status raw-stream))
    (http2/core::get-headers raw-stream)
    "/"

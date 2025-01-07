@@ -38,35 +38,69 @@ or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
   (redirect-handler function)
   (send-text-handler function)
   (send-headers function)
-  (send-goaway function)
+  (send-goaway function))
+
+(defsection @request-details
+    (:title "Getting request details")
+  "Sometimes you need to get some data from the request.
+
+These data can be carried by querying the HTTP/2 stream object involved. If you
+define handlers by HANDLER macro, it is available in a lexically bound \\STREAM
+variable.
+
+```
+(define-exact-handler \"/body\"
+  (handler (foo :utf-8 nil)
+    (with-open-stream (foo foo)
+      (send-headers
+       '((:status \"200\")
+         (\"content-type\" \"text; charset=utf-8\")))
+      (format foo \"Hello World, this is a ~s request.~3%content~%~s~3%headers~%~s~%~3%body~%~s~%\"
+         (http2/core::get-method stream)
+         (http-stream-to-string stream)
+         (http2/core::get-headers stream)
+         (http2/core::get-body stream)))))
+```
+
+"
   (get-path generic-function)
-  (get-body generic-function)
-  #+nil((dispatcher-mixin class)
-
-        (send-text-handler function)
-        (redirect-handler function)
-        (@server/threaded section)
-
-        (server-stream class)
-        (detached-tls-threaded-dispatcher class)
-        (tls-threaded-dispatcher class)
-        (threaded-dispatcher class)
-        (single-client-dispatcher class)
-        (tls-single-client-dispatcher class)
-        (detached-tls-single-client-dispatcher class)
-        (send-headers function)))
+  (http2/core::get-method (method nil (server-stream)))
+  (http2/core::get-headers (method nil (HTTP2/core::header-collecting-mixin)))
+  (http2/core::get-scheme (method nil (server-stream)))
+  (http2/core::get-authority (method nil (server-stream)))
+  (@request-body section))
 
 (defsection @request-body
-    (:title "Getting request details")
-  "Sometimes you need to get some data from the request. "
-  (get-path generic-function)
-  (http2/core::get-method generic-function)
-  (http2/core::get-headers generic-function)
-  (get-body generic-function))
+    (:title "Body of the request")
+  "Sometimes there is a body in the client request.
+
+When sending a such a request, you can use CONTENT parameter of the
+HTTP2/CLIENT:RETRIEVE-URL, together with CONTENT-TYPE.
+
+```
+ (http2/client:retrieve-url \"https://localhost:8080/body\" :content \"Hello\")
+ (http2/client:retrieve-url \"https://localhost:8080/body\"
+       :content #(1 2 3) :content-type \"application/octet-stream\")
+```
+
+When you write a handler for such a request, you should know if you want binary
+or text data. The vanilla class for the server streams looks at the headers, and
+if they look like UTF-8 (as per IS-UTF8-P), it processes the data as text, if
+not, they are collected as binary vector.
+
+When your client systematically send headers that do not make it TEXT and you
+want to read text, as last resort change class of your streams to include
+FALLBACK-ALL-IS-ASCII (or improve IS-UTF8-P, or add some other decoding function).
+
+If you do not want to see text at all, change class to \\NOT include
+UTF8-PARSER-MIXIN or any other conversion mixin."
+  (get-body (method nil (body-collecting-mixin)))
+  (http-stream-to-string function)
+  (http2/client::fallback-all-is-ascii class))
 
 (defun send-goaway (code debug-data)
   "Start closing connection, sending CODE and DEBUG-DATA in the go-away frame to
-peer. Must be called from inside of HANDLER."
+peer. Must be called from inside of HANDLER macro."
   (declare (ignore code debug-data))
   (error "SEND-GOAWAY must be used inside HANDLER macro."))
 

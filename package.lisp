@@ -40,7 +40,7 @@
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
         #:http2/cl+ssl)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
-HANDLER to define content to serve."))
+HANDLER macro to define content to serve."))
 
 (mgl-pax:define-package #:http2
   (:use #:cl #:mgl-pax #:http2/server #:http2/client))

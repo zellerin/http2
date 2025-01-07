@@ -43,7 +43,6 @@ protocol (H2 by default)."
 
 (defclass vanilla-client-connection (http2/core::client-http2-connection
                                      http2/stream-overlay:stream-based-connection-mixin
-                                     http2/core::history-printing-object
                                      http2/core::timeshift-pinging-connection)
   ()
   (:default-initargs :stream-class 'vanilla-client-stream)
@@ -59,12 +58,11 @@ protocol (H2 by default)."
   (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
 
 (defclass vanilla-client-stream (utf8-parser-mixin
-                                 fallback-all-is-ascii
                                  http2/core::gzip-decoding-mixin
                                  http2/core::client-stream
                                  http2/core::header-collecting-mixin
-                                 http2/core::history-printing-object
-                                 text-collecting-stream)
+                                 text-collecting-stream
+                                 body-collecting-mixin)
   ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn))
   (:default-initargs :end-headers-fn (constantly nil))
   (:documentation

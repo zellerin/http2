@@ -25,7 +25,7 @@ specializers for UTF8-PARSER-MIXIN, "
   (write-binary-payload function)
   (make-transport-output-stream function)
   (multi-part-data-stream class)
-  (http-stream-to-vector function)
+  (http-stream-to-string function)
   (@accepting-data section))
 
 ;;;; FIXME: document the role of this file and classes
@@ -54,7 +54,7 @@ converted to proper encoding) into its TEXT slot."))
   (push text (get-text stream)))
 
 ; TODO: 2024-12-27 How it works with GET-BODY and BODY-COLLECTING-MIXIN?
-(defun http-stream-to-vector (http-stream)
+(defun http-stream-to-string (http-stream)
   "HTTP-STREAM should be a TEXT-COLLECTING-STREAM.
 
 HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."

@@ -121,8 +121,8 @@ than :status allowed, etc."))
               :documentation
               "The authority portion of the target URI ([RFC3986], Section 3.2)")
    (path      :accessor get-path      :initarg :path
-              :documentation
-              "The path and query parts of the target URI"))
+              :type string
+              :documentation "The path and query parts of the target URI"))
   (:default-initargs :method nil :scheme nil :authority nil :path nil))
 
 (defmethod print-object ((stream server-stream) out)
@@ -136,14 +136,19 @@ than :status allowed, etc."))
   (:documentation "Class that logs some activities and state changes."))
 
 (defclass header-collecting-mixin ()
-  ((headers :accessor get-headers :initarg :headers))
+  ((headers :accessor get-headers :initarg :headers
+            :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
   (:default-initargs :headers nil)
   (:documentation
    "Mixin to be used to collect all observed headers to a slot."))
 
 (defclass body-collecting-mixin ()
-  ((body :accessor get-body :initarg :body))
-  (:default-initargs :body "")
+  ((body :accessor get-body :initarg :body
+         :documentation "Body of the request as an octet vector.
+
+May be empty if some higher priority mixin (e.g., UTF8-PARSER-MIXIN) processed
+the data."))
+  (:default-initargs :body nil)
   (:documentation
    "Mixin to collect all payload parts to one string."))
 
@@ -245,7 +250,7 @@ the first parameter."
 
 The END-HEADERS and END-STREAM allow to set the appropriate flags.
 
-Inside HTTP2-SERVER:HANDLER macro, this names a function that has the STREAM
+Inside HANDLER macro, this names a function that has the STREAM
 argument implicit and only HEADERS and key parameters are to be provided."
   (with-slots (connection) stream
     (write-headers-frame stream
