@@ -84,6 +84,7 @@
                (:file "scheduler")
                (:file "dispatch")))
 
+#+nil
 (defsystem "http2/server/example"
   :description "An example of http/2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
@@ -94,15 +95,14 @@
   :depends-on ("puri" "http2/tls" "cl-who"
                       "parenscript"
                       "http2/server")
-  :components ((:file "dispatch")
-               (:file "scheduler")
-#+nil               (:file "server"))
+  :components ((:file "server"))
   :entry-point "http2/server-example::run-demo-server")
 
+#+fixme
 (defsystem "http2/test"
   :depends-on ("http2/core" "fiasco" "trivial-gray-streams"
-                       "http2/server" "http2/client" "http2/server/example"
-                       "bordeaux-threads")
+                            "http2/server" "http2/client" "http2/server/example"
+                            "bordeaux-threads")
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2))
   :serial t
@@ -121,4 +121,5 @@
   :depends-on (#+nil http2/test "http2/client" "http2/server")
   :components ((:file "overview"))
   :description "Load this system to load all HTTP/2 components - in particular, both client and
-server.")
+server."
+  :properties ((:readme-section (@overview))))

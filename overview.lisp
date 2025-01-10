@@ -4,6 +4,20 @@
 ;;;; the mgl-pax format. There are several outputs:
 ;;;;
 
+(defparameter *pages*
+  `(
+    (:objects (, @overview)
+     :uri-fragment "overview.html")
+    (:objects (, @tutorials)
+     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+                                             :git-version "v2-main")
+     :uri-fragment "tutorials.html")
+
+    (:objects (, @index)
+     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+                                             :git-version "v2-main")
+     :uri-fragment "index.html")))
+
 (defun make-release-documentation ()
   "Make package documentation for the release:
 
@@ -13,9 +27,20 @@
 "
   (mgl-pax:update-asdf-system-readmes @overview "http2")
   (mgl-pax:update-asdf-system-html-docs @index "http2"
+                                        :pages *pages*)
+  (mgl-pax:update-asdf-system-html-docs @tutorials "http2"
                                         :pages `((:objects (, @index)
-                                                  :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
-                                                                                          :git-version "v2-main"))))
+                                                  :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"
+                                                                                          :uri-format-string "~a/~*~A~*"))
+                                                 (:objects (,)))
+                                        :target-dir "/tmp/http2/")
+
+  (mgl-pax:update-asdf-system-html-docs @overview "http2"
+                                        :pages `((:objects (, @tutorials)
+                                                  :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"
+                                                                                          :uri-format-string "~a/~*~A~*")))
+                                        :target-dir "/tmp/http2/")
+
   (mgl-pax:update-asdf-system-html-docs @index "http2"
                                         :pages `((:objects (, @index)
                                                   :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"

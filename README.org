@@ -3,86 +3,23 @@
 [[https://github.com/zellerin/http2/actions/workflows/test.yml/badge.svg]]
 
 This is an implementation of HTTP/2 protocol as described in RFC9113 (and
-RFC7540 before) and RFC7541 (HPACK).
+RFC7540 before) and RFC7541 (HPACK). It provides both high-level interface as
+well as ways to fine tune its behaviour for better performance or specific use
+cases.
 
-The core part of the library implements [[https://doc.zellerin.cz/http2/#HTTP2:@CALLBACKS%20MGL-PAX:SECTION][writing]] HTTP/2 frames, [[https://doc.zellerin.cz/http2/#HTTP2:READ-FRAME%20FUNCTION][reading, and
-proceesing them]]. Applications can customize what to do with received frames by
-defining callbacks in form of generic functions. Baseline class hierarchy to
-provide reasonable behaviour is defined.
-
-In addition, simple client and pieces to build a server (as well as an example
-server) are provided, see [[./client/client.lisp][client.lisp]] or [[./server/server.lisp][server.lisp]]. The best way to make
-servers and clients includes decisions on how to handle asynchronicity, HTTP/2
-window management, etc, and may be still subject to change.
+For quick start, quickload "http2" and see  that show how to use a
+simple client to fetch a resource or how to serve simple pages.
 
 ** Status
-In quicklisp. Load either ~http2/client~, ~http2/server~, or ~http2/all~.
+In quicklisp.
 
 Tested primarily on sbcl, occasionally on ecl.
 
-Almost all parts of the listed standards implemented, see below for exceptions.
+Almost all parts of the listed standards implemented, not necessary documented or declared stable
 
-**  Quick start
-
-*** Client
-
-Use ~retrieve-url~ to fetch pages:
-#+begin_src lisp
-  (ql:quickload 'http2/client)
-  (http2/client:retrieve-url "https://example.com")
-#+end_src
-
-It returns values of body (converted to string), result status, and response
-headers.
-
-Improvements to allow for cookie management, ... are out of scope of this
-library, as they would probably be better taken over from some existing HTTP/1.x
-library or incorporated there.*
-
-Improvements to query several resources on one server, and to receive pushes are
-considered for future, as they are HTTP/2 specific.
-
-
-#+RESULTS:
-#+begin_src text
-<!doctype html>
-<html>
-<head>
-    <title>Example Domain</title>
-
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" conten...[sly-elided string of length 1256]"
-"200"
-(("content-length" . "1256") ("x-cache" . "HIT") ("vary" . "Accept-Encoding")
- ("server" . "ECS (bsa/EB24)")
- ("last-modified" . "Thu, 17 Oct 2019 07:18:26 GMT")
- ("expires" . "Thu, 16 Jun 2022 09:35:21 GMT")
- ("etag" . "\"3147526947+ident\"") ("date" . "Thu, 09 Jun 2022 09:35:21 GMT")
- ("content-type" . "text/html; charset=UTF-8")
- ("cache-control" . "max-age=604800") ("age" . "239205"))
-#+end_src
-
-*** Server
-[[file:server/server.lisp][Example https server]] (that indicates h2 support with ALPN) is provided ; TLS key
-and certificate is needed ([[./scaffolding/run-server.lisp][test script]] generates a pair when missing). It
-handles connections one by thread by default; this is trivial to improve in
-several ways (workers, polling...) with customizing ~*dispatch-fn*~ but for now
-out of scope of this project.
-
-#+begin_src lisp
-  (ql:quickload 'http2/server/example)
-  (http2/server-example::run-demo-server :port 1234)
-#+end_src
-
-Then point your browser (not eww nor drakma, of course - must support http2) to
-https://localhost:1234 or
-#+begin_src sh
-  curl -k http://localhost:1234/
-#+end_src
-
-Then define handlers for your paths or prefixes, see the example server for a
-starting point and API documentation for more details.
+The current major version, 2.x.x., had a major internal rewrite can be considered stable with regard to the interface -
+that means, interface as documented in tutorials and public API should not change in backward incompatible
+ways. The non-documented internal parts may.
 
 ** Missing pieces
 - No handling of priorities is implemented. This is more or lessOK, as these are
@@ -101,21 +38,20 @@ starting point and API documentation for more details.
   replied as soon as processed, but nothing prevent finishing long response
   before that)
 
-** Implementation details
-
-See [[file:HACKING.org][HACKING.org]] for the details.
-
 ** Dependencies
 
 The core library used trivial-gray-streams to implement streams over data frames.
 
-Client and server require usocket and cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
+Client and server - or at least some server versions - require usocket and
+cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
 
 Client uses puri to manipulate URLs.
 
-Server also uses cffi directly to [[file:tls/cl+ssl.lisp][check and confirm alpn]]. The sample server uses
-parenscript and cl-who to create html; this is an arbitrary choice and your
-server can use anything else.
+Server also uses cffi directly to check and confirm alpn, and for some other
+server versions. The sample server uses parenscript and cl-who to create html;
+this is an arbitrary choice and your server can use anything else.
+
+Documentation is done with mgl-pax.
 
 Additionally, fiasco is used for testing (and Javascript for browser-side testing).
 
