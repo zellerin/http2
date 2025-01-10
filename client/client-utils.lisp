@@ -51,12 +51,6 @@ protocol (H2 by default)."
    VANILLA-CLIENT-STREAM. Behaves as client, can send pings to measure roundtrip
    time and optionally prints history. See individual superclasses for details."))
 
-(defclass fallback-all-is-ascii ()
-  ())
-
-(defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
-  (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
-
 (defclass vanilla-client-stream (utf8-parser-mixin
                                  http2/core::gzip-decoding-mixin
                                  http2/core::client-stream

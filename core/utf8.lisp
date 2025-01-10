@@ -2,7 +2,8 @@
 
 (defsection @utf8
     (:title "UTF-8 streams")
-  (utf8-parser-mixin class))
+  (utf8-parser-mixin class)
+  (fallback-all-is-ascii class))
 
 (defun utf-is-first-char (octet)
   (not (= (logand octet #xc0) #x80)))
@@ -83,3 +84,9 @@ APPLY-TEXT-DATA-FRAME on it."
              (trivial-utf-8:utf-8-bytes-to-string payload :start start :end  end)))))
 
       (call-next-method)))
+
+(defclass fallback-all-is-ascii ()
+  ())
+
+(defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
+  (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))

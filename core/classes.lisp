@@ -22,7 +22,12 @@ make your class using appropriate mixins.
   (close-connection restart)
   (get-body generic-function)
   (get-path generic-function)
-  (send-headers generic-function))
+  (send-headers generic-function)
+  (get-method generic-function)
+  (get-headers generic-function)
+  (get-scheme generic-function)
+  (get-authority generic-function))
+
 
 ;;;; Classes
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)

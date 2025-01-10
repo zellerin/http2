@@ -1,4 +1,4 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (in-package :http2/server)
 
@@ -64,10 +64,10 @@ variable.
 
 "
   (get-path generic-function)
-  (http2/core::get-method (method nil (server-stream)))
-  (http2/core::get-headers (method nil (HTTP2/core::header-collecting-mixin)))
-  (http2/core::get-scheme (method nil (server-stream)))
-  (http2/core::get-authority (method nil (server-stream)))
+  (get-headers (method nil (HTTP2/core::header-collecting-mixin)))
+  (get-method (method nil (server-stream)))
+  (get-scheme (method nil (server-stream)))
+  (get-authority (method nil (server-stream)))
   (@request-body section))
 
 (defsection @request-body
@@ -235,6 +235,7 @@ optionally provides CONTENT with CONTENT-TYPE."
       (when content
         (princ content out)))))
 
+
 (defclass threaded-dispatcher (base-dispatcher)
   ()
   (:documentation
@@ -351,9 +352,14 @@ signalled."
             (cleanup-connection connection))
         (end-of-file ())))))
 
+(defsection @dispatchers
+    ()
+  (detached-tls-single-client-dispatcher class)
+  (detached-single-client-dispatcher class)
+  (detached-tls-threaded-dispatcher class))
+
 (defclass tls-single-client-dispatcher (tls-dispatcher-mixin single-client-dispatcher)
   ())
-
 
 (defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
   ())

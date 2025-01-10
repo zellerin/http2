@@ -63,15 +63,7 @@ simple client to fetch a resource or how to serve simple pages."
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (@tutorials section)
-#+nil  (http2/core::@frames-api section)
-#+nil  (http2/core::@base-classes section)
-
-#+nil  (@utils section)
-#+nil  (@scheduling section)
-#+nil  (#:http2 asdf/system:system)
-#+nil  (http2/hpack::@hpack-api section)
-#+nil  (http2::@buffer-stream-and-pipes section)
-#+nil  (@terms section)
+#+nil
   (http2/core::@lisp-stream-emulation section))
 
 (defsection @test
@@ -84,7 +76,7 @@ simple client to fetch a resource or how to serve simple pages."
   (http2/server::@server section)
   (http2/server::@server-content section)
   (http2/server::@request-details section)
-  (http2/client::@tutorial section)  )
+#+nil  (http2/client::@tutorial section)  )
 
 (in-package http2/client)
 
