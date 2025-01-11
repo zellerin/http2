@@ -1,4 +1,4 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (in-package :http2/server)
 
@@ -262,7 +262,10 @@ optionally provides CONTENT with CONTENT-TYPE."
            (restart-case
                (with-open-stream (stream (server-socket-stream socket dispatcher))
                  (http2/server::process-server-stream stream
-                                                      :connection-class (http2/server::get-connection-class dispatcher)))
+                                                      :connection
+                                                      (apply #'make-instance (get-connection-class dispatcher)
+                                                             (get-connection-args dispatcher)
+                                                       )))
              (kill-client-connection () nil))))) ; FIXME:
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
