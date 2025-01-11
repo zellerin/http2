@@ -247,6 +247,11 @@ optionally provides CONTENT with CONTENT-TYPE."
 (defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
   ())
 
+(defclass detached-threaded-dispatcher (detached-server-mixin threaded-dispatcher)
+  ())
+(defclass detached-single-client-dispatcher (detached-server-mixin single-client-dispatcher)
+  ())
+
 (defmacro with-standard-handlers (() &body body)
   `(handler-bind
        ((CL+SSL::SSL-ERROR-SSL 'abort))

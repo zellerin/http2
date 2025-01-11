@@ -2,21 +2,20 @@
 
 (load "~/quicklisp/setup")
 (asdf::load-asd (truename "./http2.asd"))
-(ql:quickload "http2/server/example" :silent t)
+(ql:quickload "http2/server" :silent t)
 (ql:quickload "hunchentoot" :silent t)
 (ql:quickload 'cl-ppcre :silent t)
 (ql:quickload 'woo :silent t)
 
 
-(in-package :http2/server-example)
+(in-package :http2/server)
 
-(bt:make-thread (lambda () (ignore-errors
-                            (http2/server-example::run-demo-server :port 1237)))
-                :name "Our server thread")
+(define-exact-handler "/"
+    (send-text-handler "/Hello World"))
 
-(bt:make-thread (lambda () (ignore-errors
-                            (http2::create-http-server  1238)))
-                :name "Our server thread")
+(start 1237)
+(start 1238 :dispatcher 'http2/server::detached-threaded-dispatcher)
+(start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
 (bt:make-thread
  (lambda ()
@@ -35,7 +34,7 @@
 (hunchentoot:start (make-instance 'hunchentoot:easy-acceptor :port 1236
                                                              :access-log-destination nil))
 (flet ((scan-port (base name &rest args )
-         (let ((res (uiop:run-program `("h2load" "-n" "5000"
+         (let ((res (uiop:run-program `("h2load" "-D1"
                                                  ,@args)
                                       :output :string)))
            (multiple-value-bind (match val)
@@ -52,12 +51,14 @@
     (scan-port base "Woo on plain socket" "http://localhost:1239" "-p" "http/1.1")
     (scan-port base "HTTP/2 over plain socket, -m20" "http://localhost:1238"
                "-m" "20")
+    (scan-port base "HTTP/2 single client over plain socket, -m20" "http://localhost:1255"
+               "-m" "20")
     (scan-port base "Hunchentoot on plain socket, -m20" "http://localhost:1236"
                "-p" "http/1.1" "-m" "20" )
 
     (scan-port base "Woo on plain socket, -m20" "http://localhost:1239" "-p" "http/1.1"
                "-m" "20" "-D1") ;this hangs when count-based for obvious reasons
-    (scan-port base "HTTP/2, plain socket, post " "http://localhost:1238"
+#+nil    (scan-port base "HTTP/2, plain socket, post " "http://localhost:1238"
                "-d" "./client/client.lisp")
     (scan-port base "Hunchentoot on plain socket, post" "http://localhost:1236" "-p" "http/1.1"
                "-d" "./client/client.lisp")))
