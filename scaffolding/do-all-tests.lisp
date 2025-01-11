@@ -1,5 +1,6 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
+;;;; This probably no longer works in v 2.0.0
 (load "~/quicklisp/setup")
 (setf ql:*local-project-directories* (list (truename "./")))
 (setf asdf:*system-definition-search-functions*
