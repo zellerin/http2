@@ -162,10 +162,13 @@ connection depending on the dispatch method.")
   (get-tls (make-instance what)))
 
 (defclass base-dispatcher ()
-  ((tls              :reader get-tls
-                     :initform nil :allocation :class)
-   (connection-class :accessor get-connection-class :initarg :connection-class))
-  (:default-initargs  :connection-class 'vanilla-server-connection))
+  ((tls              :reader   get-tls
+                     :initform nil               :allocation :class)
+   (connection-class :accessor get-connection-class :initarg  :connection-class)
+   (connection-args  :accessor get-connection-args  :initarg  :connection-args))
+  (:default-initargs
+   :connection-class 'vanilla-server-connection
+   :connection-args nil))
 
 (defclass single-client-dispatcher (base-dispatcher)
   ()
@@ -189,7 +192,9 @@ layer when needed."))
 (defmethod do-new-connection (listening-socket (dispatcher single-client-dispatcher))
   (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
                                                                :element-type '(unsigned-byte 8)))
-    (process-server-stream (server-socket-stream plain dispatcher) :connection-class (get-connection-class dispatcher))))
+    (process-server-stream (server-socket-stream plain dispatcher)
+                           :connection (apply #'make-instance (get-connection-class dispatcher)
+                                              (get-connection-args dispatcher)))))
 
 (defun maybe-create-certificate (key certificate &key system (base
                                                               (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))

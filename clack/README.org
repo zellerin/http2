@@ -14,15 +14,19 @@ after some preparations:
 
 ** Running clack demo
 #+begin_src lisp :results none
-  (defvar *handler*
+  (defparameter *handler*
       (clack:clackup
         (lambda (env)
           (declare (ignore env))
           '(200 (:content-type "text/plain") ("Hello, Clack! Here we go!")))
-    :server :http2))
+    :server :http2
+    :port 5050))
 #+end_src
 
 ** Some considerations
+:PROPERTIES:
+:ID:       37d1ef23-a6ee-4a30-b3bb-02d41e9bf38c
+:END:
 - No websockets fot http/2. This is why Clog would not run out of the box.
 - http/2 over plain unencrypted protocol is in general not supported, so a
   certificate are needed. The preparation above generates disposable self-signed
