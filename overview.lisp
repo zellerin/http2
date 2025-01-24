@@ -20,7 +20,7 @@ simple client to fetch a resource or how to serve simple pages."
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (@tutorials section)
-#+nil
+  #+nil
   (http2/core::@lisp-stream-emulation section))
 
 (defsection @test
@@ -33,9 +33,8 @@ simple client to fetch a resource or how to serve simple pages."
   (http2/server::@server section)
   (http2/server::@server-content section)
   (http2/server::@request-details section)
-#+nil  (http2/client::@tutorial section)  )
-
-(in-package http2/client)
+  (http2/client::@customizing-client section)
+  #+nil  (http2/client::@tutorial section)  )
 
 (mgl-pax:defsection @tutorial
     (:title "Build your own client")

@@ -111,13 +111,15 @@
                                                          :end-stream nil)
                                 (force-output (http2/core::get-network-stream connection)))))))
 
+
 (define-exact-handler "/body"
-    (lambda (connection stream)
-      (send-headers stream
-                    `((:status "200") ("content-type" "text/plain; charset=utf-8")
-                      ("refresh" "3; url=/")))
-      (write-binary-payload connection stream
-                                   (trivial-utf-8:string-to-utf-8-bytes  (http2/core::get-body stream)))))
+    (handler (foo :utf-8 nil)
+      (with-open-stream (foo foo)
+        (send-headers
+         `((:status "200") ("content-type" "text/plain; charset=utf-8")
+           ("refresh" "3; url=/")))
+        (format foo  "Body is ~a"
+                (http2/core::get-text stream)))))
 
 (defmethod add-header (connection (stream server-stream) name value)
   (handler-bind ((warning #'muffle-warning))

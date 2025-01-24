@@ -1,6 +1,17 @@
 (in-package http2/core)
 ;;;; Interface
 
+
+(mgl-pax:defsection @streams
+    (:title "Streams and connections")
+  (get-streams generic-function)
+  (get-connection generic-function)
+  (stream-collection class)
+  (http2-stream-minimal class))
+
+(defgeneric get-streams (connection)
+)
+
 (export '(state connection))
 
 (defclass http2-stream-minimal (flow-control-mixin)
@@ -16,7 +27,10 @@
 
 (defclass stream-collection ()
   ((streams                  :accessor get-streams                  :initarg :streams
-                             :documentation "Sequence of HTTP2 streams")
+                             :documentation
+                             "Sequence of streams the connection knows about.
+This includes all open and half-closed streams, but not the already closed and
+idle streams.")
    (id-to-use                :accessor get-id-to-use                :initarg :id-to-use
                              :type stream-id)
    (last-id-seen             :accessor get-last-id-seen             :initarg :last-id-seen

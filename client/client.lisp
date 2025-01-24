@@ -1,75 +1,221 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (in-package :http2/client)
 
+(named-readtables:in-readtable
+            pythonic-string-reader:pythonic-string-syntax)
+
 (mgl-pax:defsection @client
-  (:title "Using built-in HTTP/2 client")
+    (:title "Using built-in HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
   (drakma-style-stream-values function))
 
-(defun maybe-send-pings (connection ping)
-  (typecase ping
-    (integer (dotimes (i ping) (http2/core::send-ping connection)))
-    (null)
-    (t (http2/core::send-ping connection))))
+(mgl-pax:defsection @customizing-client-example-multi
+    (:title "Client example: multiple requests")
 
-(defun retrieve-url-using-http-connection
-    (http-connection parsed-url
-     &key
-       (method "GET")
-       content additional-headers
-       (content-fn (when content (curry #'write-sequence content)))
-       (content-type "text/plain; charset=utf-8")
-       (charset (extract-charset-from-content-type content-type))
-       gzip-content end-headers-fn &allow-other-keys)
-  "Return HTTP-STREAM object that represent a request sent on HTTP-CONNECTION.
 
-The stream does not necessarily contain response when returned. You can read its
-headers after the end of headers is signalled (callback END-HEADERS-FN is
-called) and until END-STREAM-FN is called, any reading of body may block.
+  """
+For example, this is how you can make a client that download several pages from
+same source.
 
-Parameters:
+First, you need a custom request class, both to have something to specialize
+FETCH-RESOURCE on and to keep the list of resources to fetch.
 
-- PARSED-URL is a parsed URL to provide (used for autority header and path)
-- METHOD is a http method to use, as a symbol or string
-- CONTENT-FN, if not null, should be a function of one argument, a stream, that
-  sends data to the stream.
-- providing CONTENT is a shorthand to provide CONTENT-FN that sends a sequence (string or binary)
-- if CONTENT-TYPE is set, it is send in headers, and the stream for CONTENT-FN is of type derived from its associated charset as per EXTRACT-CHARSET-FROM-CONTENT-TYPE.
-- if GZIP-CONTENT is set, the appropriate header is send, and the stream for
-  CONTENT-FN is compressed transparently."
-  (let ((raw-stream
-          (http2/stream-overlay::open-http2-stream http-connection
-                        (http2/hpack:request-headers method
-                                         (puri:uri-path parsed-url)
-                                         (puri:uri-host parsed-url)
-                                         :content-type content-type
-                                         :gzip-content gzip-content
-                                         :additional-headers additional-headers)
-                        :end-stream (null (or content content-fn))
-                        :stream-pars `(:end-headers-fn ,end-headers-fn))))
-    (when content-fn
-      (let ((out (make-transport-output-stream raw-stream charset nil)))
-        (funcall content-fn out)
-        (close out)))
-    raw-stream))
+```
+(defclass multi-url-request (simple-request)
+  ((urls :accessor get-urls :initarg :urls)))
 
-(defun retrieve-url-using-network-stream (network-stream parsed-url
-                                          &rest args
-                                          &key (connection-class 'vanilla-client-connection)
-                                            ping
-                                          &allow-other-keys)
-  "Open an HTTP/2 connection over NETWORK-STREAM and use it to request URL."
+(defmethod fetch-resource ((connection client-http2-connection)
+                           (request multi-url-request) args)
 
-  (with-http2-connection (connection connection-class network-stream)
-    (maybe-send-pings connection ping)
-    (apply #'retrieve-url-using-http-connection connection parsed-url args)
-    (restart-case
-             (http2/stream-overlay::process-pending-frames connection nil)
-           (finish-stream (stream)
-             (drakma-style-stream-values stream)))))
+  (dolist (r (get-urls request))
+    (fetch-resource connection r nil)))
+```
 
+Then you need a specialized stream class to specialize what to do when the
+responses arrive. Here it prints out the response body for simplicity, and ends
+if it got the last response.
+
+```
+(defclass my-client-stream (vanilla-client-stream)
+  ())
+
+(defmethod peer-ends-http-stream ((stream my-client-stream))
+  (print (or (get-body stream) (http-stream-to-string stream)))
+  (when (null (get-streams (get-connection stream)))
+    (signal 'client-done))
+  (terpri))
+```
+
+See GET-BODY,  HTTP-STREAM-TO-STRING and CLIENT-DONE.
+
+And finally, you need to pass these as the call parameter:
+
+```
+(http2/client:retrieve-url "https://localhost:8088/body"
+   :request-class 'multi-url-request
+   :urls '("https://localhost:8088/body" "https://localhost:8088/")
+   :stream-class 'my-client-stream)
+```
+"""
+  (get-connection (method nil (http2-stream-minimal)))
+  (get-streams (method nil (stream-collection))))
+
+(mgl-pax:defsection @customizing-client
+    (:title "Customize client")
+  "RETRIEVE-URL is in fact a thin wrapper over FETCH-RESOURCE generic function."
+  (fetch-resource generic-function)
+  " You can customize its behaviour by creating subclasses for the GENERIC-REQUEST
+ class and specialized methods for your new classes, as well as by changing
+ documented variables."
+  (@customizing-client-example-multi mgl-pax:section)
+  (@customizing-client-reference mgl-pax:section))
+
+(mgl-pax:defsection @customizing-client-reference
+    (:title "Client reference")
+  "For a simple request without body, following documented methods are called in
+sequence:"
+  (fetch-resource (method nil (t string t)))
+  (fetch-resource (method nil (t puri:uri t)))
+  (fetch-resource (method nil (stream generic-request t)))
+  (fetch-resource (method nil (client-http2-connection generic-request t)))
+  (fetch-resource (method nil (client-http2-connection request-with-utf8-body t)))
+  (fetch-resource (method nil (client-http2-connection request-with-binary-body t)))
+  (generic-request class)
+  (simple-request class)
+  (request-with-body class)
+  (request-with-binary-body class)
+  (request-with-utf8-body class)
+  (*default-client-connection-class* variable)
+  (client-done condition))
+
+(defclass generic-request ()
+  ((uri     :accessor get-uri     :initarg :uri)
+   (method  :accessor get-method  :initarg :method)
+   (headers :accessor get-headers :initarg :headers)
+   (no-body :accessor get-no-body :initarg :no-body))
+  (:default-initargs :method "GET" :headers nil)
+  (:documentation
+   "Base class for requests. It has slots for URI, HTTP METHOD, HEADERS (some headers
+are implicit) and NO-BODY flag to determine whether there would be data frames
+sent."))
+
+(defclass simple-request (generic-request)
+  ()
+  (:default-initargs :method "GET" :headers nil
+   :no-body t)
+  (:documentation "Class for requests with no body. Implies GET method by default."))
+
+(defclass request-with-body (generic-request)
+  ((content      :accessor get-content      :initarg :content)
+   (content-type :accessor get-content-type :initarg :content-type)
+   (gzip-content :accessor get-gzip-content :initarg :gzip-content))
+  (:default-initargs :no-body nil :method "POST")
+  (:documentation
+   "Base class for requests with a body. Implies POST method by default. Some method
+for FETCH-RESOURCE must be defined to actually send the content in data frames."))
+
+(defclass request-with-utf8-body (request-with-body)
+  ()
+  (:default-initargs :content-type "text/plain; charset=utf-8"))
+
+(defclass request-with-binary-body (request-with-body)
+  ()
+  (:default-initargs :content-type "application/octet-stream"))
+
+(defvar *default-client-connection-class* 'vanilla-client-connection
+  "Default class to be used for new connections in FETCH-RESOURCE.")
+
+(defmethod get-headers ((request request-with-body))
+  `(("content-type" . ,(get-content-type request))
+    ,@(call-next-method)))
+
+(defgeneric fetch-resource (medium url pars)
+  (:documentation "Retrieve URL over some medium - HTTP/2 connection, network socket, .....
+
+The ARGS is a property list used by some methods and ignored/passed down by others.")
+
+  (:method (medium (url string) args)
+    "Parse URL into PURI:URI object and fetch the resource using that."
+    (fetch-resource medium (puri:parse-uri url) args))
+
+  (:method (medium (url puri:uri) args)
+    "Convert URL into an instance of SIMPLE-REQUEST, REQUEST-WITH-UTF8-BODY or REQUEST-WITH-BINARY-BODY class.
+
+Pass ARGS to the MAKE-INSTANCE call.
+
+If ARGS (a property list) has CONTENT property, check its type - if it is a
+string, REQUEST-WITH-UTF8-BODY is created, if a simple or octet vector,
+REQUEST-WITH-BINARY-BODY, if not present or nil SIMPLE-REQUEST. If it is
+something else, behaviour is undocumented.
+
+Note that some of the methods actually wait to get the responses."
+    (fetch-resource medium
+                    (apply #'make-instance
+                           (getf args :request-class
+                                 (etypecase (getf args :content)
+                                   (null 'simple-request)
+                                   (string 'request-with-utf8-body)
+                                   ((or simple-vector  octet-vector) 'request-with-binary-body)))
+                           :uri url
+                           :allow-other-keys t
+                           args)
+                    args))
+
+  (:method ((medium (eql :connect)) (request generic-request) args)
+    "Not part of API."
+    (with-slots ((parsed-url uri)) request
+      (let ((network-stream
+              (connect-to-tls-server (puri:uri-host parsed-url)
+                                     :sni (puri:uri-host parsed-url)
+                                     :port (or (puri:uri-port parsed-url) 443))))
+        (unwind-protect
+             (fetch-resource network-stream request args)
+          (handler-case
+              (close network-stream)
+            (cl+ssl::ssl-error-zero-return ()))))))
+
+  (:method ((network-stream stream) (request generic-request) args)
+    "Open HTTP/2 connection over the STREAM and fetch the resource using this connection.
+
+*Wait for the pending frames to actually receive the response*.
+
+Class of the new connection is taken from :CONNECTION-CLASS property of ARGS,
+falling back to *DEFAULT-CLIENT-CONNECTION-CLASS*. ARGS are passed to the MAKE-INSTANCE."
+    (let ((connection
+       (apply #'make-instance (getf args :connection-class *default-client-connection-class*)
+                      :network-stream network-stream
+                      args)))
+      (fetch-resource connection request args)
+      (process-pending-frames connection)))
+
+  (:method ((connection client-http2-connection) (request generic-request) args)
+    "Open the new stream by sending headers frame to the server.
+
+Details of the frame are taken from the REQUEST instance.
+
+Return the new stream."
+    (send-headers (create-new-local-stream connection nil)
+                  (http2/hpack:request-headers
+                   (get-method request)
+                   (puri:uri-path (get-uri request))
+                   (puri:uri-host (get-uri request))
+                   :additional-headers (get-headers request))
+                  :end-stream (get-no-body request)
+                  :end-headers t))
+
+  (:method ((connection client-http2-connection) (request request-with-utf8-body) args)
+    "Open the HTTP/2 stream and send out the content as UTF-8."
+    (with-open-stream (out (make-transport-output-stream (call-next-method)
+                                                         :utf-8 nil))
+      (write-sequence (get-content request) out)))
+
+  (:method ((connection client-http2-connection) (request request-with-binary-body) args)
+    "Open the HTTP/2 stream and send out the content as octets sequence."
+    (with-open-stream (out (make-transport-output-stream (call-next-method)
+                                                         nil nil))
+      (write-sequence (get-content request) out))))
 
 (defun drakma-style-stream-values (raw-stream &key close-stream)
   "Return values as from DRAKMA:HTTP-REQUEST. Some of the values are meaningless,
@@ -85,11 +231,23 @@ but kept for compatibility purposes.
   (values
    (or (get-body raw-stream) (http-stream-to-string raw-stream))
    (parse-integer (http2/core::get-status raw-stream))
-   (http2/core::get-headers raw-stream)
+   (get-headers raw-stream)
    "/"
-   (http2/core::get-connection raw-stream)
+   (get-connection raw-stream)
    close-stream
    "HTTP2 does not provide reason phrases"))
+
+(define-condition client-done (condition)
+  ((result :accessor get-result :initarg :result
+           :initform nil))
+  (:documentation
+   "Handled by RETRIEVE-URL. The client should signal it when the processing is
+done."))
+
+(defgeneric present-result (result)
+  (:method (result) result)
+  (:method ((result client-stream))
+    (drakma-style-stream-values result)))
 
 (defun retrieve-url (url &rest pars
                      &key
@@ -121,30 +279,18 @@ Example:
 ...  (\"content-type\" . \"text/html; charset=UTF-8\")
 ...  (\"cache-control\" . \"max-age=604800\") (\"age\" . \"151654\"))
 ==> \"/\"
-==> #<HTTP2:VANILLA-CLIENT-CONNECTION >
+==> #<VANILLA-CLIENT-CONNECTION >
 ==> NIL
 ==> \"HTTP2 does not provide reason phrases\"
 ```
 
-See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values
+See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values.
 "
   ;; parameters are just for documentation purposes
-  (declare (ignore method content content-fn additional-headers
-                   content-type charset gzip-content))
-  (let ((parsed-url (puri:parse-uri url)))
-    (let ((network-stream
-            (connect-to-tls-server (puri:uri-host parsed-url)
-                                   :sni (puri:uri-host parsed-url)
-                                   :port (or (puri:uri-port parsed-url) 443))))
-      (unwind-protect
-           (apply #'retrieve-url-using-network-stream
-                  network-stream
-                  parsed-url
-                  :end-headers-fn (constantly nil)
-                  :end-stream-fn
-                  (lambda (raw-stream)
-                    (invoke-restart 'finish-stream raw-stream))
-                  pars)
-        (handler-case
-            (close network-stream)
-          (cl+ssl::ssl-error-zero-return ()))))))
+  (declare (ignore method content content-fn
+                   content-type charset gzip-content additional-headers))
+  (unwind-protect
+       (handler-case
+           (fetch-resource :connect url pars)
+         (client-done (c)
+           (present-result (get-result c))))))

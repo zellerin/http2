@@ -66,14 +66,11 @@ protocol (H2 by default)."
    logs. See individual superclasses for details."))
 
 
-(defmethod process-end-headers :after (connection (stream vanilla-client-stream))
-  (funcall (get-end-headers-fn stream) stream))
-
 (mgl-pax:define-restart finish-stream (http2-stream)
   "Invoked when server fully sends the response to the VANILLA-CLIENT-STREAM.")
 
 (defmethod peer-ends-http-stream ((stream vanilla-client-stream))
-  (invoke-restart 'finish-stream stream))
+  (signal 'client-done :result stream))
 
 (defvar *charset-names*
   '(("UTF-8" . :utf-8))

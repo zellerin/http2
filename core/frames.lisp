@@ -447,7 +447,6 @@ and size of data that the following function expects."
    (octet-vector header)
    (frame-size start end)
    (http2-connection connection))
-  ;; first flush anything we should have send to prevent both sides waiting
   (assert (= 9 (- end start)))
   (multiple-value-bind (frame-type-object length flags http-stream R)
       (decode-frame-header header start)

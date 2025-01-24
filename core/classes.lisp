@@ -14,11 +14,13 @@ make your class using appropriate mixins.
 
 ![Class hierarchy](./classes.svg)"
   (http2-connection class)
+  (client-http2-connection class)
   #+nil  (http2-stream class)
   (get-stream-class generic-function)
   (open-http2-stream function)
   (get-network-stream function)
   (server-stream class)
+  (client-stream class)
   (close-connection restart)
   (get-body generic-function)
   (get-path generic-function)
@@ -26,7 +28,8 @@ make your class using appropriate mixins.
   (get-method generic-function)
   (get-headers generic-function)
   (get-scheme generic-function)
-  (get-authority generic-function))
+  (get-authority generic-function)
+  (get-status (method nil client-stream)))
 
 
 ;;;; Classes

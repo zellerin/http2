@@ -4,7 +4,13 @@
 (defsection @frame-headers
     ()
   (add-header generic-function)
+<<<<<<< HEAD
   (process-end-headers generic-function))
+=======
+  (process-end-headers generic-function)
+  (header-collecting-mixin class)
+  (get-headers (method nil header-collecting-mixin)))
+>>>>>>> class-cleanup
 
 (defclass header-collecting-mixin ()
   ((headers :accessor get-headers :initarg :headers

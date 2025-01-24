@@ -61,7 +61,7 @@ to sent. Tracks DATA to sent and number of octets actually SENT."))
         (warn "Not enough space in buffer: ~d<~d"
               (fill-pointer output-buffer) (array-dimension output-buffer 0)))
     (when (>= (min (fill-pointer output-buffer))
-              (get-max-peer-frame-size connection))
+              (http2/core::get-max-peer-frame-size connection))
       (loop while (<  (min peer-window-size
                            (http2/core::get-peer-window-size connection))
                       (length output-buffer))
