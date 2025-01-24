@@ -48,6 +48,8 @@
     ;; reader
     (lambda (connection data http-stream flags)
       "Parse ALT-SVC frame and invoke HANDLE-ALT-SVC callback."
+      (declare (ignore length))
+      (assert (zerop start))
       (unless (zerop flags) (warn "Flags set for altsvc frame: ~d" flags))
       (let* ((origin-len (aref/wide data 0 2))
              (alt-svc-field-value (subseq data (+ 2 origin-len))))

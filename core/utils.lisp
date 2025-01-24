@@ -16,9 +16,12 @@
 
   (make-octet-buffer function)
   (aref/wide function)
-  (vector-from-hex-text function))
+  (vector-from-hex-text function)
+  (frame-size type)
+  (octet-vector type))
 
 (declaim (inline make-octet-buffer))
+
 (defun make-octet-buffer (size)
   (make-array size :element-type '(unsigned-byte 8)))
 
@@ -28,7 +31,12 @@ receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
 setting can have any value between 2^14 (16,384) and 2^24-1
 (16,777,215) octets, inclusive.
 |#
-(declaim ((or null (unsigned-byte 24)) *bytes-read*))
+
+(deftype frame-size ()  '(unsigned-byte 24))
+
+(deftype octet-vector (&optional length)
+  "An octet vector of length LENGTH (if specified)"
+  `(array (unsigned-byte 8) (,length)))
 
 (defun read-byte* (source)
   ""

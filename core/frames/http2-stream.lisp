@@ -86,7 +86,6 @@ MAYBE-END-STREAM "
   (close-http2-stream function))
 
 (defgeneric is-our-stream-id (connection id))
-(defgeneric peer-ends-http-stream (stream))
 
 ;;;; Streams lifecycle
 ;;;; Create

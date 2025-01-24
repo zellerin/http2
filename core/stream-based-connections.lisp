@@ -7,16 +7,7 @@
   (get-lock generic-function)
   (process-pending-frames function))
 
-(defclass stream-based-connection-mixin ()
-  ((network-stream :accessor get-network-stream :initarg :network-stream))
-  (:documentation
-   "A mixin for connections that read frames from and write to Common Lisp stream (in
-slot NETWORK-STREAM)."))
-
-(defmethod queue-frame ((connection stream-based-connection-mixin) frame)
-  (write-sequence frame (get-network-stream connection))
-  frame)
-
+#+unused
 (defun write-frame-header (stream length type flags http-stream R)
   "Write a frame header to STREAM."
   (write-sequence

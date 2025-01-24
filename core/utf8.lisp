@@ -34,8 +34,6 @@
       ((string-equal content-type "application/json") t)
       (t nil))))
 
-(defgeneric apply-text-data-frame (stream text))
-
 (defclass utf8-parser-mixin ()
   ((broken-char :accessor get-broken-char :initarg :broken-char :initform nil))
   (:documentation

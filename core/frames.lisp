@@ -1,8 +1,14 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (in-package :http2/core)
 
-(export '(get-max-peer-frame-size get-max-frame-size get-peer-window-size))
+(defsection @frames-for-classes
+    ()
+  (handle-undefined-frame generic-function)
+  (queue-frame generic-function)
+  (stream-based-connection-mixin class)
+  (write-buffer-connection-mixin class)
+  (frame-context class))
 
 (defclass frame-context ()
   ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
@@ -16,7 +22,39 @@
   (:documentation
    "Callback that is called when a frame of unknown type is received."))
 
-(defgeneric queue-frame (connection frame))
+(defclass write-buffer-connection-mixin ()
+  ((to-write :accessor get-to-write :initarg :to-write))
+  (:default-initargs :to-write
+   (make-array 3 :fill-pointer 0
+                 :adjustable t))
+  (:documentation
+   "Stores queued frame in a per-connection write buffer. The internals of the
+buffer are opaque."))
+
+
+(defclass stream-based-connection-mixin ()
+  ((network-stream :accessor get-network-stream :initarg :network-stream))
+  (:documentation
+   "A mixin for connections that read frames from and write to Common Lisp stream (in
+slot NETWORK-STREAM)."))
+
+(defgeneric queue-frame (connection frame)
+  (:documentation "Send or queue FRAME (octet vector) to the connection.
+
+Each connection has to actually implement it.
+
+Existing implementations are for:
+
+- STREAM-BASED-CONNECTION-MIXIN, where the data are simply sent to the List stream,
+- WRITE-BUFFER-CONNECTION-MIXIN, where the data are pushed to a buffer.
+")
+
+  (:method ((connection write-buffer-connection-mixin) frame)
+    (vector-push-extend frame (get-to-write connection))
+    frame)
+  (:method ((connection stream-based-connection-mixin) frame)
+    (write-sequence frame (get-network-stream connection))
+    frame))
 
 (defsection @frames-api
     (:title "API for sending and receiving frames")
@@ -103,6 +141,15 @@ relate to the known flags."
 
 
 
+(deftype receiver-fn ()
+  "Function that reads and processes number of octets, and returns next function and its needed size."
+  `(function (http2-connection octet-vector &optional frame-size frame-size)
+             ;; SBCL wants &optional to make clear no more values
+             (values compiled-function frame-size &optional)))
+
+(deftype frame-code-type ()
+  `(unsigned-byte 8))
+
 (defstruct (frame-type
             (:print-object (lambda (type stream)
                              (format stream "<~a>" (frame-type-name type)))))
@@ -117,7 +164,7 @@ Apart from name and documentation, each frame type keeps this:
 "
   (documentation nil :type (or null string))
   (name nil :type symbol)
-  (receive-fn (constantly nil) :type function)
+  (receive-fn (constantly nil) :type (and compiled-function (function (t t) receiver-fn)))
   old-stream-ok new-stream-state connection-ok
   (bad-state-error nil :type (or null (unsigned-byte 8)))
   flag-keywords)
@@ -125,39 +172,31 @@ Apart from name and documentation, each frame type keeps this:
 (defconstant +known-frame-types-count+ 256
   "Frame types are indexed by an octet.")
 
+(defun make-unknown-frame-type (type)
+  (make-frame-type
+   :name (intern (format nil "UNKNOWN-FRAME-~D" type))
+   :old-stream-ok t :connection-ok t
+   :documentation
+   "Frames of an unknown or unsupported types."
+   :receive-fn (let ((type type))
+                 (lambda (stream-or-connection flags)
+                   (declare (ignore stream-or-connection))
+                   (lambda (connection data)
+                     (handle-undefined-frame connection type flags data)
+                     (values
+                      #'parse-frame-header 9))))))
+
 (defvar *frame-types*
-  (let ((res
-          (make-array +known-frame-types-count+
-                      :initial-contents
-                      (loop for type from 0 to 255
-                            collect
-                            (make-frame-type
-                             :name (intern (format nil "UNKNOWN-FRAME-~D" type))
-                             :old-stream-ok t :connection-ok t
-                             :documentation
-                             "Frames of an unknown or unsupported types."
-                             :receive-fn (let ((type type))
-                                           (lambda (stream-or-connection flags)
-                                             (declare (ignore stream-or-connection))
-                                             (lambda (connection data)
-                                               (handle-undefined-frame connection type flags data)
-                                               (values
-                                                #'parse-frame-header 9)))))))))
-    res)
-  "Array of frame types. It is populated later with DEFINE-FRAME-TYPE-OLD.")
+  (map 'vector  #'make-unknown-frame-type (alexandria:iota +known-frame-types-count+))
+  "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
-(defun read-padding (stream padding-size)
-  "Read the padding from the stream if padding-size is not NIL.
+(deftype writer-fn ()
+  `(and compiled-function (function (octet-vector frame-size &rest t))))
 
-Padding is used by some frame types.
-
-A receiver is not obligated to verify padding but MAY treat non-zero padding as
-a connection error (Section 5.4.1) of type PROTOCOL_ERROR. For now we ignore the
-padding."
-  (dotimes (i padding-size) (read-bytes stream 1)))
-
-(defun possibly-padded-body (buffer fn padded pars)
+(defun write-body-and-padding (buffer fn padded pars)
   "Add payload and possibly padding to a BUFFER that already contains 9 octets of the header."
+  (declare (writer-fn fn)
+           (octet-vector buffer))
   (cond
     ((null padded) (apply fn buffer 9 pars))
     (t
@@ -183,24 +222,46 @@ where it is used.")
           sum (getf *flag-codes-keywords* par)))
 
 (defun get-flag (flags flag-name)
+  (declare ((unsigned-byte 8) flags)
+           (keyword flag-name))
   (plusp (logand flags (getf *flag-codes-keywords* flag-name))))
+
+(define-compiler-macro get-flag (flags flag-name)
+  (when (keywordp flag-name)
+    `(plusp (logand ,flags ,(getf *flag-codes-keywords* flag-name)))))
 
 (defun has-flag (flags flag-name allowed)
   (when (member flag-name allowed)
-       (get-flag flags flag-name)))
-
-(defclass rw-pipe (pipe-end-for-write pipe-end-for-read)
-  ())
+    (get-flag flags flag-name)))
 
 (defmacro with-padding-marks ((connection flags start end) &body body)
-  (let ((length (gensym "LENGTH")))
-    `(let* ((padded (get-flag ,flags :padded))
-            (,length (length data))
-            (,end (if padded (- ,length (aref data 0)) ,length))
-            (,start (if padded 1 0)))
-       (when (< ,end ,start)
-         (connection-error 'too-big-padding ,connection))
-       ,@body)))
+  `(let* ((padded (get-flag ,flags :padded))
+          (,end (if padded (- length (aref data 0)) length))
+          (,start (if padded 1 0)))
+     (when (< ,end ,start)
+       (connection-error 'too-big-padding ,connection))
+     ,@body))
+
+(defmacro define-frame-writer (type-code writer-name http-connection-or-stream
+                               flags length parameters key-parameters
+                               documentation
+                               body)
+  `(defun ,writer-name (,http-connection-or-stream
+                        ,@(mapcar 'first parameters)
+                        &rest keys
+                       &key
+                         ,@(union (mapcar 'first key-parameters)
+                                  flags))
+     ,documentation
+     (declare (ignore ,@(remove 'priority flags)))
+     (let ((length ,length))
+       (write-frame
+        ,http-connection-or-stream
+        length
+        ,type-code
+        keys
+        ,body
+        ,@(mapcar 'car (append parameters key-parameters))))))
 
 (defmacro define-frame-type (type-code frame-type-name documentation (&rest parameters)
                              (&key (flags nil) length
@@ -218,7 +279,7 @@ where it is used.")
   other PARAMETERS and FLAGSs and writes appropriate frame.
 
 Each PARAMETER is a list of name, size in bits or type specifier and documentation."
-  (declare ((unsigned-byte 8) type-code)
+  (declare (frame-code-type type-code)
            (keyword frame-type-name))
   (let (key-parameters
         (writer-name (intern (format nil "WRITE-~a" frame-type-name)))
@@ -231,29 +292,17 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
     (when has-reserved (push '(reserved t) key-parameters))
     ;; Priority is both a flag to set and value to store if this flags is set.
     (when (member 'priority flags) (push '(priority (or null priority)) key-parameters))
+
     `(progn
        (defconstant ,(intern (format nil "+~a+" frame-type-name)) ,type-code)
-
-       (defun ,writer-name (,http-connection-or-stream
-                            ,@(mapcar 'first parameters)
-                            &rest keys
-                            &key
-                              ,@(union (mapcar 'first key-parameters)
-                                       flags))
-         ,documentation
-         (declare (ignore ,@(remove 'priority flags)))
-         (let ((length ,length))
-           (write-frame
-            ,http-connection-or-stream
-            length
-            ,type-code
-            keys
-            ,writer
-            ,@(mapcar 'car (append parameters key-parameters)))))
-       (defun ,parser-name ,(cddr (second reader)) ; http-stream flags, or so
-         (declare (ignorable ,@ (cddr (second reader))))
-         (lambda (connection data)
-           ,@(cddr reader)))
+       ,(when writer
+          `(define-frame-writer ,type-code ,writer-name ,http-connection-or-stream
+               ,flags ,length ,parameters ,key-parameters ,documentation ,writer))
+       ,(when reader
+          `(defun ,parser-name ,(cddr (second reader)) ; http-stream flags, or so
+            (declare (ignorable ,@ (cddr (second reader))))
+            (values (lambda (connection data &optional (start 0) (length (length data)))
+                      ,@(cddr reader)))))
        (setf (aref *frame-types* ,type-code)
              (make-frame-type :name ,frame-type-name
                               :documentation ,documentation
@@ -266,9 +315,16 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
-(defun write-frame (http-connection-or-stream length type-code keys
-                    writer &rest pars)
-  "Universal function to write a frame to a stream and account for possible stream
+"Universal function to write a frame to a stream and account for possible stream
+state change.
+
+Queues using QUEUE-FRAME an octet vector with the frame, including
+frame header (9 octets) and padding octets.
+
+The payload is generated using WRITER object. The WRITER takes CONNECTION and
+PARS as its parameters." (defun write-frame (http-connection-or-stream length type-code keys
+                                             writer &rest pars)
+                           "Universal function to write a frame to a stream and account for possible stream
 state change.
 
 Queues using QUEUE-FRAME an octet vector with the frame, including
@@ -276,18 +332,17 @@ frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
 PARS as its parameters."
-  (let* ((padded (getf keys :padded))
-         (buffer (make-octet-buffer (+ length 9 (if padded (+ 1 (length padded)) 0)))))
-    (write-frame-header-to-vector
-     buffer 0 (padded-length length padded)
-     type-code (flags-to-code keys)
-     (get-stream-id http-connection-or-stream) nil)
-    (when writer
-      (possibly-padded-body buffer writer padded pars))
-    (queue-frame (get-connection http-connection-or-stream) buffer)
-    (when (getf keys :end-stream)
-      (change-state-on-write-end http-connection-or-stream))
-    buffer))
+                           (let* ((padded (getf keys :padded))
+                                  (padded-length (padded-length length padded))
+                                  (buffer (make-octet-buffer (+ 9 padded-length))))
+                             (write-frame-header-to-vector buffer 0 padded-length type-code (flags-to-code keys)
+                                                           (get-stream-id http-connection-or-stream) nil)
+                             (when writer
+                               (write-body-and-padding buffer writer padded pars))
+                             (queue-frame (get-connection http-connection-or-stream) buffer)
+                             (when (getf keys :end-stream)
+                               (change-state-on-write-end http-connection-or-stream))
+                             buffer))
 
 (defun write-32-bits (stream value)
   (write-bytes stream 4 value))
@@ -303,7 +358,7 @@ PARS as its parameters."
   (write-31-bits stream 0 value reserved))
 
 (defun write-frame-header-to-vector (vector start length type flags stream-id R)
-  "Write a frame header to STREAM."
+  "Write a frame header to an octet buffer."
 ;;; All frames begin with a fixed 9-octet header followed by a variable-
 ;;; length payload.
 ;;;
@@ -319,7 +374,8 @@ PARS as its parameters."
 ;;;  +---------------------------------------------------------------+
 ;;; +end_src
   (declare (type (unsigned-byte 24) length)
-           (type (unsigned-byte 8) type flags)
+           (type (frame-code-type) type)
+           (type (unsigned-byte 8) flags)
            (type (simple-array (unsigned-byte 8)) vector)
            (type stream-id stream-id))
   (setf (aref vector start) (ldb (byte 8 16) length))
@@ -335,9 +391,9 @@ PARS as its parameters."
   vector)
 
 (defun checked-length (length connection)
-  (declare (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
+  (declare (ftype (function (t) frame-size) get-max-frame-size))
 
-  (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
+  (when (> length (the frame-size (get-max-frame-size connection)))
     ;; fixme: sometimes connection error.
     (connection-error 'too-big-frame connection
                       :frame-size length
@@ -370,6 +426,8 @@ This function is primarily factored out to be TRACEd to see arriving frames."
          (R (ldb (byte 1 31) http-stream+R)))
     (values (aref *frame-types* type) length flags http-stream R)))
 
+(declaim (ftype receiver-fn read-padding-from-vector parse-frame-header))
+
 (defun parse-frame-header (connection header &optional (start 0) (end (length header)))
   "Parse header (9 octets array) and return two values, a function to parse
 following data (that can be again #'PARSE-FRAME-HEADER if there is no payload),
@@ -386,22 +444,23 @@ and size of data that the following function expects."
 
   (declare
    (optimize speed)
-   ((simple-array (unsigned-byte 8) *) header)
-   ((integer 0 #.array-dimension-limit) start end))
+   (octet-vector header)
+   (frame-size start end)
+   (http2-connection connection))
   ;; first flush anything we should have send to prevent both sides waiting
   (assert (= 9 (- end start)))
   (multiple-value-bind (frame-type-object length flags http-stream R)
-    (decode-frame-header header start)
-    (declare ((unsigned-byte 24) length)
+      (decode-frame-header header start)
+    (declare (frame-size length)
              (stream-id http-stream)
              (bit R)
              (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
-      ;; FIXME:
-      ;; - for most frame types, read full data then
-      ;; - for data and maybe headers frame read as it goes
+    ;; FIXME:
+    ;; - for most frame types, read full data then
+    ;; - for data and maybe headers frame read as it goes
 
-    (when (> length (the (unsigned-byte 24) (get-max-frame-size connection)))
+    (when (> length (the frame-size (get-max-frame-size connection)))
       ;; fixme: sometimes connection error.
       (connection-error 'too-big-frame connection
                         :frame-size length
@@ -412,16 +471,17 @@ and size of data that the following function expects."
       (cond
         ((zerop length)
          ;; e.g., empty HEADER-FRAME still can have end-streams or end-headers flag
-         (funcall
-          (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
-          connection (make-octet-buffer 0)))
+         (let ((next
+                 (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)))
+           (declare (receiver-fn next))
+           (funcall next connection (make-octet-buffer 0))))
         (t
          (values
           (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
-                 length))))))
+          length))))))
 
-(defun read-padding-from-vector (connection data)
+(defun read-padding-from-vector (connection data &optional (start 0) (end 0))
   "Ignore the padding octets. Frame header is next
 FIXME: might be also continuation-frame-header"
-  (declare (ignorable data connection))
+  (declare (ignorable data connection start end))
   (values #'parse-frame-header 9))

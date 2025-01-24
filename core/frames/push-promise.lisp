@@ -60,7 +60,7 @@
     ;; reader
     (lambda (connection data http-stream flags)
       ;; TODO: fix reader to vector, implement, dont forget padding
-      (declare (ignore connection data))
+      (declare (ignore connection data start length))
       "Raise an error, as we do not handle promise frames, and do not advertise that we
 do."
       (error "Reading promise N/A")))

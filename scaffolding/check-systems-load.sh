@@ -1,3 +1,5 @@
+# Check that all asdf systems load
+
 check_system ()
 {
     name="$1"
@@ -5,7 +7,7 @@ check_system ()
     #sbcl --non-interactive --no-sysinit -no-userinit --load "$HOME/quicklisp/setup.lisp" --eval "(ql:quickload \"$name\")"
 }
 
-for system in "" /core /stream-based /tls /client /server /server/example
+for system in "" /core /stream-based /tls /client /server
               # /test
 do
     check_system http2$system

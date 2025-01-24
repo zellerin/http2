@@ -136,27 +136,6 @@ than :status allowed, etc."))
         (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
       (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
 
-(defclass log-headers-mixin ()
-  ()
-  (:documentation "Class that logs some activities and state changes."))
-
-(defclass header-collecting-mixin ()
-  ((headers :accessor get-headers :initarg :headers
-            :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
-  (:default-initargs :headers nil)
-  (:documentation
-   "Mixin to be used to collect all observed headers to a slot."))
-
-(defclass body-collecting-mixin ()
-  ((body :accessor get-body :initarg :body
-         :documentation "Body of the request as an octet vector.
-
-May be empty if some higher priority mixin (e.g., UTF8-PARSER-MIXIN) processed
-the data."))
-  (:default-initargs :body nil)
-  (:documentation
-   "Mixin to collect all payload parts to one string."))
-
 (defclass timeshift-pinging-connection ()
   ()
   (:documentation
@@ -175,19 +154,6 @@ generic function to actually store the data."
   (parse-client-preface function)
   (+client-preface-start+ variable)
   (server-http2-connection class))
-
-(defclass write-buffer-connection-mixin ()
-  ((to-write :accessor get-to-write :initarg :to-write))
-  (:default-initargs :to-write
-   (make-array 3 :fill-pointer 0
-                 :adjustable t))
-  (:documentation
-   "Stores queued frame in a per-connection write buffer. The internals of the
-buffer are opaque."))
-
-(defmethod queue-frame ((connection write-buffer-connection-mixin) frame)
-  (vector-push-extend frame (get-to-write connection))
-  frame)
 
 
 ;;;; Callbacks from frame reading functions
@@ -218,7 +184,6 @@ the first parameter."
   (set-peer-setting generic-function)
   (peer-expects-settings-ack generic-function)
   (peer-acks-settings generic-function)
-  (handle-undefined-frame generic-function)
   (do-pong generic-function)
   (do-goaway generic-function))
 
@@ -258,7 +223,7 @@ The END-HEADERS and END-STREAM allow to set the appropriate flags.
 Inside HANDLER macro, this names a function that has the STREAM
 argument implicit and only HEADERS and key parameters are to be provided."
   (with-slots (connection) stream
-    (write-headers-frame stream
+    (write-simple-headers-frame stream
                          (compile-headers headers (get-compression-context connection))
                          :end-stream end-stream
                          :end-headers end-headers)
@@ -322,123 +287,6 @@ multiple threads."
   (:method (connection) nil)
   (:documentation "This is called when a new frame is ready "))
 
-(defgeneric apply-data-frame (stream payload start end)
-  (:documentation
-   "STREAM (a HTTP/2 stream) should process received PAYLOAD from the data
-frame from START to END.")
-
-  ;; FIXME: we should not send small updates
-
-  (:method (stream payload start end)
-    "Just ignore the data and warn about it."
-    (warn 'no-payload-action :class stream))
-
-  (:method ((stream body-collecting-mixin) data start end)
-    "Concatenate received data to the BODY slot of the object."
-    (setf (get-body stream)
-          (concatenate '(vector (unsigned-byte 8))
-                       (get-body stream)
-                       (subseq data start end) ))
-    (with-slots (connection) stream
-      (write-window-update-frame connection (length data))
-      (write-window-update-frame stream (length data)))))
-
-
-(defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
-  (:method  (stream exclusive weight stream-dependency)
-    (setf (get-weight stream) weight
-          (get-depends-on stream)
-          `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
-  (:documentation
-   "Called when priority frame - or other frame with priority settings set -
-arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
-
-(defgeneric apply-window-size-increment (object increment)
-  (:documentation
-   "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
-the strem or connection.")
-  (:method ((object (eql :closed)) increment))
-  (:method (object increment)
-    (incf (get-peer-window-size object) increment)))
-
-(defgeneric set-peer-setting (connection name value)
-  (:documentation
-   "Process received information about peers setting.
-
-The setting relates to the CONNECTION. NAME is a keyword symbol (see
-*SETTINGS*, subject to possible change to 16bit number in future) and VALUE is
-32bit number.")
-  (:method (connection name value)
-    "Fallback."
-    (declare (type (unsigned-byte 32) value))
-    (warn 'unimplemented-feature :format-control "Peer settings not used - ~a ~a."
-                                 :format-arguments (list name value)))
-
-  (:method (connection (name (eql :header-table-size)) value)
-    (declare (type (unsigned-byte 32) value))
-    (let ((context (get-compression-context connection)))
-      (when (< value (the (unsigned-byte 32) (get-dynamic-table-size context)))
-        (update-dynamic-table-size context value))
-      (push value (get-updates-needed context))))
-
-  (:method (connection (name (eql :initial-window-size)) value)
-    (declare (type (unsigned-byte 32) value))
-    (if (> value (1- (expt 2 31)))
-        (connection-error 'incorrect-initial-window-size-value connection
-                          :value value)
-        (setf (get-initial-peer-window-size connection) value)))
-
-  (:method (connection (name (eql :max-frame-size)) value)
-    (if (>= 16777215 value 16384)
-        (setf (get-max-peer-frame-size connection) value)
-        (connection-error 'incorrect-frame-size-value
-         :value value)))
-
-  (:method (connection (name (eql :no-rfc5740-priorities)) value)
-    ;; we must signal if not 0 or 1. We MAY if it changes afterwards, so we do
-    ;; not. (rfc9218)
-    (unless (typep value 'bit)
-      (connection-error 'incorrect-setting-value connection
-                        :setting :no-rfc5740-priorities
-                        :allowed 'bit
-                        :value value)))
-
-  (:method (connection (name (eql :max-header-list-size)) value)
-    ;; This is just an advisory setting (10.5.1. Limits on Field Block Size) so
-    ;; we ignore it for now
-    (warn 'unimplemented-feature
-          :format-control "We ignore :max-header-list-size. This is allowed in RFC9113."))
-
-  (:method ((connection client-http2-connection) (name (eql :enable-push)) value)
-    (declare (type (unsigned-byte 32) value))
-    (unless (zerop value)
-      (connection-error 'incorrect-enable-push-value connection
-                        :value value)))
-
-  (:method ((connection server-http2-connection) (name (eql :enable-push)) value)
-    (declare (type (unsigned-byte 32) value))
-    (if (> value 1)
-        (connection-error 'incorrect-enable-push-value connection)
-        (setf (get-peer-accepts-push connection) (plusp value))))
-
-  (:method (connection (name (eql :max-concurrent-streams)) value)
-    ;; do something
-    ))
-
-(defgeneric peer-expects-settings-ack (connection)
-  (:documentation
-   "Called when settings-frame without ACK is received, after individual
-SET-PEER-SETTING calls. By default, send ACK frame.")
-
-  (:method (connection)
-    (write-ack-setting-frame connection)))
-
-
-(defgeneric peer-acks-settings (connection)
-  (:documentation
-   "Called when SETTINGS-FRAME with ACK flag is received. By default does nothing.")
-  (:method (connection)))
-
 
 (defun dynamic-table-entry-size (name value)
   "The size of an entry is the sum of its name's length in octets (as
@@ -482,64 +330,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
                           :value ,new-value)
        (setf (,accessor stream) ,new-value)))
 
-(defgeneric add-header (connection stream name value)
-  (:method :around (connection (stream http2-stream) name value)
-    "Decode compressed headers"
-    (let ((decoded-name
-            (etypecase name
-              ((or string symbol) name)
-              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name)))))
-      (when (and (stringp name) (some #'upper-case-p name))
-        (http-stream-error 'lowercase-header-field-name stream))
-      (call-next-method connection stream
-                        decoded-name
-                        (etypecase value
-                          (string value) ; integer can be removed if we removed "200"
-                          ((vector (unsigned-byte 8))
-                           (http2/hpack::decode-huffman value))))))
-
-  (:method (connection stream name value)
-#+nil    (warn 'no-new-header-action :header name :stream stream))
-
-  (:method (connection (stream server-stream) (name symbol) value)
-    (when (get-seen-text-header stream)
-      (http-stream-error 'pseudo-header-after-text-header stream
-                         :name name
-                         :value value))
-    (case name
-      (:method
-       (check-place-empty-and-set-it value get-method))
-      (:scheme
-       (check-place-empty-and-set-it value get-scheme))
-      (:authority
-       (check-place-empty-and-set-it value get-authority))
-      (:path
-       (check-place-empty-and-set-it value get-path))
-      (t
-       (http-stream-error 'incorrect-request-pseudo-header  stream
-                          :name name :value value))))
-
-  (:method (connection (stream client-stream) (name symbol) value)
-    (when (get-seen-text-header stream)
-      (http-stream-error 'pseudo-header-after-text-header stream
-                         :name name
-                         :value value))
-    (case name
-      (:status
-          (setf (get-status stream) value))
-      (t
-       (http-stream-error 'incorrect-response-pseudo-header stream
-                         :name name
-                         :value value))))
-
-  (:method :after (connection (stream log-headers-mixin) name value)
-    (format t "~&header: ~a = ~a~%" name value))
-
-  (:method (connection (stream header-collecting-mixin) name value)
-    (push (cons name value) (get-headers stream))))
-
-
-
 (defgeneric send-ping (connection &optional payload)
   (:documentation
    "Send a ping request.")
@@ -549,27 +339,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
   (:method ((connection timeshift-pinging-connection) &optional payload)
     (declare (ignore payload))
     (call-next-method connection (mod (get-internal-real-time) (expt 2 64)))))
-
-(defgeneric process-end-headers (connection stream)
-
-  (:method (connection stream))
-
-  (:method (connection (stream client-stream))
-    ;; Headers sanity check
-    (unless (get-status stream)
-      (http-stream-error 'missing-pseudo-header stream
-                         :name :status
-                         :value 'missing))
-    ;; next header section may contain another :status
-    (setf (get-seen-text-header stream) nil))
-
-  (:method (connection (stream server-stream))
-    ;; Headers sanity check
-    (unless (or (equal (get-method stream) "CONNECT")
-             (and (get-method stream) (get-scheme stream) (get-path stream)))
-      (http-stream-error 'missing-pseudo-header stream
-                         :name "One of pseudo headers"
-                         :value 'missing))))
 
 (defmethod do-pong ((connection timeshift-pinging-connection) data)
   (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second)))

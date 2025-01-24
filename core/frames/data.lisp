@@ -1,7 +1,43 @@
 (in-package http2/core)
 
-(defgeneric apply-data-frame (stream data start end))
-(defgeneric apply-window-size-increment (stream increment))
+(defclass body-collecting-mixin ()
+  ((body :accessor get-body :initarg :body
+         :documentation "Body of the request as an octet vector.
+
+May be empty if some higher priority mixin (e.g., UTF8-PARSER-MIXIN) processed
+the data."))
+  (:default-initargs :body nil)
+  (:documentation
+   "Mixin to collect all payload parts to one string."))
+
+(defgeneric apply-data-frame (stream payload start end)
+  (:documentation
+   "STREAM (a HTTP/2 stream) should process received PAYLOAD from the data
+frame from START to END.")
+
+  ;; FIXME: we should not send small updates
+
+  (:method (stream payload start end)
+    "Just ignore the data and warn about it."
+    (warn 'no-payload-action :class stream))
+
+  (:method ((stream body-collecting-mixin) data start end)
+    "Concatenate received data to the BODY slot of the object."
+    (setf (get-body stream)
+          (concatenate '(vector (unsigned-byte 8))
+                       (get-body stream)
+                       (subseq data start end) ))
+    (with-slots (connection) stream
+      (write-window-update-frame connection (length data))
+      (write-window-update-frame stream (length data)))))
+
+(defgeneric apply-window-size-increment (object increment)
+  (:documentation
+   "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
+the strem or connection.")
+  (:method ((object (eql :closed)) increment))
+  (:method (object increment)
+    (incf (get-peer-window-size object) increment)))
 
 (defclass flow-control-mixin ()
   ((window-size      :accessor get-window-size      :initarg :window-size)
@@ -23,21 +59,14 @@
     (:length (if (consp data) (reduce #'+ data :key #'length) (length data))
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
-    (lambda (buffer start data)
-      (account-write-window-contribution
-       (get-connection stream) stream length)
-      (if (consp data)
-          (dolist (chunk data)
-            (replace buffer chunk :start1 start)
-            (incf start (length chunk)))
-          (replace buffer data :start1 start)))
-
+    nil
     (lambda (connection data active-stream flags)
       "Read octet vectors from the stream and call APPLY-DATA-FRAME on them.
 
 Reduce tracked incoming window.
 
 Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
+      (assert (zerop start))
       (with-padding-marks (connection flags start end)
         (account-read-window-contribution connection active-stream (- end start))
         (apply-data-frame active-stream data start end)
@@ -62,6 +91,54 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
   (setf (aref buffer (+ 4 start)) (priority-weight priority))
   (replace buffer (car headers) :start1 (+ start 5))
   buffer)
+
+(defun write-data-frame (stream data &rest keys &key padded end-stream)
+  "```
+  +---------------+-----------------------------------------------+
+  |                            Data (*)                         ...
+  +---------------------------------------------------------------+
+```
+
+  DATA frames (type=0x0) convey arbitrary, variable-length sequences of
+  octets associated with a stream.  One or more DATA frames are used,
+  for instance, to carry HTTP request or response payloads."
+  (declare (ignore padded end-stream)
+           (octet-vector data))
+  (let ((length (length data)))
+    (write-frame stream length +data-frame+ keys
+                 (lambda (buffer start data)
+                   (account-write-window-contribution (get-connection stream)
+                                                      stream length)
+                   (replace buffer data :start1 start))
+                 data)))
+
+#+maybe-not-needed
+(defun write-data-list-frame (stream data &rest keys &key padded end-stream)
+  "```
+  +---------------+-----------------------------------------------+
+  |                            Data (*)                         ...
+  +---------------------------------------------------------------+
+```
+
+  DATA frames (type=0x0) convey arbitrary, variable-length sequences of
+  octets associated with a stream.  One or more DATA frames are used,
+  for instance, to carry HTTP request or response payloads."
+  (declare (ignore padded end-stream))
+  (let ((length
+          (if (consp data)
+              (reduce #'+ data :key #'length)
+              (length data))))
+    (write-frame stream length 0 keys
+                 (lambda (buffer start data)
+                   (account-write-window-contribution (get-connection stream)
+                                                      stream length)
+                   (if (consp data)
+                       (dolist (chunk data)
+                         (replace buffer chunk :start1 start)
+                         (incf start (length chunk)))
+                       (replace buffer data :start1 start)))
+                 data)))
+
 
 (define-frame-type 8 :window-update-frame
     "```
@@ -89,8 +166,9 @@ individual stream and on the entire connection."
 APPLY-WINDOW-SIZE-INCREMENT callback."
       (unless (zerop flags)
         (warn "Flags for windows size increment set: ~x/~b" flags flags))
-      (unless (= 4 (length data))
+      (unless (= 4 length)
         (connection-error 'incorrect-window-update-frame-size connection))
+      (assert (zerop start))
       (let ((window-size-increment (aref/wide data 0 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))

@@ -14,6 +14,10 @@
 ;;;; -> transport stream
 ;;;;
 
+(mgl-pax:defsection @overlay
+    ()
+  (http2-stream-with-input-stream class))
+
 (defmethod stream-element-type ((stream binary-stream))
   '(unsigned-byte 8))
 

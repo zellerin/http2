@@ -1,9 +1,101 @@
 
 (in-package http2/core)
 
-(defgeneric add-header (connection http-stream name value))
-(defgeneric process-end-headers (connection http-stream))
-(defgeneric apply-stream-priority (stream exclusive weight dependency))
+(defsection @frame-headers
+    ()
+  (add-header generic-function)
+  (process-end-headers generic-function))
+
+(defclass header-collecting-mixin ()
+  ((headers :accessor get-headers :initarg :headers
+            :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
+  (:default-initargs :headers nil)
+  (:documentation
+   "Mixin to be used to collect all observed headers to a slot."))
+
+
+(defgeneric add-header (connection stream name value)
+  (:method :around (connection (stream http2-stream) name value)
+    "Decode compressed headers"
+    (let ((decoded-name
+            (etypecase name
+              ((or string symbol) name)
+              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name)))))
+      (when (and (stringp name) (some #'upper-case-p name))
+        (http-stream-error 'lowercase-header-field-name stream))
+      (call-next-method connection stream
+                        decoded-name
+                        (etypecase value
+                          (string value) ; integer can be removed if we removed "200"
+                          ((vector (unsigned-byte 8))
+                           (http2/hpack::decode-huffman value))))))
+
+  (:method (connection stream name value)
+    #+nil    (warn 'no-new-header-action :header name :stream stream))
+
+  (:method (connection (stream server-stream) (name symbol) value)
+    (when (get-seen-text-header stream)
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value))
+    (case name
+      (:method
+          (check-place-empty-and-set-it value get-method))
+      (:scheme
+       (check-place-empty-and-set-it value get-scheme))
+      (:authority
+       (check-place-empty-and-set-it value get-authority))
+      (:path
+       (check-place-empty-and-set-it value get-path))
+      (t
+       (http-stream-error 'incorrect-request-pseudo-header  stream
+                          :name name :value value))))
+
+  (:method (connection (stream client-stream) (name symbol) value)
+    (when (get-seen-text-header stream)
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value))
+    (case name
+      (:status
+       (setf (get-status stream) value))
+      (t
+       (http-stream-error 'incorrect-response-pseudo-header stream
+                          :name name
+                          :value value))))
+
+  (:method (connection (stream header-collecting-mixin) name value)
+    (push (cons name value) (get-headers stream))))
+
+(defgeneric process-end-headers (connection stream)
+
+  (:method (connection stream))
+
+  (:method (connection (stream client-stream))
+    ;; Headers sanity check
+    (unless (get-status stream)
+      (http-stream-error 'missing-pseudo-header stream
+                         :name :status
+                         :value 'missing))
+    ;; next header section may contain another :status
+    (setf (get-seen-text-header stream) nil))
+
+  (:method (connection (stream server-stream))
+    ;; Headers sanity check
+    (unless (or (equal (get-method stream) "CONNECT")
+             (and (get-method stream) (get-scheme stream) (get-path stream)))
+      (http-stream-error 'missing-pseudo-header stream
+                         :name "One of pseudo headers"
+                         :value 'missing))))
+
+(defgeneric apply-stream-priority (stream exclusive weight stream-dependency)
+  (:method  (stream exclusive weight stream-dependency)
+    (setf (get-weight stream) weight
+          (get-depends-on stream)
+          `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+  (:documentation
+   "Called when priority frame - or other frame with priority settings set -
+arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 
 (defclass hpack-endpoint ()
   ((compression-context      :accessor get-compression-context      :initarg :compression-context)
@@ -39,14 +131,7 @@
      :new-stream-state open)
 
     ;; writer
-    (lambda (buffer start headers priority)
-      (when (cdr headers)
-        (error "Multiple header groups not supported now."))
-      (if priority ;; this is deprecated as in RFC9113 but still implemented
-          (write-priority priority buffer start headers)
-          ;; TODO: what is allowed headers format?
-          (replace buffer (car headers) :start1 start)))
-
+    nil
     ;; reader
     (lambda (connection data active-stream flags)
       "Read incoming headers and call ADD-HEADER callback for each header.
@@ -55,15 +140,70 @@ Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
 flag is set.
 
 At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
+      (assert (zerop start))
       (handler-case
           (with-padding-marks (connection flags start end)
-            (when (get-flag flags :priority)
-              (read-priority data active-stream start)
-              (incf start 5))
-            (read-and-add-headers data active-stream start end flags flags))
-        (http-stream-error (e)
-          (format t "-> We close a stream due to ~a" e)
-          (values #'parse-frame-header 9)))))
+                (when (get-flag flags :priority)
+                  (read-priority data active-stream start)
+                  (incf start 5))
+                (read-and-add-headers data active-stream start end flags flags))
+            (http-stream-error (e)
+              (format t "-> We close a stream due to ~a" e)
+              (values #'parse-frame-header 9)))))
+
+(defun write-simple-headers-frame
+       (stream headers &rest keys &key end-headers end-stream)
+  "No priority, no padding.
+    +-+-------------+-----------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+```
+
+   The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
+   and additionally carries a header block fragment.  HEADERS frames can
+   .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
+   \"half-closed (remote)\" state."
+  (declare (ignore end-stream end-headers))
+  (let ((length (reduce '+ (mapcar 'length headers))))
+    (write-frame stream length +headers-frame+ keys
+                 (lambda (buffer start headers)
+                   (when (cdr headers)
+                     (error "Multiple header groups not supported now."))
+                   (replace buffer (car headers) :start1 start))
+                 headers)))
+
+(defun write-headers-frame
+    (stream headers &rest keys &key end-headers end-stream padded priority)
+  "```
+
+    +-+-------------+-----------------------------------------------+
+    |E|                 Stream Dependency? (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |  Weight? (8)  |
+    +-+-------------+-----------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+```
+
+   The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
+   and additionally carries a header block fragment.  HEADERS frames can
+   .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
+   \"half-closed (remote)\" state."
+  (declare (ignore padded end-stream end-headers))
+  (let ((length
+          (+
+           (if priority
+               5
+               0)
+           (reduce '+ (mapcar 'length headers)))))
+    (write-frame stream length +headers-frame+ keys
+                 (lambda (buffer start headers priority)
+                   (when (cdr headers)
+                     (error "Multiple header groups not supported now."))
+                   (if priority
+                       (write-priority priority buffer start headers)
+                       (replace buffer (car headers) :start1 start)))
+                 headers priority)))
 
 (defun read-and-add-headers (data http-stream start end flags header-flags)
   "Read http headers from payload in DATA, starting at START.
@@ -100,11 +240,11 @@ continuation flags, if any, so must be separate."
       do (add-header connection http-stream name value)
     finally
        (when end-headers
-           ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-           ;; another CONTINUATION frame.
-           (process-end-headers connection http-stream)
-           ;; 20240719 TODO: end stream is in headers frame only, not continuation
-           (maybe-end-stream header-flags http-stream))
+         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
+         ;; another CONTINUATION frame.
+         (process-end-headers connection http-stream)
+         ;; 20240719 TODO: end stream is in headers frame only, not continuation
+         (maybe-end-stream header-flags http-stream))
        (return (values (if end-headers #'parse-frame-header
                            (read-continuation-frame-on-demand http-stream data end end header-flags))
                        9))))
@@ -158,7 +298,8 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     (lambda (connection data http-stream flags)
       "Read priority frame. Invoke APPLY-STREAM-PRIORITY if priority was present."
       (declare (ignore connection))
-      (unless (= 5 (length data))
+      (assert (zerop start))
+      (unless (= 5 length)
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
         (http-stream-error 'frame-size-error http-stream))
@@ -190,7 +331,7 @@ CONTINUATION frame without the END_HEADERS flag set."
     (lambda (connection data http-stream flags)
       "Raise condition CONNECTION-ERROR. The continuation frame should be read only when
 expected, and then it is parsed by a different function."
-      (declare (ignore data))
+      (declare (ignore data start length))
       (connection-error 'unexpected-continuation-frame connection)))
 
 (defun read-continuation-frame-on-demand (expected-stream old-data old-data-start old-data-end header-flags)
