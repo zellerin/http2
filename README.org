@@ -7,19 +7,25 @@ RFC7540 before) and RFC7541 (HPACK). It provides both high-level interface as
 well as ways to fine tune its behaviour for better performance or specific use
 cases.
 
-For quick start, quickload "http2" and see  that show how to use a
-simple client to fetch a resource or how to serve simple pages.
+For quick start, quickload "http2" and run
+#+begin_src lisp
+  (http2/client:retrieve-url "https://example.com")
+#+end_src
+to fetch a HTTP/2 resource, or check [[https://doc.zellerin.cz/http2/tutorials.html][tutorials]] that show in more detail how to use the client or the server.
 
 ** Status
 In quicklisp.
 
-Tested primarily on sbcl, occasionally on ecl.
+Tested primarily on sbcl, occasionally on ecl. Clisp should work for the client,
+for server there are obvious limitations due to lack of threads
 
 Almost all parts of the listed standards implemented, not necessary documented or declared stable
 
-The current major version, 2.x.x., had a major internal rewrite can be considered stable with regard to the interface -
-that means, interface as documented in tutorials and public API should not change in backward incompatible
-ways. The non-documented internal parts may.
+The current major version, 2.x.x., had a major internal rewrite can be
+considered stable with regard to the interface - that means, interface as
+documented in tutorials should not change in backward incompatible ways. The
+non-documented internal parts may. The documentation of some other API parts is
+being planned.
 
 ** Missing pieces
 - No handling of priorities is implemented. This is more or lessOK, as these are
@@ -45,11 +51,9 @@ The core library used trivial-gray-streams to implement streams over data frames
 Client and server - or at least some server versions - require usocket and
 cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
 
-Client uses puri to manipulate URLs.
+Client and server use puri to manipulate URLs.
 
-Server also uses cffi directly to check and confirm alpn, and for some other
-server versions. The sample server uses parenscript and cl-who to create html;
-this is an arbitrary choice and your server can use anything else.
+Server also uses cffi directly to check and confirm alpn
 
 Documentation is done with mgl-pax.
 
@@ -57,22 +61,10 @@ Additionally, fiasco is used for testing (and Javascript for browser-side testin
 
 ** Speed & scaling
 The code was not written with speed as primary concern. Measurements depend on
-many tunable factor both on the client and the server.
+many tunable factor both on the client and the server (including platform).
 
-Having said that, rough test shows that the server on trivial page, single
-requestor, 10k requests, over TLS) seems to be about 2-3x faster than
-Hunchentoot and a bit slower than [[https://github.com/fukamachi/woo][Woo]]. However, when multiple requests are sent
-in parallel from one client, it is much faster than Woo (even with the
-Hunchentoot-style request handling).
-
-What is currently relatively slow is conversion between (utf-8) text and binary
-data, as well as multiple clients.
-
-Anyway, run or modify the [[file:scaffolding/speed-test.lisp][speed test code]] for your results:
+Anyway, run or modify the [[file:scaffolding/speed-test.lisp][speed test code]] for your results.
 : sbcl --script scaffolding/speed-test.lisp
-
-The server should handle any number of requests on one connection (until stream
-ids are exhausted, but that is a client problem).
 
 ** License
 Licensed by MIT license.

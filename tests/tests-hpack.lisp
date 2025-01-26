@@ -1,6 +1,10 @@
 ;;;; Copyright 2022 by Tomáš Zellerin
 
-(in-package :http2)
+(in-package :http2/hpack)
+
+(fiasco:defsuite
+    (http2/hpack :bind-to-package #:http2/hpack
+                 :in http2/tests::http2/tests))
 
 (fiasco:deftest int-pack-tests ()
   "Test that integer values are properly packed and unpacked"
@@ -37,10 +41,10 @@ C.2.  Header Field Representation Examples
                  (fiasco:is (equal value expect-value))
                  (fiasco:is (equalp (if dynamic-table (vector `(,name ,value)) #())
                                     (get-dynamic-table context))))
-               (fiasco:is (= (get-index read) (length (get-buffer read)))))))
+               (fiasco:is (= (get-index read) (length (http2/utils::get-buffer read)))))))
       ;; C.2.1
       (test-decode  "400a637573746f6d2d6b65790d637573746f6d2d686561646572"
-                     "custom-key"  "custom-header" t)
+                    "custom-key"  "custom-header" t)
 
       ;; C.2.2.  Literal Header Field without Indexing
 
@@ -68,7 +72,7 @@ C.2.  Header Field Representation Examples
       (equalp (mapcar 'list headers values)
               (loop
                 with source = (vector-from-hex-text encoded)
-                initially (setf (get-buffer stream) source
+                initially (setf (http2/utils::get-buffer stream) source
                                 (get-index stream) 0)
                 for header = (handler-case
                                  (read-http-header stream decompression-context)
@@ -123,7 +127,7 @@ C.2.  Header Field Representation Examples
                                        (read-http-header
                                         stream decompression-context)
                                      (end-of-file ()))
-                initially (setf (get-buffer stream) source
+                initially (setf (http2/utils::get-buffer stream) source
                                 (get-index stream) 0)
 
 

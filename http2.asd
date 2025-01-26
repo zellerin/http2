@@ -30,8 +30,7 @@
                              (:file "frames/ping")
                              (:file "binary-payload")
                              (:file "gzip-decode")
-                             (:file "utf8"))))
-  :in-order-to ((test-op (test-op "http2/test"))))
+                             (:file "utf8")))))
 
 (defsystem "http2/stream-based"
   :description "HTTP2 protocol implementation"
@@ -42,8 +41,7 @@
   :components ((:file "package")
                (:module "core"
                 :components ((:file "stream-based-connections")
-                             (:file "payload-streams"))))
-  :in-order-to ((test-op (test-op "http2/test"))))
+                             (:file "payload-streams")))))
 
 (defsystem "http2/tls"
   :description "Glue to wrap HTTP/2 client or server with TLS"
@@ -82,8 +80,20 @@
                (:file "dispatch")))
 
 (defsystem "http2"
-  :depends-on (#+nil http2/test "http2/client" "http2/server")
+  :version "2.0.0"
+  :depends-on ("http2/client" "http2/server")
   :components ((:file "overview"))
   :description "Load this system to load all HTTP/2 components - in particular, both client and
 server."
-  :properties ((:readme-section (@overview))))
+  :properties ((:readme-section (@overview)))
+  :in-order-to ((test-op (test-op "http2/test"))))
+
+(defsystem "http2/test"
+  :version "0.1"
+  :depends-on ("http2" "fiasco")
+  :pathname "tests"
+  :perform (test-op (o s)
+                    (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
+  :components ((:file "tests")
+               (:file "high-level")
+               (:file "tests-hpack")))
