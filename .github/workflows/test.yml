@@ -38,4 +38,4 @@ jobs:
        - name: load code and run tests
          shell: bash
          run: |
-           ros -e '(handler-bind (#+asdf3.2(asdf:bad-SYSTEM-NAME (function MUFFLE-WARNING))) (handler-case (ql:quickload :http2/all) (error (a) (format t "caught error ~s~%~a~%" a a) (uiop:quit 123))))' -e '(asdf:oos :test-op :http2)' -e '(uiop:quit (length (fiasco::failures-of fiasco:*last-test-result*)))'
+           ros -e '(handler-bind (#+asdf3.2(asdf:bad-SYSTEM-NAME (function MUFFLE-WARNING))) (handler-case (ql:quickload :http2/test) (error (a) (format t "caught error ~s~%~a~%" a a) (uiop:quit 123))))' -e '(asdf:test-system "http2")' -e '(uiop:quit (length (fiasco::failures-of fiasco:*last-test-result*)))'
