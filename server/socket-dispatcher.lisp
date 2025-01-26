@@ -189,12 +189,21 @@ for one client and in ideal conditions (especially with request pilelining)."))
    "Make a Lisp stream from a socket. This is primarily used as a hook to insert TLS
 layer when needed."))
 
+(defmacro with-standard-handlers (() &body body)
+  `(handler-bind
+       ((CL+SSL::SSL-ERROR-SSL 'abort)
+        (CL+SSL::SSL-ERROR-SYSCALL 'abort)
+        (stream-error 'abort)
+        (usocket:connection-aborted-error 'abort))
+     ,@body))
+
 (defmethod do-new-connection (listening-socket (dispatcher single-client-dispatcher))
-  (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
-                                                               :element-type '(unsigned-byte 8)))
-    (process-server-stream (server-socket-stream plain dispatcher)
-                           :connection (apply #'make-instance (get-connection-class dispatcher)
-                                              (get-connection-args dispatcher)))))
+  (with-standard-handlers ()
+    (usocket:with-connected-socket (plain (usocket:socket-accept listening-socket
+                                                                 :element-type '(unsigned-byte 8)))
+      (process-server-stream (server-socket-stream plain dispatcher)
+                             :connection (apply #'make-instance (get-connection-class dispatcher)
+                                                (get-connection-args dispatcher))))))
 
 (defun maybe-create-certificate (key certificate &key system (base
                                                               (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))

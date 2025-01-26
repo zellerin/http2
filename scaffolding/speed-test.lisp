@@ -1,6 +1,6 @@
+#!/usr/bin/env sbcl --script
 
-
-(load "~/quicklisp/setup")
+(load "~/.sbclrc")
 (asdf::load-asd (truename "./http2.asd"))
 (ql:quickload "http2/server" :silent t)
 (ql:quickload "hunchentoot" :silent t)
@@ -17,6 +17,8 @@
 (start 1238 :dispatcher 'http2/server::detached-threaded-dispatcher)
 (start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
+(setf hunchentoot:*log-lisp-backtraces-p* nil)
+
 (bt:make-thread
  (lambda ()
    (woo:run
@@ -25,6 +27,7 @@
       '(200 (:content-type "text/plain") ("Hello, World")))
     :port 1239)))
 
+(maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
 (hunchentoot:start (make-instance 'hunchentoot:easy-ssl-acceptor
                                   :port 1235
                                   :ssl-privatekey-file "/tmp/server.key"
@@ -40,7 +43,7 @@
            (multiple-value-bind (match val)
                (cl-ppcre:scan-to-strings "req/s[ :]*([0-9\\.]+)[ ]*([0-9\\.]+)[ ]*([0-9\\.]+)" res)
              (let ((val-as-num (read-from-string (aref val 2))))
-               (format t "~40a ~10@a~@[~5@a%~]~%" name val-as-num
+               (format t "~50a ~10@a~@[~5@a%~]~%" name val-as-num
                        (when base (floor (/ val-as-num base 0.01))))
                val-as-num)))))
 

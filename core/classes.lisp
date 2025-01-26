@@ -183,7 +183,6 @@ the first parameter."
   (@stream-closed section)
   (apply-stream-priority  generic-function)
   (apply-window-size-increment generic-function)
-  (peer-resets-stream generic-function)
   (set-peer-setting generic-function)
   (peer-expects-settings-ack generic-function)
   (peer-acks-settings generic-function)
@@ -264,22 +263,6 @@ multiple threads."
     (with-slots (streams) connection
       (setf streams (remove stream streams :test 'eq)
             (get-state stream) 'closed))))
-
-(defgeneric peer-resets-stream (stream error-code)
-  (:method ((stram (eql :closed)) error-code))
-  (:method (stream error-code)
-    (unwind-protect
-         (unless (eq error-code +cancel+)
-           (warn 'http-stream-error :stream stream :code error-code))
-      (close-http2-stream stream)))
-  (:documentation
-   "The RST_STREAM frame fully terminates the referenced stream and
-   causes it to enter the \"closed\" state.  After receiving a RST_STREAM
-   on a stream, the receiver MUST NOT send additional frames for that
-   stream, with the exception of PRIORITY.  However, after sending the
-   RST_STREAM, the sending endpoint MUST be prepared to receive and
-   process additional frames sent on the stream that might have been
-   sent by the peer prior to the arrival of the RST_STREAM."))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)

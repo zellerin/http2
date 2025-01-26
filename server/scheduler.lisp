@@ -16,6 +16,8 @@
    (action-name          :accessor get-action-name          :initarg :action-name))
   (:default-initargs :action-name nil))
 
+(defvar *scheduler*)
+
 (defclass threaded-server-mixin ()
   ((scheduler :accessor get-scheduler :initarg :scheduler)
    (lock      :accessor get-lock      :initarg :lock))

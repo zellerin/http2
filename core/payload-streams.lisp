@@ -99,7 +99,7 @@ to sent. Tracks DATA to sent and number of octets actually SENT."))
 
 Return new START."
   (with-slots (output-buffer base-http2-stream) stream
-    (write-data-frame base-http2-stream
+    (write-data-frame-multi base-http2-stream
                       (if (zerop (length output-buffer))
                           (make-array size
                                       :displaced-to sequence
@@ -118,11 +118,11 @@ Return new START."
                                   (get-peer-window-size http-stream))
         for frame-size = (get-max-peer-frame-size connection)
         while (> frame-size allowed-window)
-        do
-           (loop until
-                 (restart-case
-                     (read-frame connection)
-                   (read-again ())))))
+        do (read-frame connection)
+#+nil(loop until
+       (restart-case
+
+           (read-again ())))))
 
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream payload-output-stream) sequence start end &key)

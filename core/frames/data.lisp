@@ -1,5 +1,11 @@
 (in-package http2/core)
 
+(defsection @data
+    ()
+  (get-peer-window-size generic-function)
+  (get-max-peer-frame-size generic-function)
+  (write-data-frame-multi function))
+
 (defclass body-collecting-mixin ()
   ((body :accessor get-body :initarg :body
          :documentation "Body of the request as an octet vector.
@@ -110,6 +116,19 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
                    (account-write-window-contribution (get-connection stream)
                                                       stream length)
                    (replace buffer data :start1 start))
+                 data)))
+
+(defun write-data-frame-multi (stream data &rest keys &key end-stream)
+  "Write a data frame that includes DATA - that is a sequence of octet vectors."
+  (declare (ignore end-stream))
+  (let ((length (reduce #'+  data :key #'length)))
+    (write-frame stream length +data-frame+ keys
+                 (lambda (buffer start data)
+                   (account-write-window-contribution (get-connection stream)
+                                                      stream length)
+                   (dolist (datum data)
+                     (replace buffer datum :start1 start)
+                     (incf start (length datum))))
                  data)))
 
 #+maybe-not-needed

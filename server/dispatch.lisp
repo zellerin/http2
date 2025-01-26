@@ -252,11 +252,6 @@ optionally provides CONTENT with CONTENT-TYPE."
 (defclass detached-single-client-dispatcher (detached-server-mixin single-client-dispatcher)
   ())
 
-(defmacro with-standard-handlers (() &body body)
-  `(handler-bind
-       ((CL+SSL::SSL-ERROR-SSL 'abort))
-     ,@body))
-
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
   (let ((socket (usocket:socket-accept listening-socket
                                        :element-type '(unsigned-byte 8)))
