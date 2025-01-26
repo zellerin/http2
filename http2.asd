@@ -95,5 +95,6 @@ server."
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
   :components ((:file "tests")
+               (:file "utils")
                (:file "high-level")
                (:file "tests-hpack")))
