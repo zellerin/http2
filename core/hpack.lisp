@@ -383,22 +383,23 @@ Return the fillable vector."
 
 (defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
-  (let* ((octet0 (aref data start))
-         (len (ldb (byte 7 0) octet0)))
+  (let* ((octet0 (aref data start)))
     (incf* start end)
-    (if (> (+ start len) end)
-        (signal 'incomplete-header))
     (multiple-value-bind (size start)
         (get-integer-from-octet octet0 7 data start end)
+      (if (> (+ start size) end)
+          (signal 'incomplete-header))
       (if (plusp (ldb (byte 1 7) octet0))
           (values (read-huffman size data start) (+ size start))
           (loop with res = (make-array size
                                        :element-type 'character)
-                ;; ; TODO: 2025-01-30: map-into?
-                for i from 0 below len
-                do  (setf (aref res i) (code-char (aref data start)))
-                    (incf* start end)
-                finally (return (values res start)))))))
+                and string-end = (+ size start)
+                ;; TODO: 2025-01-30: map-into? replace? map?
+                ;; ... nothing seems to match
+                for i from start below string-end
+                for j from 0
+                do  (setf (aref res j) (code-char (aref data i)))
+                finally (return (values res string-end)))))))
 
 
 (defun read-from-tables (index context)
