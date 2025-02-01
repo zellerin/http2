@@ -381,7 +381,7 @@ Return the fillable vector."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
   (let ((res (make-octet-buffer len)))
     (replace res data :start2 start)
-    (values (decode-huffman res) (+ start len))))
+    (values (decode-huffman res 0 len) (+ start len))))
 
 (defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
@@ -542,19 +542,19 @@ Return nil if the complete headers were processed, or index to first unprocessed
                    collect `(,idx ,(make-cond-branch idx min-prefix codes))))))))
 
 
-(defun decode-huffman-to-stream  (char-stream bytes &optional (nr 0) (nr-size 0) (prefix 0))
-  (let ((idx 0))
+(defun decode-huffman-to-stream  (char-stream bytes start end &optional (nr 0) (nr-size 0) (prefix 0))
+  (let ((idx start))
     (declare ((unsigned-byte 16) nr)
              ((integer 0 35) nr-size prefix)
              (optimize (debug 3) speed)
-             ((integer 0 65536) idx)
+             ((integer 0 65536) idx start end)
              ((and vector (simple-array (unsigned-byte 8))) bytes))
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
                (declare (optimize (safety 0)))
                (when (> min-prefix nr-size)
-                 (when (= idx (length bytes)) (return-from decode-huffman-to-stream))
+                 (when (= idx end) (return-from decode-huffman-to-stream))
                  (let ((old nr))
                    (setf nr 0
                          (ldb (byte 8 8) nr) old
@@ -569,9 +569,9 @@ Return nil if the complete headers were processed, or index to first unprocessed
                  (notinline update-vars emit))
         (loop (decode))))))
 
-(defun decode-huffman (bytes)
+(defun decode-huffman (bytes start end)
   (with-output-to-string (s)
-    (decode-huffman-to-stream s bytes)))
+    (decode-huffman-to-stream s bytes start end)))
 
 (defun encode-huffman (string res)
   "Convert string to huffman encoding."
