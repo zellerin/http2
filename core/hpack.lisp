@@ -379,9 +379,7 @@ Return the fillable vector."
 (defun read-huffman (len data start)
   "Read Huffman coded text of length LEN from STREAM."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
-  (let ((res (make-octet-buffer len)))
-    (replace res data :start2 start)
-    (values (decode-huffman res 0 len) (+ start len))))
+  (values (decode-huffman data start (+ start len)) (+ start len)))
 
 (defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
@@ -453,9 +451,10 @@ Can also return NIL if no header is available if it is not detected earlier; thi
           ((zerop (ldb (byte 3 5) octet0)) ;; 000X NNNN
            (read-literal-header-indexed-name octet0 context 4 data start end))
           (t                            ; 001x xxxx
-           (update-dynamic-table-size context
-                                      (get-integer-from-octet octet0 5 data start end))
-           (values nil start))))))
+           (multiple-value-bind (res start)
+               (get-integer-from-octet octet0 5 data start end)
+             (update-dynamic-table-size context res)
+             (values nil start)))))))
 
 (defun do-decoded-headers (fn context data &optional (start 0) (end (length data)))
   "Call FN on each header decoded from DATA between START and END.
