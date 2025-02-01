@@ -219,27 +219,30 @@ continuation flags, if any, so must be separate."
   ;; FIXME: add handler for failure to read full header.
   (loop
     with end-headers = (get-flag flags :end-headers)
+    with to-backtrace = start           ; when to restart if needed
     with connection = (get-connection http-stream)
     with length = (- end start)
     ;; 20240708 TODO: stream -> octets
-    with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start
-                                                            :end end)
-    for to-backtrace = (get-index data-as-stream)
-    while (< (get-index data-as-stream) length)
+    while (< start end)
     for (name value) =
-                     (handler-case
-                         (read-http-header data-as-stream
-                                           (get-decompression-context connection))
-                       (end-of-file ()
-                         :test
-                         (if end-headers
-                             ;; 20240718 TODO: make class for this connection error
-                             (error "Incomplete headers: ~a" (subseq data to-backtrace end))
-                             (return
-                               (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
-                                       9)))))
+                     (multiple-value-bind (data new-start)
+                         (read-http-header (get-decompression-context connection)
+                                           data start end)
+                       (setf start new-start)
+                       data
+
+                       )
+    when (> start end)
+      do
+         (if end-headers
+             ;; 20240718 TODO: make class for this connection error
+             (error "Incomplete headers: ~a" (subseq data to-backtrace end))
+             (return
+               (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
+                       9)))
     when name
       do (add-header connection http-stream name value)
+    do (setf to-backtrace start)
     finally
        (when end-headers
          ;; If the END_HEADERS bit is not set, this frame MUST be followed by

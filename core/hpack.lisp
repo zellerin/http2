@@ -323,23 +323,34 @@ header name and value."
                additional-headers))
    nil))
 
-(defun get-integer-from-octet (stream initial-octet bit-size)
+(define-condition incomplete-header ()
+  ())
+
+(defmacro incf* (value-var max)
+  `(when (>= (incf ,value-var) ,max)
+     (signal 'incomplete-header)))
+
+(defun get-integer-from-octet (initial-octet bit-size data start end)
   "Decode an integer from starting OCTET and additional octets in STREAM
 as defined in RFC7541 sect. 5.1."
   (declare (type (integer 1 8) bit-size)
            (type (unsigned-byte 8) initial-octet))
   (let ((small-res (ldb (byte bit-size 0) initial-octet)))
-    (if (= small-res (ldb (byte bit-size 0) -1))
-        (loop
-          with res fixnum = 0
-          for octet of-type (unsigned-byte 8) = (read-byte* stream)
-          for shift from 0 by 7
-          for last-octet = (zerop (ldb (byte 1 7) octet))
-          and octet-value = (ldb (byte 7 0) octet)
-          do (setf (ldb (byte 7 shift) res) octet-value)
-          when last-octet
-            do (return (+ res small-res)))
-        small-res)))
+    (values
+     (if (= small-res (ldb (byte bit-size 0) -1))
+         (loop
+           with res fixnum = 0
+           for octet of-type (unsigned-byte 8) = (aref data start)
+           for shift from 0 by 7
+           for last-octet = (zerop (ldb (byte 1 7) octet))
+           and octet-value = (ldb (byte 7 0) octet)
+           do
+              (setf (ldb (byte 7 shift) res) octet-value)
+              (incf* start end)
+           when last-octet
+             do (return (+ res small-res)))
+         small-res)
+     start)))
 
 (defun write-integer-to-array (array integer bit-size mask)
   "Write integer to a fillable vector as defined in RFC7541 sect. 5.1.
@@ -365,26 +376,31 @@ Return the fillable vector."
     (write-integer-to-array array integer bit-size mask)
     array))
 
-(defun read-huffman (stream len)
+(defun read-huffman (len data start)
   "Read Huffman coded text of length LEN from STREAM."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
-  (loop with res = (make-octet-buffer len)
-        for i from 0 to (1- len)
-        do (setf (aref res i) (read-byte* stream))
-        finally (return (decode-huffman res))))
+  (let ((res (make-octet-buffer len)))
+    (replace res data :start2 start)
+    (values (decode-huffman res) (+ start len))))
 
-(defun read-string-from-stream (stream)
+(defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
-  (let* ((octet0 (read-byte* stream))
-         (len (ldb (byte 7 0) octet0))
-         (size (get-integer-from-octet stream octet0 7)))
-    (if (plusp (ldb (byte 1 7) octet0))
-        (read-huffman stream size)
-        (loop with res = (make-array size
-                                     :element-type 'character)
-              for i from 0 to (1- len)
-              do  (setf (aref res i) (code-char (read-byte* stream)))
-              finally (return res)))))
+  (let* ((octet0 (aref data start))
+         (len (ldb (byte 7 0) octet0)))
+    (incf* start end)
+    (if (> (+ start len) end)
+        (signal 'incomplete-header))
+    (multiple-value-bind (size start)
+        (get-integer-from-octet octet0 7 data start end)
+      (if (plusp (ldb (byte 1 7) octet0))
+          (values (read-huffman size data start) (+ size start))
+          (loop with res = (make-array size
+                                       :element-type 'character)
+                ;; ; TODO: 2025-01-30: map-into?
+                for i from 0 below len
+                do  (setf (aref res i) (code-char (aref data start)))
+                    (incf* start end)
+                finally (return (values res start)))))))
 
 
 (defun read-from-tables (index context)
@@ -395,44 +411,73 @@ Return the fillable vector."
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
 
-(defun read-literal-header-indexed-name (stream octet0 context use-bits)
+(defun read-literal-header-indexed-name (octet0 context use-bits data start end)
   "See Fig. 6 and Fig. 8 - Name of header is in tables, value is literal.
 
 Use USE-BITS from the OCTET0 for name index"
-  (let ((table-match (read-from-tables
-                      (get-integer-from-octet stream octet0 use-bits)
-                      context)))
-    (list (if (consp table-match) (car table-match) table-match)
-          (read-string-from-stream stream))))
+  (multiple-value-bind (idx start)
+      (get-integer-from-octet octet0 use-bits data start end)
+    (let ((table-match (read-from-tables idx context)))
+      (multiple-value-bind (value start) (read-string-from-stream data start end)
+        (values (list (if (consp table-match) (car table-match) table-match) value) start)))))
 
-(defun read-literal-header-field-new-name (stream)
+(defun read-literal-header-field-new-name (data start end)
   "See 6.2.1 fig. 7, and 6.2.2. fig. 9 -
 Neither name of the header nor value is in table, so read both as literals."
-  (list (read-string-from-stream stream) (read-string-from-stream stream)))
+  (multiple-value-bind (key start) (read-string-from-stream data start end)
+    (multiple-value-bind (value start) (read-string-from-stream data start end)
+      (values (list key value) start))))
 
-(defun read-http-header (stream context)
+(defun read-http-header (context data start end)
   "Read one header from network stream using READ-BYTE* as two-item list (NAME
 VALUE) using dynamic table CONTEXT. Update CONTEXT appropriately.
 
 Can also return NIL if no header is available if it is not detected earlier; this can happen, e.g., when there is a zero sized continuation header frame.."
-  (let ((octet0 (read-byte* stream)))
+  (let ((octet0 (aref data start)))
+    (incf* start end)
     (handler-case
         (cond
           ((plusp (ldb (byte 1 7) octet0)) ;; 1xxx xxxx
-           (read-from-tables (get-integer-from-octet stream octet0 7) context))
+           (multiple-value-bind (idx start) (get-integer-from-octet octet0 7 data start end)
+             (values (read-from-tables idx context) start)))
           ((= #x40 octet0) ;; 0100 0000 - fig. 7
-           (add-dynamic-header context (read-literal-header-field-new-name stream)))
+           (multiple-value-bind (header start)
+               (read-literal-header-field-new-name data start end)
+             (values (add-dynamic-header context header) start)))
           ((plusp (ldb (byte 1 6) octet0)) ;; 01NN NNNN
-           (add-dynamic-header context
-                               (read-literal-header-indexed-name stream octet0 context 6)))
+           (multiple-value-bind (data start)
+               (read-literal-header-indexed-name octet0 context 6 data start end)
+             (values (add-dynamic-header context data) start)))
           ((zerop (logand #xef octet0)) ;; 000x 0000 - fig. 9 and 11
-           (read-literal-header-field-new-name stream))
+           (read-literal-header-field-new-name data start end))
           ((zerop (ldb (byte 3 5) octet0)) ;; 000X NNNN
-           (read-literal-header-indexed-name stream octet0 context 4))
-          (t                                ; 001x xxxx
+           (read-literal-header-indexed-name octet0 context 4 data start end))
+          (t                            ; 001x xxxx
            (update-dynamic-table-size context
-                                      (get-integer-from-octet stream octet0 5))
-           nil)))))
+                                      (get-integer-from-octet octet0 5 data start end))
+           (values nil start))))))
+
+(defun do-decoded-headers (fn context data &optional (start 0) (end (length data)))
+  "Call FN on each header decoded from DATA between START and END.
+
+Return nil if the complete headers were processed, or index to first unprocessed octet."
+  (loop
+    with to-backtrace = start           ; when to restart if needed
+    while (< start end)
+    for (name value) =
+                     (handler-case
+                         (multiple-value-bind (data new-start)
+                             (read-http-header context data start end)
+                           (setf start new-start)
+                           data)
+                       (incomplete-header () (return to-backtrace)))
+    when (> start end)
+      do
+         (return to-backtrace)
+    when name
+      do (funcall fn name value)
+    do (setf to-backtrace start)))
+
 
 
 
