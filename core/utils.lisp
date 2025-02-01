@@ -89,7 +89,7 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   (loop with prefix = text
         for i from 0 to (1- (length prefix)) by 2
         collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
-        finally (return (map 'simple-vector 'identity l))))
+        finally (return (map '(vector (unsigned-byte 8)) 'identity l))))
 
 ;;;; Settings
 (defvar *settings*
