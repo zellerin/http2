@@ -15,6 +15,7 @@
   from API point considered opaque. Context is needed twice for each connection,
   once for each direction of communication."
   (read-http-header function)
+  (do-decoded-headers function)
   (compile-headers function)
   (request-headers function)
   (update-dynamic-table-size function)
@@ -327,7 +328,7 @@ header name and value."
   ())
 
 (defmacro incf* (value-var max)
-  `(when (>= (incf ,value-var) ,max)
+  `(when (> (incf ,value-var) ,max)
      (signal 'incomplete-header)))
 
 (defun get-integer-from-octet (initial-octet bit-size data start end)

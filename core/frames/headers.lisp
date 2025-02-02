@@ -22,7 +22,7 @@
     (let ((decoded-name
             (etypecase name
               ((or string symbol) name)
-              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name)))))
+              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name 0 (length name))))))
       (when (and (stringp name) (some #'upper-case-p name))
         (http-stream-error 'lowercase-header-field-name stream))
       (call-next-method connection stream
