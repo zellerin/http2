@@ -233,7 +233,7 @@ huffman encoding."
   (write-integer-to-array res index use-bits code)
   (store-string value res huffman))
 
-(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*) (index t))
+(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*) noindex)
   "Encode header consisting of NAME and VALUE to a fillable array RES..
 
 The `never-indexed` format is never generated, use a separate function for
@@ -250,15 +250,19 @@ Use Huffman when HUFFMAN is true."
      (write-indexed-header-pair res it))
     ((find-header-in-tables context name)
      (cond
-       ((and index context)
+       ((and (null noindex) context)
         (write-indexed-name res +literal-header-index+ it value 6 huffman)
         (add-dynamic-header context (list name value)))
        (t (write-indexed-name res +literal-header-noindex+ it value 4 huffman))))
-    ((and context index)
+    ((and  context (null noindex))
      (write-literal-header-pair res +literal-header-index+ name value huffman)
      (add-dynamic-header context (list name value)))
     (t
-     (write-literal-header-pair res +literal-header-noindex+ name value huffman)))
+     (write-literal-header-pair res
+                                (if (eq noindex :never)
+                                    +literal-header-never-index+
+                                    +literal-header-noindex+)
+                                name value huffman)))
   res)
 
 (defun encode-dynamic-table-update (res new-size)
@@ -310,9 +314,9 @@ Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
     for header in headers
     do (destructuring-bind (name value &key
                                          (huffman *use-huffman-coding-by-default*)
-                                         (index t))
+                                         no-index)
            header
-           (header-writer res name value context huffman index))
+           (header-writer res name value context huffman no-index))
     finally (return res)))
 
 (define-condition incomplete-header ()
