@@ -151,12 +151,10 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
    .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state."
   (declare (ignore end-stream end-headers))
-  (let ((length (reduce '+ (mapcar 'length headers))))
+  (let ((length (length headers)))
     (write-frame stream length +headers-frame+ keys
                  (lambda (buffer start headers)
-                   (when (cdr headers)
-                     (error "Multiple header groups not supported now."))
-                   (replace buffer (car headers) :start1 start))
+                   (replace buffer headers :start1 start))
                  headers)))
 
 (defun write-headers-frame
@@ -182,14 +180,12 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
            (if priority
                5
                0)
-           (reduce '+ (mapcar 'length headers)))))
+           (length headers))))
     (write-frame stream length +headers-frame+ keys
                  (lambda (buffer start headers priority)
-                   (when (cdr headers)
-                     (error "Multiple header groups not supported now."))
                    (if priority
                        (write-priority priority buffer start headers)
-                       (replace buffer (car headers) :start1 start)))
+                       (replace buffer headers :start1 start)))
                  headers priority)))
 
 (defun read-and-add-headers (data http-stream start end flags header-flags)

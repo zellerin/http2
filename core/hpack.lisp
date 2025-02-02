@@ -281,22 +281,18 @@ Use Huffman when HUFFMAN is true."
 (defun compile-headers (headers context)
   "Compile headers with given CONTEXT to an array. Context can be NIL; if it is
 not, the headers are stored in the dynamic table and the CONTEXT it is updated
-appropriately.
-
-Presently returns list of arrays, may return single array in future. In any case, the result should be usable as the appropriate parameter for WRITE-HEADERS-FRAME."
+appropriately."
+  (declare ((or null hpack-context) context))
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
     initially (when context
                 (compute-update-dynamic-size-codes
                  res (get-updates-needed context)))
     for header in headers
-    do (if (vectorp header)
-           (loop for octet across header
-                 do (vector-push-extend octet res))
-           (header-writer res (car header)
-                          (second header)
-                          context))
-    finally (return (list res))))
+    do (header-writer res (car header)
+                      (second header)
+                      context)
+    finally (return res)))
 
 (defun request-headers (method path authority
                         &key (scheme "https")
@@ -306,19 +302,17 @@ Presently returns list of arrays, may return single array in future. In any case
   "Encode standard request headers. The obligatory headers are passed as the
 positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
 header name and value."
-  (compile-headers
-   `((:method, (if (symbolp method) (symbol-name method) method))
-     (:scheme ,scheme)
-     (:path ,(or path "/"))
-     (:authority ,authority)
-     ,@(when content-type
-           `(("content-type" ,content-type)))
-     ,@(when gzip-content
-         '(("content-encoding" "gzip")))
-     ,@(mapcar (lambda (a)
-                 (list (car a) (cdr a)))
-               additional-headers))
-   nil))
+  `((:method, (if (symbolp method) (symbol-name method) method))
+    (:scheme ,scheme)
+    (:path ,(or path "/"))
+    (:authority ,authority)
+    ,@(when content-type
+        `(("content-type" ,content-type)))
+    ,@(when gzip-content
+        '(("content-encoding" "gzip")))
+    ,@(mapcar (lambda (a)
+                (list (car a) (cdr a)))
+              additional-headers)))
 
 (define-condition incomplete-header ()
   ())
