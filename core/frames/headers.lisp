@@ -202,42 +202,25 @@ read.
 Note that END-STREAM is present in the first header flag, not in the
 continuation flags, if any, so must be separate."
   ;; FIXME: add handler for failure to read full header.
-  (loop
-    with end-headers = (get-flag flags :end-headers)
-    with to-backtrace = start           ; when to restart if needed
-    with connection = (get-connection http-stream)
-    with length = (- end start)
-    ;; 20240708 TODO: stream -> octets
-    while (< start end)
-    for (name value) =
-                     (multiple-value-bind (data new-start)
-                         (read-http-header (get-decompression-context connection)
-                                           data start end)
-                       (setf start new-start)
-                       data
-
-                       )
-    when (> start end)
-      do
-         (if end-headers
-             ;; 20240718 TODO: make class for this connection error
-             (error "Incomplete headers: ~a" (subseq data to-backtrace end))
-             (return
-               (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
-                       9)))
-    when name
-      do (add-header connection http-stream name value)
-    do (setf to-backtrace start)
-    finally
-       (when end-headers
-         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-         ;; another CONTINUATION frame.
-         (process-end-headers connection http-stream)
-         ;; 20240719 TODO: end stream is in headers frame only, not continuation
-         (maybe-end-stream header-flags http-stream))
-       (return (values (if end-headers #'parse-frame-header
-                           (read-continuation-frame-on-demand http-stream data end end header-flags))
-                       9))))
+  (let* ((connection (get-connection http-stream))
+         (end-headers (get-flag flags :end-headers))
+         (to-backtrace
+           (do-decoded-headers (lambda (name value)
+                                 (add-header connection http-stream name value))
+             (get-compression-context connection) data start end)))
+    (cond
+      ((and end-headers to-backtrace)
+       ;; 20240718 TODO: make class for this connection error
+       (error "Incomplete headers: ~a" (subseq data to-backtrace end)))
+      (end-headers
+       (process-end-headers connection http-stream)
+       (maybe-end-stream header-flags http-stream)
+       (values #'parse-frame-header 9))
+      (to-backtrace
+       (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
+               9))
+      (t
+       (error "TODO: Implement me nicely")))))
 
 (defun read-priority (data http-stream start)
   (let* ((e+strdep (aref/wide data start 4))

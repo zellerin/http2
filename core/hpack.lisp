@@ -14,18 +14,14 @@
   "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
   from API point considered opaque. Context is needed twice for each connection,
   once for each direction of communication."
-  (read-http-header function)
   (do-decoded-headers function)
   (compile-headers function)
   (request-headers function)
   (update-dynamic-table-size function)
   (*use-huffman-coding-by-default* variable)
-  (header-writer function)
   (hpack-context class)
   (get-dynamic-table-size generic-function)
-  (request-headers function)
-  (get-updates-needed generic-function)
-  (decode-huffman function))
+  (get-updates-needed generic-function))
 
 (defvar static-headers-table
   (vector
