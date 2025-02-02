@@ -60,22 +60,6 @@ setting can have any value between 2^14 (16,384) and 2^24-1
             (ldb (byte 8 (* 8 (- size 1 i))) value))
         finally (return value)))
 
-(defun read-bytes (stream n)
-  "Read N bytes from stream to an integer"
-  (declare ((integer 1 8) n))
-  (let ((res 0))
-    (dotimes (i n)
-      (setf (ldb (byte 8 (* 8 (- n 1 i))) res) (read-byte stream)))
-    res))
-
-(defun write-bytes (stream n value)
-  "write VALUE as N octets to stream. Maximum length is 64 bits (used by ping)."
-  (declare (type (integer 1 8) n)
-           (optimize speed)
-           (type (unsigned-byte 64) value))
-  (dotimes (i n)
-    (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
-
 (defun vector-from-hex-text (text)
   "Convert a hex string to an octet vector."
   (declare (string text))

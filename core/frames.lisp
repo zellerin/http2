@@ -344,9 +344,6 @@ PARS as its parameters."
                                (change-state-on-write-end http-connection-or-stream))
                              buffer))
 
-(defun write-32-bits (stream value)
-  (write-bytes stream 4 value))
-
 (defun write-31-bits (vector start value flag)
   "Write 31 bits of VALUE to a VECTOR. Set first bit if FLAG is set."
   (declare (optimize speed))
