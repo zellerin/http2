@@ -541,7 +541,7 @@ Return nil if the complete headers were processed, or index to first unprocessed
   (let ((idx start))
     (declare ((unsigned-byte 16) nr)
              ((integer 0 35) nr-size prefix)
-             (optimize (debug 3) speed)
+             (optimize speed)
              ((integer 0 65536) idx start end)
              ((and vector (simple-array (unsigned-byte 8))) bytes))
     (macrolet ((decode ()
