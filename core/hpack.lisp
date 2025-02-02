@@ -84,6 +84,21 @@ start at index 1, so leading nil.")
                             |                   V
                      Insertion Point      Dropping Point"))
 
+(defmethod print-object ((context hpack-context) stream)
+  (print-unreadable-object (context stream :type t)
+    (format stream "~d item~:p~@[,including ~d deleted~], free ~d/~d"
+            (length (get-dynamic-table context))
+            (when (plusp (get-deleted-items context))
+              (get-deleted-items context))
+            (get-dynamic-table-size context)
+            (get-bytes-left-in-table context))))
+
+(defmethod describe-object ((context hpack-context) stream)
+  (format stream "~s~%" context)
+  (loop for idx from (get-deleted-items context) below (length (get-dynamic-table context))
+        do (format stream "~&~3d ~s~%" (vector-index-to-hpack-index (get-dynamic-table context) idx)
+                   (aref (get-dynamic-table context) idx))))
+
 (declaim
  (ftype (function (vector fixnum) fixnum) vector-index-to-hpack-index)
  (ftype (function (hpack-context fixnum) (or cons string)) dynamic-table-value))
