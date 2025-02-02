@@ -234,7 +234,7 @@ huffman encoding."
   (write-integer-to-array res index use-bits code)
   (store-string value res huffman))
 
-(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*))
+(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*) (index t))
   "Encode header consisting of NAME and VALUE to a fillable array RES..
 
 The `never-indexed` format is never generated, use a separate function for
@@ -251,11 +251,11 @@ Use Huffman when HUFFMAN is true."
      (write-indexed-header-pair res it))
     ((find-header-in-tables context name)
      (cond
-       (context
+       ((and index context)
         (write-indexed-name res +literal-header-index+ it value 6 huffman)
         (add-dynamic-header context (list name value)))
        (t (write-indexed-name res +literal-header-noindex+ it value 4 huffman))))
-    (context
+    ((and context index)
      (write-literal-header-pair res +literal-header-index+ name value huffman)
      (add-dynamic-header context (list name value)))
     (t
@@ -304,9 +304,11 @@ appropriately."
                 (compute-update-dynamic-size-codes
                  res (get-updates-needed context)))
     for header in headers
-    do (header-writer res (car header)
-                      (second header)
-                      context)
+    do (destructuring-bind (name value &key
+                                         (huffman *use-huffman-coding-by-default*)
+                                         (index t))
+           header
+           (header-writer res name value context huffman index))
     finally (return res)))
 
 (define-condition incomplete-header ()
