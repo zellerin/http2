@@ -11,15 +11,15 @@
 - Headers being sent out may be cached and after first use in dynamic headers table and later replaced by a code,
 
 - Headers as string can be Huffman compressed."
-  "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
-  from API point considered opaque. Context is needed twice for each connection,
-  once for each direction of communication."
   (do-decoded-headers function)
   (compile-headers function)
   (request-headers function)
-  (update-dynamic-table-size function)
   (*use-huffman-coding-by-default* variable)
+  "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
+  from API point considered opaque. Context is needed twice for each connection,
+  once for each direction of communication."
   (hpack-context class)
+  (update-dynamic-table-size function)
   (get-dynamic-table-size generic-function)
   (get-updates-needed generic-function))
 
@@ -134,7 +134,6 @@ This is factored out to be used in testing."
 (defun find-pair-in-tables (context pair)
   "Find header PAIR in static table and, if CONNECTION is not null, in its dynamic
 table. Return the index, or NIL if not found."
-  ;; 17 is last pair in static table
   (find-in-tables context pair #'equalp #'identity +last-static-header-pair+))
 
 (defun find-header-in-tables (context name)
@@ -296,7 +295,12 @@ Use Huffman when HUFFMAN is true."
 (defun compile-headers (headers context)
   "Compile headers with given CONTEXT to an array. Context can be NIL; if it is
 not, the headers are stored in the dynamic table and the CONTEXT it is updated
-appropriately."
+appropriately.
+
+Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
+
+- NO-INDEX indicates that it should be stored in the dynamic table (if possible), should not, or use the NEVER encoding (value :never),
+- HUFFMAN to use huffman encoding"
   (declare ((or null hpack-context) context))
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
@@ -460,8 +464,7 @@ Return nil if the complete headers were processed, or index to first unprocessed
                            data)
                        (incomplete-header () (return to-backtrace)))
     when (> start end)
-      do
-         (return to-backtrace)
+      do (return to-backtrace)
     when name
       do (funcall fn name value)
     do (setf to-backtrace start)))
