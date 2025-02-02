@@ -294,26 +294,6 @@ appropriately."
                       context)
     finally (return res)))
 
-(defun request-headers (method path authority
-                        &key (scheme "https")
-                          content-type
-                          gzip-content
-                          additional-headers)
-  "Encode standard request headers. The obligatory headers are passed as the
-positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
-header name and value."
-  `((:method, (if (symbolp method) (symbol-name method) method))
-    (:scheme ,scheme)
-    (:path ,(or path "/"))
-    (:authority ,authority)
-    ,@(when content-type
-        `(("content-type" ,content-type)))
-    ,@(when gzip-content
-        '(("content-encoding" "gzip")))
-    ,@(mapcar (lambda (a)
-                (list (car a) (cdr a)))
-              additional-headers)))
-
 (define-condition incomplete-header ()
   ())
 
