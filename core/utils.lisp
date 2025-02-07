@@ -15,6 +15,7 @@
   (http2-stream-state type)
 
   (make-octet-buffer function)
+  (make-initialized-octet-buffer function)
   (aref/wide function)
   (vector-from-hex-text function)
   (frame-size type)
@@ -34,6 +35,10 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 (defun make-octet-buffer (size)
   (declare (type frame-size size))
   (make-array size :element-type '(unsigned-byte 8)))
+
+(defun make-initialized-octet-buffer (content)
+  (make-array (length content) :element-type '(unsigned-byte 8)
+              :initial-contents content))
 
 
 
