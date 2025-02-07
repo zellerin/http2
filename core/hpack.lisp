@@ -13,7 +13,6 @@
 - Headers as string can be Huffman compressed."
   (do-decoded-headers function)
   (compile-headers function)
-  (request-headers function)
   (*use-huffman-coding-by-default* variable)
   "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
   from API point considered opaque. Context is needed twice for each connection,
