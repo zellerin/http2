@@ -127,16 +127,18 @@ Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
 flag is set.
 
 At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
-      (assert (zerop start))
       (handler-case
           (with-padding-marks (connection flags start end)
-                (when (get-flag flags :priority)
-                  (read-priority data active-stream start)
-                  (incf start 5))
-                (read-and-add-headers data active-stream start end flags flags))
-            (http-stream-error (e)
-              (format t "-> We close a stream due to ~a" e)
-              (values #'parse-frame-header 9)))))
+            (when (get-flag flags :priority)
+              (read-priority data active-stream start)
+              (incf start 5)
+              (when (< start end)
+                (connection-error 'frame-too-small-for-priority connection)))
+            (read-and-add-headers data active-stream start end flags flags))
+
+        (http-stream-error (e)
+          (format t "-> We close a stream due to ~a" e)
+          (values #'parse-frame-header 9)))))
 
 (defun write-simple-headers-frame
        (stream headers &rest keys &key end-headers end-stream)

@@ -236,8 +236,10 @@ where it is used.")
 
 (defmacro with-padding-marks ((connection flags start end) &body body)
   `(let* ((padded (get-flag ,flags :padded))
-          (,end (if padded (- length (aref data 0)) length))
-          (,start (if padded 1 0)))
+          (,end length))
+     (when padded
+       (incf ,start)
+       (decf ,end  (- length (aref data ,start))))
      (when (< ,end ,start)
        (connection-error 'too-big-padding ,connection))
      ,@body))
@@ -315,16 +317,9 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
-"Universal function to write a frame to a stream and account for possible stream
-state change.
-
-Queues using QUEUE-FRAME an octet vector with the frame, including
-frame header (9 octets) and padding octets.
-
-The payload is generated using WRITER object. The WRITER takes CONNECTION and
-PARS as its parameters." (defun write-frame (http-connection-or-stream length type-code keys
-                                             writer &rest pars)
-                           "Universal function to write a frame to a stream and account for possible stream
+(defun write-frame (http-connection-or-stream length type-code keys
+                    writer &rest pars)
+  "Universal function to write a frame to a stream and account for possible stream
 state change.
 
 Queues using QUEUE-FRAME an octet vector with the frame, including
@@ -332,17 +327,17 @@ frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
 PARS as its parameters."
-                           (let* ((padded (getf keys :padded))
-                                  (padded-length (padded-length length padded))
-                                  (buffer (make-octet-buffer (+ 9 padded-length))))
-                             (write-frame-header-to-vector buffer 0 padded-length type-code (flags-to-code keys)
-                                                           (get-stream-id http-connection-or-stream) nil)
-                             (when writer
-                               (write-body-and-padding buffer writer padded pars))
-                             (queue-frame (get-connection http-connection-or-stream) buffer)
-                             (when (getf keys :end-stream)
-                               (change-state-on-write-end http-connection-or-stream))
-                             buffer))
+  (let* ((padded (getf keys :padded))
+         (padded-length (padded-length length padded))
+         (buffer (make-octet-buffer (+ 9 padded-length))))
+    (write-frame-header-to-vector buffer 0 padded-length type-code (flags-to-code keys)
+                                  (get-stream-id http-connection-or-stream) nil)
+    (when writer
+      (write-body-and-padding buffer writer padded pars))
+    (queue-frame (get-connection http-connection-or-stream) buffer)
+    (when (getf keys :end-stream)
+      (change-state-on-write-end http-connection-or-stream))
+    buffer))
 
 (defun write-31-bits (vector start value flag)
   "Write 31 bits of VALUE to a VECTOR. Set first bit if FLAG is set."
