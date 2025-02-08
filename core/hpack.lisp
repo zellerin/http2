@@ -420,6 +420,8 @@ Use USE-BITS from the OCTET0 for name index"
   "See 6.2.1 fig. 7, and 6.2.2. fig. 9 -
 Neither name of the header nor value is in table, so read both as literals."
   (multiple-value-bind (key start) (read-string-from-stream data start end)
+    (when (>= start end)
+      (signal 'incomplete-header))
     (multiple-value-bind (value start) (read-string-from-stream data start end)
       (values (list key value) start))))
 
