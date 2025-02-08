@@ -185,10 +185,9 @@ individual stream and on the entire connection."
 APPLY-WINDOW-SIZE-INCREMENT callback."
       (unless (zerop flags)
         (warn "Flags for windows size increment set: ~x/~b" flags flags))
-      (unless (= 4 length)
+      (unless (= (+ start 4) length)
         (connection-error 'incorrect-window-update-frame-size connection))
-      (assert (zerop start))
-      (let ((window-size-increment (aref/wide data 0 4)))
+      (let ((window-size-increment (aref/wide data start 4)))
         (when (plusp (ldb (byte 1 31) window-size-increment))
           (warn "Reserved bit in WINDOW-UPDATE-FRAME is set"))
         (cond
