@@ -12,46 +12,87 @@
 
 (defvar *payloads* (make-hash-table))
 
-(defmacro create-test-payload (name (&optional (connection-name (gensym)))
-                                      &body body)
+(defun get-first-line (text)
+  (with-input-from-string (in text)
+    (read-line in)))
 
+(defstruct (payload (:print-object (lambda (object stream) (format stream "<Payload: ~a>" (get-first-line (payload-documentation object))))))
+  (documentation "N/A" :type string)
+  (code (make-octet-buffer 0) :type octet-vector)
+  (test (constantly nil) :type compiled-function))
+
+(defun process-data-by-connection (data-name)
+  "Parse data sample named by DATA-NAME till the end."
+  (with-test-client-to-server-setup
+    (loop with data of-type octet-vector = (payload-code (gethash data-name *payloads*))
+          with start of-type frame-size = 0 and end of-type frame-size = (length data)
+          with fn of-type receiver-fn = #'parse-frame-header
+          with size of-type frame-size = 9
+          for old-size of-type frame-size = size
+          while (> end start)
+          do
+             (multiple-value-setq (fn size) (funcall fn receiver data start (min end (+ start size))))
+             (incf start old-size))))
+
+(defun test-for-error (payload-name error-name)
+  (declare (optimize debug))
+  (handler-case
+      (progn
+        (process-data-by-connection payload-name)
+        (fiasco:is nil "Error ~a expected for payload ~a" error-name payload-name))
+    (error (e)
+      (fiasco:is (equal (type-of e) error-name)
+          "Error ~a was expected, but got ~a instead" error-name e)
+      e)))
+
+(defmacro define-test-payload (name (&optional (connection-name))
+                               &body body)
   `(setf (gethash ',name *payloads* )
-         (let ((,connection-name (make-instance 'http2/client:vanilla-client-connection
-                                                :network-stream (make-broadcast-stream))))
-           ,@body)))
+         (make-payload
+          :documentation ,(if (stringp (car body)) (pop body) "N/A")
+          :code
+          (let ,(when connection-name
+                  `((,connection-name (make-instance 'http2/client:vanilla-client-connection
+                                                     :network-stream (make-broadcast-stream)))))
+            ,@body))))
 
-(create-test-payload end-of-file (conn)
-  (write-frame conn
-               -1 +data-frame+
-               (list :padded (make-octet-buffer 10))
+
+(define-test-payload end-of-file (conn)
+  "Frame should have 10 octets, but has just 9"
+  (write-frame conn -1 +data-frame+ (list :padded (make-octet-buffer 10))
                (constantly nil) #()))
 
 
-(create-test-payload too-big-padding ()
-  (http2/utils:make-initialized-octet-buffer #(0 0 10 1 8 0 0 0 1 0 0 0 0 0 0 0 0 0 0)))
+(define-test-payload too-big-padding ()
+  "Padding leaves no space for even empty real content"
+  (http2/utils:make-initialized-octet-buffer #(0 0 10 1 8 0 0 0 1 10 0 0 0 0 0 0 0 0 0)))
 
-(create-test-payload null-connection-window-update (conn)
+(define-test-payload null-connection-window-update (conn)
+  "Send empty update to a connection"
   (write-window-update-frame conn 0))
 
-(create-test-payload null-stream-window-update (conn)
-  (let ((new-stream (create-new-local-stream conn)))
-    (write-headers-frame new-stream
-                         (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
-                         :end-headers t)
+(fiasco:deftest low-level-errors ()
+  (maphash (lambda (key val)
+             (declare (ignore val))
+             (test-for-error key key))
+           *payloads*))
+
+(defmacro with-new-stream ((stream-name) &body body)
+  `(let ((,stream-name (create-new-local-stream conn)))
+     (concatenate 'octet-vector
+                  (write-headers-frame ,stream-name
+                                       (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
+                                       :end-headers t)
+                  ,@body)))
+
+(define-test-payload null-stream-window-update (conn)
+  "Send empty update to a stream"
+  (with-new-stream (new-stream)
     (write-window-update-frame new-stream 0)))
 
-(defun data-should-cause-error (data-name)
-  (with-test-client-to-server-setup
-    (loop with data = (gethash data-name *payloads*)
-          with start = 0 and end = (length data)
-          with fn = #'parse-frame-header
-          with size = 9
-          while (> end start)
-          do
-             (multiple-value-setq (fn size) (funcall fn receiver data start (+ start size)))
-             (incf start size))))
 
-(create-test-payload bad-stream-state (conn)
+
+(define-test-payload bad-stream-state (conn)
   (write-headers-frame
    (make-instance (get-stream-class conn)
                   :stream-id 3
@@ -69,11 +110,11 @@
 
 (fiasco:deftest low-level-errors ()
   ;; make payload smaller than padding
-  (fiasco:signals too-big-padding (data-should-cause-error 'too-big-padding))
-  #+nil  (fiasco:signals end-of-file (data-should-cause-error 'end-of-file))
-  (fiasco:signals null-connection-window-update (data-should-cause-error 'null-connection-window-update))
-  (fiasco:signals null-stream-window-update (data-should-cause-error 'null-stream-window-update))
-  (fiasco:signals bad-stream-state (data-should-cause-error 'bad-stream-state)))
+  (fiasco:signals too-big-padding (process-data-by-connection 'too-big-padding))
+  #+nil  (fiasco:signals end-of-file (process-data-by-connection 'end-of-file))
+  (fiasco:signals null-connection-window-update (process-data-by-connection 'null-connection-window-update))
+  (fiasco:signals null-stream-window-update (process-data-by-connection 'null-stream-window-update))
+  (fiasco:signals bad-stream-state (process-data-by-connection 'bad-stream-state)))
 
 (fiasco:deftest error/null-connection-window-update ()
   (fiasco:signals null-stream-window-update
@@ -142,7 +183,7 @@
         (read-frame receiver)))))
 (fiasco:deftest error/end-of-file ()
   (fiasco:signals end-of-file
-    (data-should-cause-error 'end-of-file)
+    (process-data-by-connection 'end-of-file)
     http2/core::(with-test-client-to-server-setup
                   (let ((stream (create-new-local-stream sender)))
                     (parse-frame-header receiver
