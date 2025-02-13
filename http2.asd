@@ -98,3 +98,13 @@ server."
                (:file "utils")
                (:file "high-level")
                (:file "tests-hpack")))
+
+(asdf:defsystem "http2/poll-server"
+  :description "Asyncronous polling implementations of HTTP2 server."
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :serial t
+  :depends-on ("mgl-pax" "puri" "http2/server" "cffi")
+  :defsystem-depends-on ("cffi-grovel")
+  :pathname "server"
+  :components ((:cffi-grovel-file "cffi-grovel")
+               (:file "async-cffi")))
