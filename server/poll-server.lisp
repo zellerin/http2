@@ -1,6 +1,3 @@
-(mgl-pax:define-package #:http2/server/cffi
-  (:use #:cl #:cffi #:http2/server #:http2/openssl))
-
 (in-package #:http2/server/cffi)
 
 (defcfun ("__errno_location" errno%) :pointer)
@@ -687,6 +684,9 @@ Default -1 means an indefinite wait.")
             (close-client-connection fdset client)))))))
 
 (defclass poll-dispatcher http2/server::(tls-dispatcher-mixin base-dispatcher)
+  ())
+
+(defclass detached-poll-dispatcher (http2/server::detached-server-mixin poll-dispatcher)
   ())
 
 (defmethod http2/server::do-new-connection (socket (dispatcher poll-dispatcher))
