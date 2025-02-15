@@ -104,5 +104,6 @@ Run these patterns against servers."
   :components ((:file "tests")
                (:file "utils")
                (:file "test-samples")
+               (:file "errors-lowlevel")
                (:file "high-level")
                (:file "tests-hpack")))
