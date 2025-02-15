@@ -103,8 +103,11 @@
   (type :int))
 
 (defclass certificated-dispatcher ()
-  ((certificate-file :accessor get-certificate-file :initarg  :certificate-file)
-   (private-key-file :accessor get-private-key-file :initarg  :private-key-file)))
+  ((certificate-file :initarg  :certificate-file)
+   (private-key-file :initarg  :private-key-file))
+  (:documentation
+   "Dispatcher with two slots, CERTIFICATE-FILE and PRIVATE-KEY-FILE, that are used
+for TLS context creation."))
 
 (defgeneric make-http2-tls-context (dispatcher)
   (:documentation "Make TLS context suitable for http2.
@@ -114,7 +117,7 @@ Practically, it means:
 - Do not request client certificates
 - Do not allow ssl compression and renegotiation.
 We should also limit allowed ciphers, but we do not.")
-  (:method ((dispatcher certificated-dispatcher))
+  (:method (dispatcher)
     (let ((context (ssl-ctx-new (tls-method))))
       (when (null-pointer-p context)
         (error "Could not create context"))
@@ -122,23 +125,25 @@ We should also limit allowed ciphers, but we do not.")
       (ssl-ctx-set-options context ssl-op-all)
       (ssl-ctx-ctrl context ssl-ctrl-set-min-proto-version tls-1.2-version (null-pointer))
       (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
-      (ssl-ctx-use-certificate-chain-file context (get-certificate-file dispatcher))
-      (ssl-ctx-use-private-key-file context (get-private-key-file dispatcher)
-                                    cl+ssl::+ssl-filetype-pem+)
-      (unless (= 1 (ssl-ctx-check-private-key context))
-        (error "server private/public key mismatch"))
-
       #+nil    (ssl-ctx-set-session-cache-mode context session-cache-mode)
       #+nil    (ssl-ctx-set-verify-location context verify-location)
       #+nil    (ssl-ctx-set-verify-depth context verify-depth)
-      #+nil      (ssl-ctx-set-verify context verify-mode (if verify-callback
-                                                             (cffi:get-callback verify-callback)
-                                                             (cffi:null-pointer)))
+      #+nil    (ssl-ctx-set-verify context verify-mode (if verify-callback
+                                                           (cffi:get-callback verify-callback)
+                                                           (cffi:null-pointer)))
 
       #+nil    (when (and cipher-list
                           (zerop (ssl-ctx-set-cipher-list context cipher-list)))
                  (error "Cannot set cipher list"))
-      context)))
+      context))
+  (:method :around ((dispatcher certificated-dispatcher))
+    (with-slots (certificate-file private-key-file) dispatcher
+      (let ((context (call-next-method)))
+        (ssl-ctx-use-certificate-chain-file context certificate-file)
+        (ssl-ctx-use-private-key-file context private-key-file cl+ssl::+ssl-filetype-pem+)
+        (unless (= 1 (ssl-ctx-check-private-key context))
+          (error "server private/public key mismatch"))
+        context))))
 
 (defmacro with-ssl-context ((ctx dispatcher) &body body)
   "Run body with SSL context created by MAKE-SSL-CONTEXT in CTX."
