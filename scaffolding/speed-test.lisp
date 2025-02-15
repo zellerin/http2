@@ -3,6 +3,7 @@
 (load "~/.sbclrc")
 (asdf::load-asd (truename "./http2.asd"))
 (ql:quickload "http2/server" :silent t)
+(ql:quickload "http2/poll-server" :silent t)
 (ql:quickload "hunchentoot" :silent t)
 (ql:quickload 'cl-ppcre :silent t)
 (ql:quickload 'woo :silent t)
@@ -14,6 +15,7 @@
     (send-text-handler "/Hello World"))
 
 (start 1237)
+(start 1240 :dispatcher 'http2/server/cffi::detached-poll-dispatcher)
 (start 1238 :dispatcher 'http2/server::detached-threaded-dispatcher)
 (start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
@@ -55,6 +57,8 @@
     (scan-port base "HTTP/2 over plain socket, -m20" "http://localhost:1238"
                "-m" "20")
     (scan-port base "HTTP/2 single client over plain socket, -m20" "http://localhost:1255"
+               "-m" "20")
+    (scan-port base "HTTP/2 poll single-thread server, -m20" "https://localhost:1240"
                "-m" "20")
     (scan-port base "Hunchentoot on plain socket, -m20" "http://localhost:1236"
                "-p" "http/1.1" "-m" "20" )

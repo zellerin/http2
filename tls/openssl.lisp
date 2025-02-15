@@ -9,7 +9,9 @@
           certificate-file private-key-file))
 
 (export '(bio-needs-read peer-closed-connection has-data-to-encrypt can-write-ssl
-          can-read-bio))
+          can-read-bio bio-s-mem bio-new ssl-new ssl-set-accept-state ssl-set-bio ssl-free
+          bio-write ssl-read% ssl-error-condition err-reason-error-string
+          bio-read% ssl-is-init-finished ssl-accept))
 
 (use-foreign-library openssl)
 
