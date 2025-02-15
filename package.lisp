@@ -24,17 +24,20 @@
     (:use #:cl #:http2/core #:http2/utils)
   (:import-from #:anaphora #:acond #:awhen #:aif #:it))
 
-(mgl-pax:define-package #:http2/cl+ssl
-  (:use #:cl #:http2/core #:cl+ssl #:mgl-pax))
-
 (mgl-pax:define-package #:http2/client
     (:use #:cl #:http2/core #:http2/stream-overlay #:alexandria
           #:http2/utils)
   (:import-from #:anaphora #:acond #:aif #:it)
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
-; FIXME: 2024-12-26 this causes http2 package depend on cl+ssl, not ideal.
-; Fix this and then remove dependency.
+(mgl-pax:define-package #:http2/openssl
+  (:use #:cl #:cffi))
+
+(mgl-pax:define-package #:http2/cl+ssl
+  (:use #:cl #:http2/core #:cl+ssl #:mgl-pax #:http2/openssl))
+
+;;FIXME: 2024-12-26 this causes http2 package depend on cl+ssl, not ideal.
+;; Fix this and then remove dependency.
 (mgl-pax:define-package #:http2-server
     (:nicknames #:http2/server)
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
