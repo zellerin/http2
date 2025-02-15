@@ -88,6 +88,13 @@ server."
   :properties ((:readme-section (@overview)))
   :in-order-to ((test-op (test-op "http2/test"))))
 
+(defsystem "http2/test-samples"
+  :depends-on ("http2/client")
+  :description "Provide some test samples for common error generating patterns.
+Run these patterns against servers."
+  :components
+  ((:file "client/payload-tests")))
+
 (defsystem "http2/test"
   :version "0.1"
   :depends-on ("http2" "fiasco")
@@ -96,5 +103,6 @@ server."
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
   :components ((:file "tests")
                (:file "utils")
+               (:file "test-samples")
                (:file "high-level")
                (:file "tests-hpack")))
