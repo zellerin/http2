@@ -43,6 +43,8 @@
   (connection-error function)
   (http-stream-error condition)
   (http-stream-error function)
+  (too-big-frame condition)
+  (frame-too-small-for-priority condition)
   (go-away condition)
   (do-goaway generic-function))
 
@@ -99,6 +101,11 @@ NETWORK-STREAM."))
     (format stream "Frame size 0x~x, max ~x." (get-frame-size o) (get-max-frame-size o))))
 
 (define-condition too-big-padding (protocol-error)
+  ()
+  (:documentation
+   "Length of the padding is the length of the frame payload or greater."))
+
+(define-condition frame-too-small-for-priority (protocol-error)
   ()
   (:documentation
    "Length of the padding is the length of the frame payload or greater."))

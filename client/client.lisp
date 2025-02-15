@@ -9,6 +9,7 @@
     (:title "Using built-in HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
+  (request-headers function)
   (drakma-style-stream-values function))
 
 (defun request-headers (method path authority
