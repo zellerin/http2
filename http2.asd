@@ -49,9 +49,8 @@
   :license  "MIT"
   :serial t
   :pathname "tls"
-  :depends-on ("cl+ssl" "http2/stream-based" "bordeaux-threads")
-  :components ((:file "cl+ssl")
-               (:file "server"))
+  :depends-on ("cl+ssl" "http2/stream-based" "bordeaux-threads" "http2/openssl")
+  :components ((:file "server"))
                                         ;:in-order-to ((test-op (test-op "http2/test")))
   )
 
@@ -99,12 +98,23 @@ server."
                (:file "high-level")
                (:file "tests-hpack")))
 
+(defsystem "http2/openssl"
+  :version "0.1"
+  :defsystem-depends-on ("cffi-grovel")
+  :depends-on ("cffi" "mgl-pax")
+  :pathname "tls"
+  :perform (test-op (o s)
+                    (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
+  :components ((:file "package")
+               (:cffi-grovel-file "openssl-grovel")
+               (:file "openssl")))
+
 (asdf:defsystem "http2/poll-server"
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :serial t
-  :depends-on ("mgl-pax" "puri" "http2/server" "cffi")
-  :defsystem-depends-on ("cffi-grovel")
+  :depends-on ("mgl-pax" "puri" "http2/server" "http2/openssl")
   :pathname "server"
-  :components ((:cffi-grovel-file "cffi-grovel")
-               (:file "async-cffi")))
+  :components ((:cffi-grovel-file "poll-grovel")
+               (:file "poll-openssl")
+               (:file "poll-server")))

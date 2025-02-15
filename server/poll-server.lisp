@@ -1,40 +1,7 @@
 (mgl-pax:define-package #:http2/server/cffi
-  (:use #:cl #:cffi #:http2/server))
+  (:use #:cl #:cffi #:http2/server #:http2/openssl))
 
 (in-package #:http2/server/cffi)
-(define-foreign-library openssl
-    (:unix "libssl.so")
-  (t (:default "libssl.3")))
-(use-foreign-library openssl)
-
-(defcfun "BIO_new" :pointer (bio-method :pointer))
-(defcfun ("BIO_read" bio-read%) :int (bio-method :pointer) (data :pointer) (dlen :int))
-(defcfun "BIO_s_mem" :pointer)
-(defcfun "BIO_test_flags" :int (bio :pointer) (what :int))
-(defcfun "BIO_write" :int (bio-method :pointer) (data :pointer) (dlen :int))
-
-(defcfun "ERR_reason_error_string" :pointer (e :int))
-(defcfun "ERR_get_error" :int)
-
-
-(defcfun "SSL_CTX_check_private_key" :int (ctx :pointer))
-(defcfun "SSL_CTX_ctrl" :int (ctx :pointer) (cmd :int) (value :long) (args :pointer))
-(defcfun "SSL_CTX_free" :int (ctx :pointer))
-(defcfun "SSL_CTX_new" :pointer (method :pointer))
-(defcfun "SSL_CTX_set_options" :int (ctx :pointer) (options :uint))
-(defcfun "SSL_CTX_use_PrivateKey_file" :int (ctx :pointer) (path :string) (type :int))
-(defcfun "SSL_CTX_use_certificate_file" :int (ctx :pointer) (path :string) (type :int))
-(defcfun "SSL_accept" :int (ssl :pointer))
-(defcfun "SSL_get_error" :int (ssl :pointer) (ret :int))
-(defcfun "SSL_free" :int (ssl :pointer))
-(defcfun "SSL_is_init_finished" :int (ssl :pointer))
-(defcfun "SSL_new" :pointer (bio-method :pointer))
-(defcfun "SSL_pending" :int (ssl :pointer))
-(defcfun ("SSL_read" ssl-read%) :int (ssl :pointer) (buffer :pointer) (bufsize :int))
-(defcfun "SSL_set_accept_state" :pointer (ssl :pointer))
-(defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
-(defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
-(defcfun "TLS_method" :pointer)
 
 (defcfun ("__errno_location" errno%) :pointer)
 (defcfun ("strerror_r" strerror-r%) :pointer (errnum :int) (buffer :pointer) (buflen :int))
@@ -296,22 +263,11 @@ and passed."
 ;;;; Write to SSL
 (define-writer encrypt-some output-ssl (client vector from to)
   (with-pointer-to-vector-data (buffer vector)
-      (let* ((ssl (client-ssl client))
-             (res (ssl-write ssl (inc-pointer buffer from) (- to from))))
-        (cond
-          ((plusp res)
-           (add-state client 'can-read-bio)
-           res)
-          (t (let ((status (ssl-get-error ssl res)))
-               (cond ((member status
-                                  (list ssl-error-none ssl-error-want-write ssl-error-want-read))
-                      (remove-state client 'can-write-ssl)
-                      (add-state client 'has-data-to-encrypt)
-                      0)
-                     ((= status ssl-error-zero-return)
-                      (warn "Peer send close notify alert. One possible cause - it does not like our certificate")
-                      (signal 'done))
-                     (t (error "SSL write failed, status ~d" status)))))))))
+    (multiple-value-bind (res add remove)
+        (encrypt-some* (client-ssl client) (inc-pointer buffer from) (- to from))
+      (when add (add-state client add))
+      (when remove (remove-state client remove))
+      res)))
 
 (defun encrypt-data (client)
   "Encrypt data in client's ENCRYPT-BUF.
@@ -336,7 +292,7 @@ Otherwise, use a temporary vector to write data "
       (cond ((plusp res)
              (add-state client 'has-data-to-write)
              res)
-            ((zerop (bio-test-flags (client-wbio client) bio-flags-should-retry))
+            ((zerop (bio-should-retry  (client-wbio client)))
              (error "Failed to read from bio, and cant retry"))
             (t
              (remove-state client 'can-read-bio)
@@ -423,14 +379,6 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
     while action do (funcall action client)))
 
 
-(defmacro with-ssl-context ((ctx) &body body)
-  "Run body with SSL context created by MAKE-SSL-CONTEXT in CTX."
-  (check-type ctx symbol)
-  `(let ((,ctx (http2/cl+ssl::make-http2-tls-context)))
-     (unwind-protect
-          (progn ,@body)
-       (ssl-ctx-free ,ctx))))
-
 ;; Moving data around
 (deftype reader () '(function (t t fixnum) fixnum))
 (deftype writer () '(function (t t t fixnum) fixnum))
@@ -512,41 +460,11 @@ If it is a harmless one (want read or want write), try to process the data.
 Raise error otherwise."
   (let ((ssl (client-ssl client))
         (wbio (client-rbio client)))
-    (let ((err-code (ssl-get-error ssl ret)))
-      (cond
-        ;; after ssl read
-        ((= err-code ssl-error-want-write)
-         (when (zerop (bio-test-flags wbio bio-flags-should-retry))
-           (error "Retry flag should be set."))
-         (warn "This path wath not tested."))
-        ((= err-code ssl-error-want-read)
-         ;; This is relevant for accept call and handled in loop
-         ;; may be needed for pull phase
-         (add-state client 'bio-needs-read)
-         ;; is this needed?
-         (when (zerop (bio-test-flags wbio bio-flags-should-retry))
-           (error "Retry flag should be set.")))
-        ((= err-code ssl-error-none) nil)
-        ((= err-code ssl-error-zero-return)
-         ;; Peer closed TLS connection
-         (add-state client 'peer-closed-connection))
-        ((= err-code ssl-error-ssl)
-         (process-ssl-errors))
-        ((= err-code ssl-error-syscall)
-         (warn "SSL syscall error ~d (~a) " (errno) (strerror (errno)))
-         (invoke-restart 'http2/core:close-connection))
-        (t (warn "SSL error ~d" err-code)
-           (invoke-restart 'http2/core:close-connection))))))
+    (let ((new-state (handle-ssl-errors* ssl wbio ret)))
+      (add-state client new-state))))
 
 (defun ssl-err-reason-error-string (code)
   (foreign-string-to-lisp (err-reason-error-string code)))
-
-(defun process-ssl-errors ()
-  (loop for err = (err-get-error)
-        until (zerop err)
-        unless (position err #(#xa000412 )) ;bad certificate
-          do
-             (cerror "Ignore" 'ssl-error-condition :code err)))
 
 (defun maybe-init-ssl (client)
   "If SSL is not initialized yet, initialize it."
@@ -748,10 +666,10 @@ On timeout signals POLL-TIMEOUT error.
 
 Default -1 means an indefinite wait.")
 
-(defun serve-tls (listening-socket)
+(defun serve-tls (listening-socket dispatcher)
   (with-foreign-object (fdset '(:struct pollfd) *fdset-size*)
     (init-fdset fdset *fdset-size*)
-    (with-ssl-context (ctx)
+    (with-ssl-context (ctx dispatcher)
       (let* ((s-mem (bio-s-mem))
              ;; FIXME: if *clients* was bound, it cannot be easily observed from
              ;; monitoring;
@@ -784,7 +702,7 @@ from C code."
   (let ((*nagle* *nagle*)
         (*client-hello-callback*
           (or *client-hello-callback* #'process-client-hello)))
-    (serve-tls socket))
+    (serve-tls socket dispatcher))
   ;; there is an outer loop in create-server that we want to skip
   (invoke-restart 'kill-server))
 
