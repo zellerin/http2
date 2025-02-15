@@ -3,7 +3,7 @@
 
 (in-package #:http2/server/cffi)
 (define-foreign-library openssl
-  #+nil  (:unix "libssl.so")
+    (:unix "libssl.so")
   (t (:default "libssl.3")))
 (use-foreign-library openssl)
 
@@ -78,7 +78,6 @@
 
 (mgl-pax:defsection @communication-setup
     (:title "HTTP2 handling")
-  (make-ssl-context function)
   (make-client-object function)
   (process-client-hello function)
   (process-header function)
@@ -424,45 +423,10 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
     while action do (funcall action client)))
 
 
-(defun use-pem-for (context fn path error)
-  "Apply FN on file on CONTEXT, PATH and SSL-FILETYPE-PEM.
-
-FN is expected to be one of SSL-CTX-use-XXX-file."
-  (setf path (merge-pathnames path))
-  (let ((full-path (probe-file (merge-pathnames path))))
-    (unless full-path
-      (error "~a (No PEM file ~a)" error path))
-    (with-foreign-string (file (namestring full-path))
-      (unless (= 1 (funcall fn context file ssl-filetype-pem))
-        (error "~a (Failed processing ~a)" error path)))))
-
-(defun make-ssl-context ()
-  "Make a SSL context for http2 server..
-
-This includes public and private key pair (from files in this directory),
-
-Functionally, it is same as TLS-SERVER/MINI-HTTP2:MAKE-HTTP2-TLS-CONTEXT;
-however, it used directly cffi and sets some parameters in a different way."
-  (let ((context (ssl-ctx-new (tls-method)))
-        (*default-pathname-defaults*
-          (asdf:component-pathname (asdf:find-system "tls-server"))))
-    (when (null-pointer-p context)
-      (error "Could not create context"))
-    (use-pem-for context #'ssl-ctx-use-certificate-file #P"certs/server.pem"
-                 "failed to load server certificate")
-    (use-pem-for context #'ssl-ctx-use-privatekey-file #P"certs/server.key"
-                 "failed to load server private key")
-    (unless (= 1 (ssl-ctx-check-private-key context))
-      (error "server private/public key mismatch"))
-    (ssl-ctx-set-options context ssl-op-all)
-    (ssl-ctx-ctrl context ssl-ctrl-set-min-proto-version tls-1.2-version (null-pointer))
-    (tls-server/mini-http2::ssl-ctx-set-alpn-select-cb  context (get-callback 'tls-server/mini-http2::select-h2-callback))
-    context))
-
 (defmacro with-ssl-context ((ctx) &body body)
   "Run body with SSL context created by MAKE-SSL-CONTEXT in CTX."
   (check-type ctx symbol)
-  `(let ((,ctx (make-ssl-context)))
+  `(let ((,ctx (http2/cl+ssl::make-http2-tls-context)))
      (unwind-protect
           (progn ,@body)
        (ssl-ctx-free ,ctx))))
@@ -678,7 +642,8 @@ reading of client hello."
     (setf (get-client (client-application-data client)) client)
     (ssl-set-accept-state (client-ssl client)) ; no return value
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
-    (send-unencrypted-bytes client tls-server/mini-http2::*settings-frame* 'settings)
+    (http2/core::write-settings-frame (client-application-data client) nil)
+#+nil    (send-unencrypted-bytes client tls-server/mini-http2::*settings-frame* 'settings)
     client))
 
 (defun set-fd-slot (fdset socket new-events idx)
