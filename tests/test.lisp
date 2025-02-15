@@ -195,7 +195,7 @@ write, read the header and process it."
   "Let us take a header and try to split it on all possible places.
 
 And then, try with two splits."
-  (loop with headers = (car (http2/hpack:request-headers "GET" "/" "localhost"))
+  (loop with headers = (http2/client::request-headers "GET" "/" "localhost")
         for split-idx from 0 to (length headers)
         for receiver = (make-instance 'server-http2-connection :stream-class 'server-stream)
         do
