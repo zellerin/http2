@@ -43,7 +43,6 @@
 (mgl-pax:defsection @communication-setup
     (:title "HTTP2 handling")
   (make-client-object function)
-  (process-client-hello function)
   (process-header function)
   (ignore-bytes function)
   (print-goaway-frame function))
@@ -74,8 +73,6 @@ The actions are in general indicated by arrows in the diagram:
 
 (defvar *default-buffer-size* 1500) ; close to socket size
 
-(defvar *client-hello-callback* nil)
-
 (defstruct (client  (:constructor make-client%)
             (:print-object
                     (lambda (object out)
@@ -99,7 +96,7 @@ The actions are in general indicated by arrows in the diagram:
   (write-buf nil :type (or null cons))
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8)))
-  (io-on-read *client-hello-callback* :type compiled-function)
+  (io-on-read #'http2/core::parse-client-preface :type compiled-function)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
   (octets-needed (length  http2/core::+client-preface-start+) :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
@@ -345,6 +342,11 @@ keep what did not fit."
   (write-data-to-socket client))
 
 ;;;; Action selector
+(defun run-user-callback (client vec)
+  "Run user defined callback and user return values to set next action."
+  (multiple-value-call #'set-next-action client
+    (funcall (client-io-on-read client) (client-application-data client) vec)))
+
 (defun select-next-action (client)
   "One of possible next actions consistent with then the state of the client, or
 nil if no action is available.
@@ -356,7 +358,7 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
     ((if-state client 'can-read-ssl)
      (if (plusp (client-octets-needed client))
          #'on-complete-ssl-data
-         (client-io-on-read client)))
+         #'run-user-callback))
     ((and (if-state client 'has-data-to-encrypt)
           (if-state client 'can-write-ssl))
      #'encrypt-data)
@@ -699,9 +701,7 @@ them).
 This in the end does not use usocket, async nor cl+ssl - it is a direct rewrite
 from C code."
 
-  (let ((*nagle* *nagle*)
-        (*client-hello-callback*
-          (or *client-hello-callback* #'process-client-hello)))
+  (let ((*nagle* *nagle*))
     (serve-tls socket dispatcher))
   ;; there is an outer loop in create-server that we want to skip
   (invoke-restart 'kill-server))
@@ -714,8 +714,7 @@ from C code."
 
  FIXME: process that anyway"
   (let* ((octets (client-octets-needed client))
-         (vec (make-shareable-byte-vector octets))
-         (fn (client-io-on-read client)))
+         (vec (make-shareable-byte-vector octets)))
       ;; TODO: check first with SSL_pending?
     (let ((read (ssl-read client vec octets)))
       (cond
@@ -723,17 +722,7 @@ from C code."
          (handle-ssl-errors client read))
         ((/= read octets)
          (error "Read ~d octets. This is not enough octets, why?~%~s~%" read (subseq vec 0 read)))
-        (t (funcall fn client vec))))))
-
-(defun process-client-hello (client vec)
-  "Check first received octets to verify they are the client hello string.
-
-Next, read and process a header."
-  (cond ((equalp vec http2/core::+client-preface-start+)
-         (set-next-action client (wrap-fn-for-client #'process-header) 9)
-         (add-state client 'reply-wanted))
-        (t
-         (error 'client-preface-mismatch :received vec))))
+        (t (run-user-callback client vec))))))
 
 (defun print-goaway-frame (client frame)
   (unless (every #'zerop  (subseq frame 4 8))
@@ -741,17 +730,11 @@ Next, read and process a header."
     (format t "Error code: ~s, last strea ~s" (subseq frame 4 8)
             (subseq frame 0 4))
     (write-line (map 'string 'code-char frame) *standard-output* :start 8)
-    (set-next-action client (wrap-fn-for-client #'process-header) 9)))
-
-(defun wrap-fn-for-client (fn)
-  (lambda (client buffer)
-    (multiple-value-bind (new-fn needed-size)
-        (funcall fn (client-application-data client) buffer)
-      (set-next-action client (wrap-fn-for-client new-fn) needed-size))))
+    (set-next-action client #'process-header 9)))
 
 (defun process-header (client header)
   "Process 9 octets as a HTTP2 frame header."
-  (http2/core::parse-frame-header client header))
+  (http2/core:parse-frame-header client header))
 
 (defun really-ignore-bytes (client vec count)
   (let ((size (- (client-octets-needed client))))
@@ -767,17 +750,17 @@ process to read the next header."
   (declare (ignorable client vec))
 
   (when (zerop (incf (client-octets-needed client) (- to from)))
-    (set-next-action client (wrap-fn-for-client #'process-header) 9)
+    (set-next-action client #'process-header 9)
     (on-complete-ssl-data client))
   (- to from))
 
 (defun pull-from-ignore (client) ; name me
-  (pull-push-bytes client
+  (pull-push-bytes (get-client client)
                    #'really-ignore-bytes
                    #'really-ignore))
 
 (defun ignore-bytes (client count)
   (if (zerop count)
-      (set-next-action client (wrap-fn-for-client #'process-header) 9)
-      (set-next-action client (wrap-fn-for-client #'pull-from-ignore) (- count)))
+      (set-next-action client #'process-header 9)
+      (set-next-action client #'pull-from-ignore (- count)))
   t)
