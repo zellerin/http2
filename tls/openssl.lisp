@@ -1,7 +1,7 @@
 (in-package #:http2/openssl)
 
 (define-foreign-library openssl
-    (:unix "libssl.so")
+  #-os-macosx (:unix "libssl.so")
   (t (:default "libssl.3")))
 
 (export '(certificated-dispatcher make-http2-tls-context
