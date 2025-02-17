@@ -1,4 +1,4 @@
-(in-package http2/server)
+(in-package #:http2/server/shared)
 
 ;;; This is adapted from TLS-SERVER experiments package with some changes,
 ;;; biggest one being replacement of keywords with a class hierarchy.

@@ -1,4 +1,4 @@
-(in-package #:http2/server/cffi)
+(in-package #:http2/server/poll)
 
 (defcfun ("__errno_location" errno%) :pointer)
 (defcfun ("strerror_r" strerror-r%) :pointer (errnum :int) (buffer :pointer) (buflen :int))
@@ -539,7 +539,7 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
-(defclass async-server-connection (http2/server::vanilla-server-connection)
+(defclass async-server-connection (http2/server/shared::vanilla-server-connection)
   ((client :accessor get-client :initarg :client)))
 
 (defmethod http2/core:queue-frame ((connection async-server-connection) frame)
@@ -685,10 +685,10 @@ Default -1 means an indefinite wait.")
           (dolist (client *clients*)
             (close-client-connection fdset client)))))))
 
-(defclass poll-dispatcher http2/server::(tls-dispatcher-mixin base-dispatcher)
+(defclass poll-dispatcher (tls-dispatcher-mixin base-dispatcher)
   ())
 
-(defclass detached-poll-dispatcher (http2/server::detached-server-mixin poll-dispatcher)
+(defclass detached-poll-dispatcher (detached-server-mixin poll-dispatcher)
   ())
 
 (defmethod http2/server::do-new-connection (socket (dispatcher poll-dispatcher))

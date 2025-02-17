@@ -1,6 +1,6 @@
 ;;;; Copyright 2022-2025 by Tomáš Zellerin
 
-(in-package :http2/server)
+(in-package :http2/server/shared)
 
 (defsection @server
     (:title "Starting HTTP/2 server")
@@ -236,42 +236,6 @@ optionally provides CONTENT with CONTENT-TYPE."
         (princ content out)))))
 
 
-(defclass threaded-dispatcher (base-dispatcher)
-  ()
-  (:documentation
-   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
-
-(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
-  ())
-
-(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
-  ())
-
-(defclass detached-threaded-dispatcher (detached-server-mixin threaded-dispatcher)
-  ())
-(defclass detached-single-client-dispatcher (detached-server-mixin single-client-dispatcher)
-  ())
-
-(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
-  (let ((socket (usocket:socket-accept listening-socket
-                                       :element-type '(unsigned-byte 8)))
-        (context cl+ssl::*ssl-global-context*))
-    (bt:make-thread
-     (lambda ()
-       (cl+ssl:with-global-context (context)
-         (with-standard-handlers ()
-           (restart-case
-               (with-open-stream (stream (server-socket-stream socket dispatcher))
-                 (http2/server::process-server-stream stream
-                                                      :connection
-                                                      (apply #'make-instance (get-connection-class dispatcher)
-                                                             (get-connection-args dispatcher)
-                                                       )))
-             (kill-client-connection () nil))))) ; FIXME:
-     ;; TODO: peer IP and port to name?
-     :name "HTTP2 server thread for connection" )))
-
-
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
@@ -325,14 +289,8 @@ CONNECTION."
   (let ((connection (http2/core::get-connection stream)))
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
-(defmethod queue-frame :around ((server threaded-server-mixin) frame)
-  (bt:with-lock-held ((get-lock server))
-    (call-next-method)))
-
 (defgeneric cleanup-connection (connection)
   (:method (connection) nil)
-  (:method :after ((connection threaded-server-mixin))
-    (stop-scheduler-in-thread (get-scheduler connection)))
   (:documentation
    "Remove resources associated with a server connection. Called after connection is
 closed."))
@@ -390,7 +348,7 @@ Returns two values:
   (multiple-value-bind (server socket)
       (create-server port dispatcher
                      :certificate-file certificate-file
-                 :private-key-file private-key-file
+                     :private-key-file private-key-file
                      :host host)
     (values (setf *last-server* server)
             (url-from-socket socket host t))))
@@ -404,3 +362,11 @@ Returns two values:
 
 (defun stop (&optional (server *last-server*))
   (bordeaux-threads:destroy-thread server))
+
+;;;; TLS dispatcher
+(defclass tls-dispatcher-mixin (certificated-dispatcher)
+  ((tls              :reader   get-tls              :initform :tls
+                     :allocation :class))
+  (:documentation
+   "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,
+and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT."))

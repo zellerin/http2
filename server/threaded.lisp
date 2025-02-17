@@ -1,0 +1,54 @@
+(in-package #:http2/server/threaded)
+
+(defclass threaded-dispatcher (base-dispatcher)
+  ()
+  (:documentation
+   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
+
+(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
+  ())
+
+(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
+  ())
+
+(defclass detached-threaded-dispatcher (detached-server-mixin threaded-dispatcher)
+  ())
+(defclass detached-single-client-dispatcher (detached-server-mixin single-client-dispatcher)
+  ())
+
+(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
+  (let ((socket (usocket:socket-accept listening-socket
+                                       :element-type '(unsigned-byte 8)))
+        (context cl+ssl::*ssl-global-context*))
+    (bt:make-thread
+     (lambda ()
+       (cl+ssl:with-global-context (context)
+         (with-standard-handlers ()
+           (restart-case
+               (with-open-stream (stream (server-socket-stream socket dispatcher))
+                 (http2/server::process-server-stream stream
+                                                      :connection
+                                                      (apply #'make-instance (get-connection-class dispatcher)
+                                                             (get-connection-args dispatcher)
+                                                       )))
+             (kill-client-connection () nil))))) ; FIXME:
+     ;; TODO: peer IP and port to name?
+     :name "HTTP2 server thread for connection" )))
+
+(defclass threaded-server-mixin ()
+  ((scheduler :accessor get-scheduler :initarg :scheduler)
+   (lock      :accessor get-lock      :initarg :lock))
+  (:default-initargs
+   :scheduler *scheduler*
+   :lock (bt:make-lock))
+  (:documentation
+   "A mixin for a connection that holds a lock in actions that write to the output network
+stream, and provides a second thread for scheduled activities (e.g., periodical
+events)."))
+
+(defmethod queue-frame :around ((server threaded-server-mixin) frame)
+  (bt:with-lock-held ((get-lock server))
+    (call-next-method)))
+
+(defmethod cleanup-connection :after ((connection threaded-server-mixin))
+    (stop-scheduler-in-thread (get-scheduler connection)))

@@ -111,6 +111,10 @@
    "Dispatcher with two slots, CERTIFICATE-FILE and PRIVATE-KEY-FILE, that are used
 for TLS context creation."))
 
+(defconstant +ssl-filetype-pem+ 1)
+(defconstant +ssl-filetype-asn1+ 2)
+(defconstant +ssl-filetype-default+ 3)
+
 (defgeneric make-http2-tls-context (dispatcher)
   (:documentation "Make TLS context suitable for http2.
 
@@ -142,7 +146,7 @@ We should also limit allowed ciphers, but we do not.")
     (with-slots (certificate-file private-key-file) dispatcher
       (let ((context (call-next-method)))
         (ssl-ctx-use-certificate-chain-file context certificate-file)
-        (ssl-ctx-use-private-key-file context private-key-file cl+ssl::+ssl-filetype-pem+)
+        (ssl-ctx-use-private-key-file context private-key-file +ssl-filetype-pem+)
         (unless (= 1 (ssl-ctx-check-private-key context))
           (error "server private/public key mismatch"))
         context))))

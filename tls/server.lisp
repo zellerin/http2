@@ -1,23 +1,6 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
-(in-package http2/cl+ssl)
-
-(defsection @server/threaded
-    (:title "Threaded server")
-  (make-http2-tls-context function)
-  (create-https-server function)
-  (@server-classes section)
-  (@server-actions section))
-
-(define-condition not-http2-stream (serious-condition)
-  ((tls-stream :accessor get-tls-stream :initarg :tls-stream)
-   (alpn       :accessor get-alpn       :initarg :alpn))
-  (:documentation
-   "Signalled to decline handling of TLS stream as HTTP2 stream due to different ALPN.")
-  (:report (lambda (condition stream)
-             (format stream "The TLS stream ~A is not a HTTP2 stream (ALPN ~s)"
-                     (get-tls-stream condition)
-                     (get-alpn condition)))))
+(in-package http2/server/threaded)
 
 #+nil(defun create-https-server (port key cert &key
                                             (connection-class 'tls-single-client-dispatcher)
@@ -34,7 +17,7 @@ class (TLS-SINGLE-CLIENT-DISPATCHER)."
   (create-server port connection-class :certificate-file cert
                  :private-key-file key))
 
-(defsection @server-classes
+(mgl-pax:defsection @server-classes
     (:title "Server classes")
   (tls-dispatcher-mixin class)
   (single-client-dispatcher class)
@@ -42,13 +25,22 @@ class (TLS-SINGLE-CLIENT-DISPATCHER)."
   (threaded-dispatcher class)
   (tls-threaded-dispatcher class))
 
-;;;; TLS dispatcher
-(defclass tls-dispatcher-mixin (certificated-dispatcher)
-  ((tls              :reader   get-tls              :initform :tls
-                     :allocation :class))
+(mgl-pax:defsection @server/threaded
+    (:title "Threaded server")
+  (make-http2-tls-context function)
+  (create-https-server function)
+  (@server-classes section)
+  (@server-actions section))
+
+(define-condition not-http2-stream (serious-condition)
+  ((tls-stream :accessor get-tls-stream :initarg :tls-stream)
+   (alpn       :accessor get-alpn       :initarg :alpn))
   (:documentation
-   "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,
-and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT."))
+   "Signalled to decline handling of TLS stream as HTTP2 stream due to different ALPN.")
+  (:report (lambda (condition stream)
+             (format stream "The TLS stream ~A is not a HTTP2 stream (ALPN ~s)"
+                     (get-tls-stream condition)
+                     (get-alpn condition)))))
 
 (defmethod http2/server::server-socket-stream (socket (dispatcher tls-dispatcher-mixin))
   "The cl-ssl server socket."
