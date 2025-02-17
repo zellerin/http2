@@ -7,9 +7,9 @@ check_system ()
     #sbcl --non-interactive --no-sysinit -no-userinit --load "$HOME/quicklisp/setup.lisp" --eval "(ql:quickload \"$name\")"
 }
 
-systems=$(sed '/defsystem/{s/.*defsystem "\([^"]*\)".*/\1/g;p};d' ./http2.asd)
+systems=$(gsed '/(defsystem/{s/.*defsystem "\([^"]*\)".*/\1/g;p};d' ./http2.asd)
 
 for system in $systems
 do
-    check_system $system
+    check_system $system || exit 1
 done
