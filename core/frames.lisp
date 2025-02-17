@@ -449,35 +449,35 @@ and size of data that the following function expects."
    (http2-connection connection))
   (assert (= 9 (- end start)))
   (multiple-value-bind (frame-type-object length flags http-stream R)
-      (decode-frame-header header start)
-    (declare (frame-size length)
-             (stream-id http-stream)
-             (bit R)
-             (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
+             (decode-frame-header header start)
+           (declare (frame-size length)
+                    (stream-id http-stream)
+                    (bit R)
+                    (ftype (function (t) (unsigned-byte 24)) get-max-frame-size))
 
-    ;; FIXME:
-    ;; - for most frame types, read full data then
-    ;; - for data and maybe headers frame read as it goes
+           ;; FIXME:
+           ;; - for most frame types, read full data then
+           ;; - for data and maybe headers frame read as it goes
 
-    (when (> length (the frame-size (get-max-frame-size connection)))
-      ;; fixme: sometimes connection error.
-      (connection-error 'too-big-frame connection
-                        :frame-size length
-                        :max-frame-size (get-max-frame-size connection)))
-    (if (plusp R) (warn 'reserved-bit-set))
-    (let* ((stream-or-connection
-             (find-http-stream-by-id connection http-stream frame-type-object)))
-      (cond
-        ((zerop length)
-         ;; e.g., empty HEADER-FRAME still can have end-streams or end-headers flag
-         (let ((next
-                 (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)))
-           (declare (receiver-fn next))
-           (funcall next connection (make-octet-buffer 0))))
-        (t
-         (values
-          (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
-          length))))))
+           (when (> length (the frame-size (get-max-frame-size connection)))
+             ;; fixme: sometimes connection error.
+             (connection-error 'too-big-frame connection
+                               :frame-size length
+                               :max-frame-size (get-max-frame-size connection)))
+           (if (plusp R) (warn 'reserved-bit-set))
+           (let* ((stream-or-connection
+                    (find-http-stream-by-id connection http-stream frame-type-object)))
+             (cond
+               ((zerop length)
+                ;; e.g., empty HEADER-FRAME still can have end-streams or end-headers flag
+                (let ((next
+                        (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)))
+                  (declare (receiver-fn next))
+                  (funcall next connection (make-octet-buffer 0))))
+               (t
+                (values
+                 (funcall (frame-type-receive-fn frame-type-object) stream-or-connection flags)
+                 length))))))
 
 (defun read-padding-from-vector (connection data &optional (start 0) (end 0))
   "Ignore the padding octets. Frame header is next
