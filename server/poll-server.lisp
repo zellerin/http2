@@ -1,6 +1,7 @@
 (in-package #:http2/server/poll)
 
-(defcfun ("__errno_location" errno%) :pointer)
+#-os-macosx(defcfun ("__errno_location" errno%) :pointer)
+#+os-macosx(defcfun ("__error" errno%) :pointer)
 (defcfun ("strerror_r" strerror-r%) :pointer (errnum :int) (buffer :pointer) (buflen :int))
 
 (defcfun "poll" :int (fdset :pointer) (rb :int) (timeout :int))
@@ -19,8 +20,7 @@
 
 (defun errno ()
   "See man errno(3). "
-#+nil  (mem-ref (errno%) :int)
-  -1)
+  (mem-ref (errno%) :int))
 
 
 (mgl-pax:defsection  @async-server
@@ -524,7 +524,8 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
     (do-available-actions client)
     (when (plusp (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
       ;; this happens, e.g., with h2load -D (time based)
-      (warn "Poll error for ~a: ~d" client (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
+      (unless (eql #'parse-frame-header (client-io-on-read client))
+        (warn "Poll error for ~a: ~d" client (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL))))
       (signal 'done))))
 
 (defvar *fdset-size* 10
