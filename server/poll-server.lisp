@@ -539,8 +539,11 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
-(defclass async-server-connection (http2/server/shared::vanilla-server-connection)
-  ((client :accessor get-client :initarg :client)))
+(defclass async-server-connection (server-http2-connection
+                                   dispatcher-mixin
+                                   threaded-server-mixin)
+  ((client :accessor get-client :initarg :client))
+  (:default-initargs :stream-class 'vanilla-server-stream))
 
 (defmethod http2/core:queue-frame ((connection async-server-connection) frame)
   (send-unencrypted-bytes (get-client connection) frame nil))
