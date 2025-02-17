@@ -540,13 +540,13 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
-(defclass async-server-connection (server-http2-connection
+(defclass poll-server-connection (server-http2-connection
                                    dispatcher-mixin
                                    threaded-server-mixin)
   ((client :accessor get-client :initarg :client))
   (:default-initargs :stream-class 'vanilla-server-stream))
 
-(defmethod http2/core:queue-frame ((connection async-server-connection) frame)
+(defmethod http2/core:queue-frame ((connection poll-server-connection) frame)
   (send-unencrypted-bytes (get-client connection) frame nil))
 
 (defun make-client-object (socket ctx s-mem)
@@ -559,12 +559,12 @@ reading of client hello."
                                :wbio (bio-new s-mem)
                                :ssl (ssl-new ctx)
                                :octets-needed +client-preface-length+
-                               :application-data (make-instance 'async-server-connection))))
+                               ;; FIXME: use class from the dispatcher
+                               :application-data (make-instance 'poll-server-connection))))
     (setf (get-client (client-application-data client)) client)
     (ssl-set-accept-state (client-ssl client)) ; no return value
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
     (http2/core::write-settings-frame (client-application-data client) nil)
-#+nil    (send-unencrypted-bytes client tls-server/mini-http2::*settings-frame* 'settings)
     client))
 
 (defun set-fd-slot (fdset socket new-events idx)
@@ -690,10 +690,14 @@ Default -1 means an indefinite wait.")
             (close-client-connection fdset client)))))))
 
 (defclass poll-dispatcher (tls-dispatcher-mixin base-dispatcher)
-  ())
+  ()
+  (:documentation
+   "Uses poll to listen to a set of clients and handle arriving packets in a single
+thread."))
 
 (defclass detached-poll-dispatcher (detached-server-mixin poll-dispatcher)
-  ())
+  ()
+  (:documentation "Detached version of the POLL-DISPATCHER."))
 
 (defmethod http2/server::do-new-connection (socket (dispatcher poll-dispatcher))
   "Handle new connections by adding pollfd to and then polling.
@@ -731,7 +735,7 @@ from C code."
 (defun print-goaway-frame (client frame)
   (unless (every #'zerop  (subseq frame 4 8))
     (write-line "Got goaway:")
-    (format t "Error code: ~s, last strea ~s" (subseq frame 4 8)
+    (format t "Error code: ~s, last stream ~s" (subseq frame 4 8)
             (subseq frame 0 4))
     (write-line (map 'string 'code-char frame) *standard-output* :start 8)
     (set-next-action client #'process-header 9)))

@@ -334,13 +334,35 @@ signalled."
                      (private-key-file 'find-private-key-file))
   "Start a default HTTP/2 https server on PORT on background.
 
-Returns two values:
+Returns two values with a detached (see below) dispatcher, which is default:
 
 - thread with the server (to be able to close the server). The specific object
   returned is subject to change, what is guaranteed is that it is suitable
   parameter for STOP.
 
-- base url of the server (most useful when PORT was 0 - any free port)"
+- base url of the server (most useful when PORT was 0 - any free port)
+
+With a non-detached dispatcher the value is not specified.
+
+DISPATCHER parameter sets the dispatcher to use for the server. Dispatchers
+determine how are new requests handled. Presently there are several sets of
+dispatchers defined:
+
+- POLL-DISPATCHER and DETACHED-POLL-DISPATCHER use polling interface that uses openssl directly,
+- TLS-THREADED-DISPATCHER and DETACHED-TLS-THREADED-DISPATCHER use thread per connection and use CL+SSL,
+- TLS-SINGLE-CLIENT-DISPATCHER and DETACHED-TLS-SINGLE-CLIENT-DISPATCHER handle one connection at time
+  in a single thread using CL+SSL and is simplest of these.
+
+Detached variants run the server in a separate thread and returns immediately
+after opening the socket.
+
+There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors.
+
+Value of *VANILLA-SERVER-DISPATCHER* is not specified (set it if you care) but
+should be presently best dispatcher.
+
+FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
+respective parameters try to locate the files."
   (when (symbolp private-key-file)
     (setf private-key-file (namestring (funcall private-key-file host))))
   (when (symbolp certificate-file)
@@ -353,7 +375,15 @@ Returns two values:
     (values (setf *last-server* server)
             (url-from-socket socket host t))))
 
-
+(defsection @server-reference
+    (:title "Server API reference")
+  (*vanilla-server-dispatcher* (variable nil))
+  (tls-single-client-dispatcher class)
+  (detached-tls-single-client-dispatcher class)
+  (detached-tls-threaded-dispatcher class)
+  (tls-threaded-dispatcher class)
+  (poll-dispatcher class)
+  (detached-poll-dispatcher class))
 
 (defun run (port &rest pars &key certificate-file private-key-file)
   "Run a default HTTP/2 server on PORT on foreground."
