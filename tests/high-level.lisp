@@ -53,18 +53,19 @@
 
 (deftest tutorial-client-parameters ()
   "Run server, fetch a response from it."
-  (multiple-value-bind (thread url)
-      (start 0)
-    (unwind-protect
-         (progn
-           (multiple-value-bind (response code)
-               (retrieve-url (puri:merge-uris "/body" url)
-                             :content "ABC")
-             (is (= code 200))
-             (is (equal response "POST request; ABC ((\"content-type\" . \"text/plain; charset=utf-8\")); NIL")))
-           (multiple-value-bind (response code)
-               (retrieve-url (puri:merge-uris "/body" url)
-                             :content #(1 2 3))
-             (is (= code 200))
-             (is (equal response "POST request;  ((\"content-type\" . \"application/octet-stream\")); #(1 2 3)"))))
-      (bordeaux-threads:destroy-thread thread))))
+  (dolist (dispatcher '(detached-tls-threaded-dispatcher http2/server::detached-poll-dispatcher))
+    (multiple-value-bind (thread url)
+        (start 0 :dispatcher dispatcher)
+      (unwind-protect
+           (progn
+             (multiple-value-bind (response code)
+                 (retrieve-url (puri:merge-uris "/body" url)
+                               :content "ABC")
+               (is (= code 200))
+               (is (equal response "POST request; ABC ((\"content-type\" . \"text/plain; charset=utf-8\")); NIL")))
+             (multiple-value-bind (response code)
+                 (retrieve-url (puri:merge-uris "/body" url)
+                               :content #(1 2 3))
+               (is (= code 200))
+               (is (equal response "POST request;  ((\"content-type\" . \"application/octet-stream\")); #(1 2 3)"))))
+        (bordeaux-threads:destroy-thread thread)))))
