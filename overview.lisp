@@ -21,6 +21,7 @@ simple client to fetch a resource or how to serve simple pages."
   (@overview section)
   (@tutorials section)
   (http2/server::@server-reference section)
+  (http2/server/poll::@async-server section)
   #+nil
   (http2/core::@lisp-stream-emulation section))
 

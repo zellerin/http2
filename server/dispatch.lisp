@@ -327,11 +327,12 @@ signalled."
 
 (defvar *last-server*)
 
-(defun start (port &key
-                     (host *vanilla-host*)
-                     (dispatcher *vanilla-server-dispatcher*)
-                     (certificate-file 'find-certificate-file)
-                     (private-key-file 'find-private-key-file))
+(defun start (port &rest args &key
+                                (host *vanilla-host*)
+                                (dispatcher *vanilla-server-dispatcher*)
+                                (certificate-file 'find-certificate-file)
+                                (private-key-file 'find-private-key-file)
+              &allow-other-keys)
   "Start a default HTTP/2 https server on PORT on background.
 
 Returns two values with a detached (see below) dispatcher, which is default:
@@ -359,19 +360,21 @@ after opening the socket.
 There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors.
 
 Value of *VANILLA-SERVER-DISPATCHER* is not specified (set it if you care) but
-should be presently best dispatcher.
+should be presently best detached dispatcher.
 
 FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
 respective parameters try to locate the files."
+  (declare (optimize debug safety (speed 0)))
   (when (symbolp private-key-file)
     (setf private-key-file (namestring (funcall private-key-file host))))
   (when (symbolp certificate-file)
     (setf certificate-file (namestring (funcall certificate-file private-key-file))))
   (multiple-value-bind (server socket)
-      (create-server port dispatcher
+      (apply #'create-server port dispatcher
                      :certificate-file certificate-file
                      :private-key-file private-key-file
-                     :host host)
+                     :host host
+                     args)
     (values (setf *last-server* server)
             (url-from-socket socket host t))))
 

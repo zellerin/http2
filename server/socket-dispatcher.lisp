@@ -40,7 +40,9 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
              :name "HTTP(s) server thread")
             socket)))
 
-(defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher)
+(defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher
+  "Default value of the server dispatcher. One of DETACHED-TLS-THREADED-DISPATCHER
+ot POLL-DISPATCHER")
 (defvar *vanilla-host* "localhost")
 
 (defun find-private-key-file (hostname)

@@ -24,21 +24,25 @@
 
 
 (mgl-pax:defsection  @async-server
-    (:title "Asynchronous TLS server")
-  (client type)
+    (:title "Polling server")
+#+nil  (client type)
   (@app-interface mgl-pax:section)
   (@request-handling mgl-pax:section)
   (@communication-setup mgl-pax:section))
 
 (mgl-pax:defsection @app-interface
     (:title "Interface to the application")
-  (client-application-data function)
-  (set-next-action function)
-  (ssl-read function)
-  (send-unencrypted-bytes function)
-  (poll-timeout condition)
+  (poll-dispatcher-mixin class)
+  (get-fdset-size (method nil (poll-dispatcher-mixin)))
+  (get-poll-timeout (method nil (poll-dispatcher-mixin)))
+  (get-no-client-poll-timeout (method nil (poll-dispatcher-mixin)))
+  #+nil ((ssl-read function)
+         (send-unencrypted-bytes function))
+  ;; Timeouts
   (*no-client-poll-timeout* variable)
-  (*poll-timeout* variable))
+  (*poll-timeout* variable)
+  (poll-timeout condition)
+  (compute-poll-timeout-value function))
 
 (mgl-pax:defsection @communication-setup
     (:title "HTTP2 handling")
@@ -651,8 +655,8 @@ reading of client hello."
    "Poll was called with a timeout and returned before any file descriptor became
 ready."))
 
-(defvar *no-client-poll-timeout* -1
-        "Timeout in ms to use when there is no client (to limit time to a client to
+(defvar *no-client-poll-timeout* :∞
+        "Default timeout in seconds to use when there is no client (to limit time to a client to
 connect).
 
 This is supposed to be used primarily in the automated tests, where you do not
@@ -660,46 +664,84 @@ want indefinite waits in case of a problem.
 
 On timeout signals POLL-TIMEOUT error.
 
-Default -1 means an indefinite wait.")
+Default means an indefinite wait.")
 
-(defvar *poll-timeout* -1
-  "Timeout to use for poll in ms when there connected clients, but no client communication.
+(defvar *poll-timeout* :∞
+  "Default timeout in seconds to use for poll when there are connected clients,
+but no client communication.
 
 On timeout signals POLL-TIMEOUT error.
 
-Default -1 means an indefinite wait.")
+Default means an indefinite wait.")
 
 (defun serve-tls (listening-socket dispatcher)
-  (with-foreign-object (fdset '(:struct pollfd) *fdset-size*)
-    (init-fdset fdset *fdset-size*)
+  ;; Now this is maybe too diverse:
+  ;; some things are in the dispatcher (poll timeout, nagle, size of fdset),
+  ;; some bound lexically (fdset)
+  ;; some in global variable without binding (*clients*),
+  (declare (optimize safety debug (speed 0))
+           (type poll-dispatcher-mixin dispatcher))
+  (with-foreign-object (fdset '(:struct pollfd) (get-fdset-size dispatcher))
+    (init-fdset fdset (get-fdset-size dispatcher))
     (with-ssl-context (ctx dispatcher)
-      (let* ((s-mem (bio-s-mem))
-             ;; FIXME: if *clients* was bound, it cannot be easily observed from
-             ;; monitoring;
-             #+(or) (*clients* nil)
-             (*empty-fdset-items* (alexandria:iota (1- *fdset-size*) :start 1)))
-        (setup-new-connect-pollfd fdset listening-socket)
-        (unwind-protect
-             (loop
-               (let ((nread (poll fdset *fdset-size*
-                                  (if *clients* *poll-timeout* *no-client-poll-timeout*))))
-                 (when (zerop nread) (cerror "Ok" 'poll-timeout))
-                 (process-new-client fdset listening-socket ctx s-mem)
-                 (process-client-sockets fdset nread)))
-          (dolist (client *clients*)
-            (close-client-connection fdset client)))))))
+      (with-slots (fdset-size nagle poll-timeout no-client-poll-timeout) dispatcher
+        (let* ((s-mem (bio-s-mem))
+               ;; FIXME: if *clients* was bound, it cannot be easily observed from
+               ;; monitoring;
+               #+(or) (*clients* nil)
+               (*empty-fdset-items* (alexandria:iota (1- fdset-size) :start 1))
+               (poll-timeout (compute-poll-timeout-value poll-timeout))
+               (no-client-poll-timeout (compute-poll-timeout-value no-client-poll-timeout)))
+          (setup-new-connect-pollfd fdset listening-socket)
+          (unwind-protect
+               (locally (declare (optimize speed (debug 1) (safety 1))
+                                 (ftype (function (t t t) fixnum) poll))
+                 (loop
+                   (let ((nread (poll fdset fdset-size
+                                      (if *clients* poll-timeout no-client-poll-timeout))))
+                     (when (zerop nread) (cerror "Ok" 'poll-timeout))
+                     (process-new-client fdset listening-socket ctx s-mem)
+                     (process-client-sockets fdset nread))))
+            (dolist (client *clients*)
+              (close-client-connection fdset client))))))))
 
-(defclass poll-dispatcher (tls-dispatcher-mixin base-dispatcher)
-  ()
+(defun compute-poll-timeout-value (human-form)
+  "Compute poll timeout from \"nice\" value (seconds or :∞) to value accepted by
+poll (miliseconds or -1)"
+  (etypecase human-form
+    ((eql :∞) -1)
+    ((real 0) (round (* 1000 human-form)))))
+
+(defclass poll-dispatcher-mixin ()
+  ((fdset-size             :accessor get-fdset-size             :initarg :fdset-size
+                           :documentation "Number of slots for clients to be polled.")
+   (poll-timeout           :accessor get-poll-timeout           :initarg :poll-timeout
+                           :documentation "See *POLL-TIMEOUT*.")
+   (no-client-poll-timeout :accessor get-no-client-poll-timeout :initarg :no-client-poll-timeout
+                           :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
+   (nagle                  :accessor get-nagle                  :initarg :nagle))
+  (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
+                     :no-client-poll-timeout *no-client-poll-timeout*)
   (:documentation
    "Uses poll to listen to a set of clients and handle arriving packets in a single
-thread."))
+thread.
+
+Maximum number of clients is fixed (by default *fdset-size*, by default
+10). Additional clients wait until one of existing client leaves.
+
+Timeouts can be specified for polling."))
+
+(defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin base-dispatcher)
+  ())
+
+(defmethod get-no-client-poll-timeout :after ((dispatcher poll-dispatcher))
+  (compute-poll-timeout-value (call-next-method)))
 
 (defclass detached-poll-dispatcher (detached-server-mixin poll-dispatcher)
   ()
   (:documentation "Detached version of the POLL-DISPATCHER."))
 
-(defmethod http2/server::do-new-connection (socket (dispatcher poll-dispatcher))
+(defmethod do-new-connection (socket (dispatcher poll-dispatcher-mixin))
   "Handle new connections by adding pollfd to and then polling.
 
 When poll indicates available data, process them with openssl using BIO. Data to
