@@ -41,13 +41,19 @@ May block."
                   (not (eql #'parse-frame-header frame-action)))
         do
            (force-output stream)
-           (let ((buffer (make-octet-buffer size)))
+           (let* ((buffer (make-octet-buffer size))
+                  (read (read-sequence buffer stream)))
              (declare (dynamic-extent buffer))
-             (if (= size (read-sequence buffer stream))
-                 (multiple-value-setq
-                     (frame-action size)
-                   (funcall frame-action connection buffer))
-                 (error 'end-of-file :stream (get-network-stream connection)))
+             (cond
+               ((= size read)
+                (multiple-value-setq
+                    (frame-action size)
+                  (funcall frame-action connection buffer)))
+               ;; The connection just closes without goaway
+               ((and (zerop read) (equal frame-action #'parse-frame-header))
+                (return))
+               (t
+                (error 'end-of-file :stream (get-network-stream connection))))
              #-debug (when (null size) (error "Bad handler for ~a" buffer))))
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen

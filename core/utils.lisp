@@ -15,15 +15,13 @@
   (http2-stream-state type)
 
   (make-octet-buffer function)
+  (make-initialized-octet-buffer function)
   (aref/wide function)
   (vector-from-hex-text function)
   (frame-size type)
   (octet-vector type))
 
 (declaim (inline make-octet-buffer))
-
-(defun make-octet-buffer (size)
-  (make-array size :element-type '(unsigned-byte 8)))
 
 #|
 The size of a frame payload is limited by the maximum size that a
@@ -34,17 +32,19 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 
 (deftype frame-size ()  '(unsigned-byte 24))
 
+(defun make-octet-buffer (size)
+  (declare (type frame-size size))
+  (make-array size :element-type '(unsigned-byte 8)))
+
+(defun make-initialized-octet-buffer (content)
+  (make-array (length content) :element-type '(unsigned-byte 8)
+              :initial-contents content))
+
+
+
 (deftype octet-vector (&optional length)
   "An octet vector of length LENGTH (if specified)"
   `(array (unsigned-byte 8) (,length)))
-
-(defun read-byte* (source)
-  ""
-  (with-slots (buffer index end ) source
-    (when (>= index (or end (length buffer))) (error 'end-of-file :stream source))
-    (prog1
-        (aref buffer index)
-      (incf index))))
 
 (defun aref/wide (sequence start size)
   "Same as read-bytes, but from a sequence"
@@ -65,31 +65,14 @@ setting can have any value between 2^14 (16,384) and 2^24-1
             (ldb (byte 8 (* 8 (- size 1 i))) value))
         finally (return value)))
 
-(defun read-bytes (stream n)
-  "Read N bytes from stream to an integer"
-  (declare ((integer 1 8) n))
-  (let ((res 0))
-    (dotimes (i n)
-      (setf (ldb (byte 8 (* 8 (- n 1 i))) res) (read-byte stream)))
-    res))
-
-(defun write-bytes (stream n value)
-  "write VALUE as N octets to stream. Maximum length is 64 bits (used by ping)."
-  (declare (type (integer 1 8) n)
-           (optimize speed)
-           (type (unsigned-byte 64) value))
-  (dotimes (i n)
-    (write-byte (ldb (byte 8 (* 8 (- n 1 i))) value) stream)))
-
-(defvar *log-stream* (make-broadcast-stream)
-  "Stream for logging output send by LOGGER.")
-
 (defun vector-from-hex-text (text)
-  ""
+  "Convert a hex string to an octet vector."
+  (declare (string text))
   (loop with prefix = text
         for i from 0 to (1- (length prefix)) by 2
         collect (parse-integer prefix :start i :end (+ i 2) :radix 16) into l
-        finally (return (map 'simple-vector 'identity l))))
+        finally (return (map '(vector (unsigned-byte 8)) 'identity l))))
+
 
 ;;;; Settings
 (defvar *settings*
@@ -157,7 +140,7 @@ setting can have any value between 2^14 (16,384) and 2^24-1
       For any given request, a lower limit than what is advertised MAY
       be enforced.  The initial value of this setting is unlimited.")
 
-    (:accept-cache-digest 7              ; not part of standard
+    (:accept-cache-digest 7             ; not part of standard
      "A server can notify its support for CACHE_DIGEST frame by sending the
       SETTINGS_ACCEPT_CACHE_DIGEST (0x7) SETTINGS parameter. If the server is
       tempted to making optimizations based on CACHE_DIGEST frames, it SHOULD

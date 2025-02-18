@@ -1,6 +1,6 @@
 ;;;; Copyright 2022-2025 by Tomáš Zellerin
 
-(in-package :http2/server)
+(in-package :http2/server/shared)
 
 (defsection @server
     (:title "Starting HTTP/2 server")
@@ -236,42 +236,6 @@ optionally provides CONTENT with CONTENT-TYPE."
         (princ content out)))))
 
 
-(defclass threaded-dispatcher (base-dispatcher)
-  ()
-  (:documentation
-   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
-
-(defclass tls-threaded-dispatcher (threaded-dispatcher tls-dispatcher-mixin)
-  ())
-
-(defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
-  ())
-
-(defclass detached-threaded-dispatcher (detached-server-mixin threaded-dispatcher)
-  ())
-(defclass detached-single-client-dispatcher (detached-server-mixin single-client-dispatcher)
-  ())
-
-(defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
-  (let ((socket (usocket:socket-accept listening-socket
-                                       :element-type '(unsigned-byte 8)))
-        (context cl+ssl::*ssl-global-context*))
-    (bt:make-thread
-     (lambda ()
-       (cl+ssl:with-global-context (context)
-         (with-standard-handlers ()
-           (restart-case
-               (with-open-stream (stream (server-socket-stream socket dispatcher))
-                 (http2/server::process-server-stream stream
-                                                      :connection
-                                                      (apply #'make-instance (get-connection-class dispatcher)
-                                                             (get-connection-args dispatcher)
-                                                       )))
-             (kill-client-connection () nil))))) ; FIXME:
-     ;; TODO: peer IP and port to name?
-     :name "HTTP2 server thread for connection" )))
-
-
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
@@ -325,14 +289,8 @@ CONNECTION."
   (let ((connection (http2/core::get-connection stream)))
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
-(defmethod queue-frame :around ((server threaded-server-mixin) frame)
-  (bt:with-lock-held ((get-lock server))
-    (call-next-method)))
-
 (defgeneric cleanup-connection (connection)
   (:method (connection) nil)
-  (:method :after ((connection threaded-server-mixin))
-    (stop-scheduler-in-thread (get-scheduler connection)))
   (:documentation
    "Remove resources associated with a server connection. Called after connection is
 closed."))
@@ -369,33 +327,66 @@ signalled."
 
 (defvar *last-server*)
 
-(defun start (port &key
-                     (host *vanilla-host*)
-                     (dispatcher *vanilla-server-dispatcher*)
-                     (certificate-file 'find-certificate-file)
-                     (private-key-file 'find-private-key-file))
+(defun start (port &rest args &key
+                                (host *vanilla-host*)
+                                (dispatcher *vanilla-server-dispatcher*)
+                                (certificate-file 'find-certificate-file)
+                                (private-key-file 'find-private-key-file)
+              &allow-other-keys)
   "Start a default HTTP/2 https server on PORT on background.
 
-Returns two values:
+Returns two values with a detached (see below) dispatcher, which is default:
 
 - thread with the server (to be able to close the server). The specific object
   returned is subject to change, what is guaranteed is that it is suitable
   parameter for STOP.
 
-- base url of the server (most useful when PORT was 0 - any free port)"
+- base url of the server (most useful when PORT was 0 - any free port)
+
+With a non-detached dispatcher the value is not specified.
+
+DISPATCHER parameter sets the dispatcher to use for the server. Dispatchers
+determine how are new requests handled. Presently there are several sets of
+dispatchers defined:
+
+- POLL-DISPATCHER and DETACHED-POLL-DISPATCHER use polling interface that uses openssl directly,
+- TLS-THREADED-DISPATCHER and DETACHED-TLS-THREADED-DISPATCHER use thread per connection and use CL+SSL,
+- TLS-SINGLE-CLIENT-DISPATCHER and DETACHED-TLS-SINGLE-CLIENT-DISPATCHER handle one connection at time
+  in a single thread using CL+SSL and is simplest of these.
+
+Detached variants run the server in a separate thread and returns immediately
+after opening the socket.
+
+There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors.
+
+Value of *VANILLA-SERVER-DISPATCHER* is not specified (set it if you care) but
+should be presently best detached dispatcher.
+
+FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
+respective parameters try to locate the files."
+  (declare (optimize debug safety (speed 0)))
   (when (symbolp private-key-file)
     (setf private-key-file (namestring (funcall private-key-file host))))
   (when (symbolp certificate-file)
     (setf certificate-file (namestring (funcall certificate-file private-key-file))))
   (multiple-value-bind (server socket)
-      (create-server port dispatcher
+      (apply #'create-server port dispatcher
                      :certificate-file certificate-file
-                 :private-key-file private-key-file
-                     :host host)
+                     :private-key-file private-key-file
+                     :host host
+                     args)
     (values (setf *last-server* server)
             (url-from-socket socket host t))))
 
-
+(defsection @server-reference
+    (:title "Server API reference")
+  (*vanilla-server-dispatcher* (variable nil))
+  (tls-single-client-dispatcher class)
+  (detached-tls-single-client-dispatcher class)
+  (detached-tls-threaded-dispatcher class)
+  (tls-threaded-dispatcher class)
+  (poll-dispatcher class)
+  (detached-poll-dispatcher class))
 
 (defun run (port &rest pars &key certificate-file private-key-file)
   "Run a default HTTP/2 server on PORT on foreground."
@@ -404,3 +395,11 @@ Returns two values:
 
 (defun stop (&optional (server *last-server*))
   (bordeaux-threads:destroy-thread server))
+
+;;;; TLS dispatcher
+(defclass tls-dispatcher-mixin (certificated-dispatcher)
+  ((tls              :reader   get-tls              :initform :tls
+                     :allocation :class))
+  (:documentation
+   "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,
+and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT."))

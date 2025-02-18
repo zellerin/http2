@@ -9,7 +9,28 @@
     (:title "Using built-in HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
+  (request-headers function)
   (drakma-style-stream-values function))
+
+(defun request-headers (method path authority
+                        &key (scheme "https")
+                          content-type
+                          gzip-content
+                          additional-headers)
+  "Encode standard request headers. The obligatory headers are passed as the
+positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
+header name and value."
+  `((:method, (if (symbolp method) (symbol-name method) method))
+    (:scheme ,scheme)
+    (:path ,(or path "/"))
+    (:authority ,authority)
+    ,@(when content-type
+        `(("content-type" ,content-type)))
+    ,@(when gzip-content
+        '(("content-encoding" "gzip")))
+    ,@(mapcar (lambda (a)
+                (list (car a) (cdr a)))
+              additional-headers)))
 
 (mgl-pax:defsection @customizing-client-example-multi
     (:title "Client example: multiple requests")
@@ -197,7 +218,7 @@ Details of the frame are taken from the REQUEST instance.
 
 Return the new stream."
     (send-headers (create-new-local-stream connection nil)
-                  (http2/hpack:request-headers
+                  (request-headers
                    (get-method request)
                    (puri:uri-path (get-uri request))
                    (puri:uri-host (get-uri request))

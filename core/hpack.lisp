@@ -11,20 +11,16 @@
 - Headers being sent out may be cached and after first use in dynamic headers table and later replaced by a code,
 
 - Headers as string can be Huffman compressed."
+  (do-decoded-headers function)
+  (compile-headers function)
+  (*use-huffman-coding-by-default* variable)
   "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
   from API point considered opaque. Context is needed twice for each connection,
   once for each direction of communication."
-  (read-http-header function)
-  (compile-headers function)
-  (request-headers function)
-  (update-dynamic-table-size function)
-  (*use-huffman-coding-by-default* variable)
-  (header-writer function)
   (hpack-context class)
+  (update-dynamic-table-size function)
   (get-dynamic-table-size generic-function)
-  (request-headers function)
-  (get-updates-needed generic-function)
-  (decode-huffman function))
+  (get-updates-needed generic-function))
 
 (defvar static-headers-table
   (vector
@@ -87,6 +83,21 @@ start at index 1, so leading nil.")
                             |                   V
                      Insertion Point      Dropping Point"))
 
+(defmethod print-object ((context hpack-context) stream)
+  (print-unreadable-object (context stream :type t)
+    (format stream "~d item~:p~@[,including ~d deleted~], free ~d/~d"
+            (length (get-dynamic-table context))
+            (when (plusp (get-deleted-items context))
+              (get-deleted-items context))
+            (get-dynamic-table-size context)
+            (get-bytes-left-in-table context))))
+
+(defmethod describe-object ((context hpack-context) stream)
+  (format stream "~s~%" context)
+  (loop for idx from (get-deleted-items context) below (length (get-dynamic-table context))
+        do (format stream "~&~3d ~s~%" (vector-index-to-hpack-index (get-dynamic-table context) idx)
+                   (aref (get-dynamic-table context) idx))))
+
 (declaim
  (ftype (function (vector fixnum) fixnum) vector-index-to-hpack-index)
  (ftype (function (hpack-context fixnum) (or cons string)) dynamic-table-value))
@@ -122,7 +133,6 @@ This is factored out to be used in testing."
 (defun find-pair-in-tables (context pair)
   "Find header PAIR in static table and, if CONNECTION is not null, in its dynamic
 table. Return the index, or NIL if not found."
-  ;; 17 is last pair in static table
   (find-in-tables context pair #'equalp #'identity +last-static-header-pair+))
 
 (defun find-header-in-tables (context name)
@@ -222,7 +232,7 @@ huffman encoding."
   (write-integer-to-array res index use-bits code)
   (store-string value res huffman))
 
-(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*))
+(defun header-writer (res name value &optional context (huffman *use-huffman-coding-by-default*) noindex)
   "Encode header consisting of NAME and VALUE to a fillable array RES..
 
 The `never-indexed` format is never generated, use a separate function for
@@ -239,15 +249,19 @@ Use Huffman when HUFFMAN is true."
      (write-indexed-header-pair res it))
     ((find-header-in-tables context name)
      (cond
-       (context
+       ((and (null noindex) context)
         (write-indexed-name res +literal-header-index+ it value 6 huffman)
         (add-dynamic-header context (list name value)))
        (t (write-indexed-name res +literal-header-noindex+ it value 4 huffman))))
-    (context
+    ((and  context (null noindex))
      (write-literal-header-pair res +literal-header-index+ name value huffman)
      (add-dynamic-header context (list name value)))
     (t
-     (write-literal-header-pair res +literal-header-noindex+ name value huffman)))
+     (write-literal-header-pair res
+                                (if (eq noindex :never)
+                                    +literal-header-never-index+
+                                    +literal-header-noindex+)
+                                name value huffman)))
   res)
 
 (defun encode-dynamic-table-update (res new-size)
@@ -286,60 +300,52 @@ Use Huffman when HUFFMAN is true."
 not, the headers are stored in the dynamic table and the CONTEXT it is updated
 appropriately.
 
-Presently returns list of arrays, may return single array in future. In any case, the result should be usable as the appropriate parameter for WRITE-HEADERS-FRAME."
+Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
+
+- NO-INDEX indicates that it should be stored in the dynamic table (if possible), should not, or use the NEVER encoding (value :never),
+- HUFFMAN to use huffman encoding"
+  (declare ((or null hpack-context) context))
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
     initially (when context
                 (compute-update-dynamic-size-codes
                  res (get-updates-needed context)))
     for header in headers
-    do (if (vectorp header)
-           (loop for octet across header
-                 do (vector-push-extend octet res))
-           (header-writer res (car header)
-                          (second header)
-                          context))
-    finally (return (list res))))
+    do (destructuring-bind (name value &key
+                                         (huffman *use-huffman-coding-by-default*)
+                                         no-index)
+           header
+           (header-writer res name value context huffman no-index))
+    finally (return res)))
 
-(defun request-headers (method path authority
-                        &key (scheme "https")
-                          content-type
-                          gzip-content
-                          additional-headers)
-  "Encode standard request headers. The obligatory headers are passed as the
-positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
-header name and value."
-  (compile-headers
-   `((:method, (if (symbolp method) (symbol-name method) method))
-     (:scheme ,scheme)
-     (:path ,(or path "/"))
-     (:authority ,authority)
-     ,@(when content-type
-           `(("content-type" ,content-type)))
-     ,@(when gzip-content
-         '(("content-encoding" "gzip")))
-     ,@(mapcar (lambda (a)
-                 (list (car a) (cdr a)))
-               additional-headers))
-   nil))
+(define-condition incomplete-header ()
+  ())
 
-(defun get-integer-from-octet (stream initial-octet bit-size)
+(defmacro incf* (value-var max)
+  `(when (> (incf ,value-var) ,max)
+     (signal 'incomplete-header)))
+
+(defun get-integer-from-octet (initial-octet bit-size data start end)
   "Decode an integer from starting OCTET and additional octets in STREAM
 as defined in RFC7541 sect. 5.1."
   (declare (type (integer 1 8) bit-size)
            (type (unsigned-byte 8) initial-octet))
   (let ((small-res (ldb (byte bit-size 0) initial-octet)))
-    (if (= small-res (ldb (byte bit-size 0) -1))
-        (loop
-          with res fixnum = 0
-          for octet of-type (unsigned-byte 8) = (read-byte* stream)
-          for shift from 0 by 7
-          for last-octet = (zerop (ldb (byte 1 7) octet))
-          and octet-value = (ldb (byte 7 0) octet)
-          do (setf (ldb (byte 7 shift) res) octet-value)
-          when last-octet
-            do (return (+ res small-res)))
-        small-res)))
+    (values
+     (if (= small-res (ldb (byte bit-size 0) -1))
+         (loop
+           with res fixnum = 0
+           for octet of-type (unsigned-byte 8) = (aref data start)
+           for shift from 0 by 7
+           for last-octet = (zerop (ldb (byte 1 7) octet))
+           and octet-value = (ldb (byte 7 0) octet)
+           do
+              (setf (ldb (byte 7 shift) res) octet-value)
+              (incf* start end)
+           when last-octet
+             do (return (+ res small-res)))
+         small-res)
+     start)))
 
 (defun write-integer-to-array (array integer bit-size mask)
   "Write integer to a fillable vector as defined in RFC7541 sect. 5.1.
@@ -365,26 +371,30 @@ Return the fillable vector."
     (write-integer-to-array array integer bit-size mask)
     array))
 
-(defun read-huffman (stream len)
+(defun read-huffman (len data start)
   "Read Huffman coded text of length LEN from STREAM."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
-  (loop with res = (make-octet-buffer len)
-        for i from 0 to (1- len)
-        do (setf (aref res i) (read-byte* stream))
-        finally (return (decode-huffman res))))
+  (values (decode-huffman data start (+ start len)) (+ start len)))
 
-(defun read-string-from-stream (stream)
+(defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
-  (let* ((octet0 (read-byte* stream))
-         (len (ldb (byte 7 0) octet0))
-         (size (get-integer-from-octet stream octet0 7)))
-    (if (plusp (ldb (byte 1 7) octet0))
-        (read-huffman stream size)
-        (loop with res = (make-array size
-                                     :element-type 'character)
-              for i from 0 to (1- len)
-              do  (setf (aref res i) (code-char (read-byte* stream)))
-              finally (return res)))))
+  (let* ((octet0 (aref data start)))
+    (incf* start end)
+    (multiple-value-bind (size start)
+        (get-integer-from-octet octet0 7 data start end)
+      (if (> (+ start size) end)
+          (signal 'incomplete-header))
+      (if (plusp (ldb (byte 1 7) octet0))
+          (values (read-huffman size data start) (+ size start))
+          (loop with res = (make-array size
+                                       :element-type 'character)
+                and string-end = (+ size start)
+                ;; TODO: 2025-01-30: map-into? replace? map?
+                ;; ... nothing seems to match
+                for i from start below string-end
+                for j from 0
+                do  (setf (aref res j) (code-char (aref data i)))
+                finally (return (values res string-end)))))))
 
 
 (defun read-from-tables (index context)
@@ -395,44 +405,75 @@ Return the fillable vector."
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
 
-(defun read-literal-header-indexed-name (stream octet0 context use-bits)
+(defun read-literal-header-indexed-name (octet0 context use-bits data start end)
   "See Fig. 6 and Fig. 8 - Name of header is in tables, value is literal.
 
 Use USE-BITS from the OCTET0 for name index"
-  (let ((table-match (read-from-tables
-                      (get-integer-from-octet stream octet0 use-bits)
-                      context)))
-    (list (if (consp table-match) (car table-match) table-match)
-          (read-string-from-stream stream))))
+  (multiple-value-bind (idx start)
+      (get-integer-from-octet octet0 use-bits data start end)
+    (let ((table-match (read-from-tables idx context)))
+      (multiple-value-bind (value start) (read-string-from-stream data start end)
+        (values (list (if (consp table-match) (car table-match) table-match) value) start)))))
 
-(defun read-literal-header-field-new-name (stream)
+(defun read-literal-header-field-new-name (data start end)
   "See 6.2.1 fig. 7, and 6.2.2. fig. 9 -
 Neither name of the header nor value is in table, so read both as literals."
-  (list (read-string-from-stream stream) (read-string-from-stream stream)))
+  (multiple-value-bind (key start) (read-string-from-stream data start end)
+    (when (>= start end)
+      (signal 'incomplete-header))
+    (multiple-value-bind (value start) (read-string-from-stream data start end)
+      (values (list key value) start))))
 
-(defun read-http-header (stream context)
+(defun read-http-header (context data start end)
   "Read one header from network stream using READ-BYTE* as two-item list (NAME
 VALUE) using dynamic table CONTEXT. Update CONTEXT appropriately.
 
 Can also return NIL if no header is available if it is not detected earlier; this can happen, e.g., when there is a zero sized continuation header frame.."
-  (let ((octet0 (read-byte* stream)))
+  (let ((octet0 (aref data start)))
+    (incf* start end)
     (handler-case
         (cond
           ((plusp (ldb (byte 1 7) octet0)) ;; 1xxx xxxx
-           (read-from-tables (get-integer-from-octet stream octet0 7) context))
+           (multiple-value-bind (idx start) (get-integer-from-octet octet0 7 data start end)
+             (values (read-from-tables idx context) start)))
           ((= #x40 octet0) ;; 0100 0000 - fig. 7
-           (add-dynamic-header context (read-literal-header-field-new-name stream)))
+           (multiple-value-bind (header start)
+               (read-literal-header-field-new-name data start end)
+             (values (add-dynamic-header context header) start)))
           ((plusp (ldb (byte 1 6) octet0)) ;; 01NN NNNN
-           (add-dynamic-header context
-                               (read-literal-header-indexed-name stream octet0 context 6)))
+           (multiple-value-bind (data start)
+               (read-literal-header-indexed-name octet0 context 6 data start end)
+             (values (add-dynamic-header context data) start)))
           ((zerop (logand #xef octet0)) ;; 000x 0000 - fig. 9 and 11
-           (read-literal-header-field-new-name stream))
+           (read-literal-header-field-new-name data start end))
           ((zerop (ldb (byte 3 5) octet0)) ;; 000X NNNN
-           (read-literal-header-indexed-name stream octet0 context 4))
-          (t                                ; 001x xxxx
-           (update-dynamic-table-size context
-                                      (get-integer-from-octet stream octet0 5))
-           nil)))))
+           (read-literal-header-indexed-name octet0 context 4 data start end))
+          (t                            ; 001x xxxx
+           (multiple-value-bind (res start)
+               (get-integer-from-octet octet0 5 data start end)
+             (update-dynamic-table-size context res)
+             (values nil start)))))))
+
+(defun do-decoded-headers (fn context data &optional (start 0) (end (length data)))
+  "Call FN on each header decoded from DATA between START and END.
+
+Return nil if the complete headers were processed, or index to first unprocessed octet."
+  (loop
+    with to-backtrace = start           ; when to restart if needed
+    while (< start end)
+    for (name value) =
+                     (handler-case
+                         (multiple-value-bind (data new-start)
+                             (read-http-header context data start end)
+                           (setf start new-start)
+                           data)
+                       (incomplete-header () (return to-backtrace)))
+    when (> start end)
+      do (return to-backtrace)
+    when name
+      do (funcall fn name value)
+    do (setf to-backtrace start)))
+
 
 
 
@@ -497,19 +538,19 @@ Can also return NIL if no header is available if it is not detected earlier; thi
                    collect `(,idx ,(make-cond-branch idx min-prefix codes))))))))
 
 
-(defun decode-huffman-to-stream  (char-stream bytes &optional (nr 0) (nr-size 0) (prefix 0))
-  (let ((idx 0))
+(defun decode-huffman-to-stream  (char-stream bytes start end &optional (nr 0) (nr-size 0) (prefix 0))
+  (let ((idx start))
     (declare ((unsigned-byte 16) nr)
              ((integer 0 35) nr-size prefix)
-             (optimize (debug 3) speed)
-             ((integer 0 65536) idx)
+             (optimize speed)
+             ((integer 0 65536) idx start end)
              ((and vector (simple-array (unsigned-byte 8))) bytes))
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
                (declare (optimize (safety 0)))
                (when (> min-prefix nr-size)
-                 (when (= idx (length bytes)) (return-from decode-huffman-to-stream))
+                 (when (= idx end) (return-from decode-huffman-to-stream))
                  (let ((old nr))
                    (setf nr 0
                          (ldb (byte 8 8) nr) old
@@ -524,9 +565,9 @@ Can also return NIL if no header is available if it is not detected earlier; thi
                  (notinline update-vars emit))
         (loop (decode))))))
 
-(defun decode-huffman (bytes)
+(defun decode-huffman (bytes start end)
   (with-output-to-string (s)
-    (decode-huffman-to-stream s bytes)))
+    (decode-huffman-to-stream s bytes start end)))
 
 (defun encode-huffman (string res)
   "Convert string to huffman encoding."

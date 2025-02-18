@@ -14,6 +14,8 @@
     (send-text-handler "/Hello World"))
 
 (start 1237)
+(start 1240 :dispatcher 'http2/server::detached-poll-dispatcher)
+(start 1241 :dispatcher 'http2/server::detached-tls-threaded-dispatcher)
 (start 1238 :dispatcher 'http2/server::detached-threaded-dispatcher)
 (start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
@@ -54,7 +56,11 @@
     (scan-port base "Woo on plain socket" "http://localhost:1239" "-p" "http/1.1")
     (scan-port base "HTTP/2 over plain socket, -m20" "http://localhost:1238"
                "-m" "20")
+    (scan-port base "HTTP/2 over tls socket, -m20" "https://localhost:1241"
+                   "-m" "20")
     (scan-port base "HTTP/2 single client over plain socket, -m20" "http://localhost:1255"
+               "-m" "20")
+    (scan-port base "HTTP/2 poll single-thread server, -m20" "https://localhost:1240"
                "-m" "20")
     (scan-port base "Hunchentoot on plain socket, -m20" "http://localhost:1236"
                "-p" "http/1.1" "-m" "20" )

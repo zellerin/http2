@@ -1,4 +1,4 @@
-(in-package :http2/server)
+(in-package :http2/server/shared)
 
 (defsection @scheduling
     (:title "Scheduled tasks in server")
@@ -17,18 +17,6 @@
   (:default-initargs :action-name nil))
 
 (defvar *scheduler*)
-
-(defclass threaded-server-mixin ()
-  ((scheduler :accessor get-scheduler :initarg :scheduler)
-   (lock      :accessor get-lock      :initarg :lock))
-  (:default-initargs
-   :scheduler *scheduler*
-   :lock (bt:make-lock))
-  (:documentation
-   "A mixin for a connection that holds a lock in actions that write to the output network
-stream, and provides a second thread for scheduled activities (e.g., periodical
-events)."))
-
 
 (defvar *dummy-last-task*
   (make-instance 'scheduled-task :internal-time-to-run most-positive-fixnum))

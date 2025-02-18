@@ -1,6 +1,4 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
-
-;;;; package.lisp
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (mgl-pax:define-package #:http2/utils
     (:use :cl :mgl-pax)
@@ -11,8 +9,10 @@
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term))
 
-(mgl-pax:define-package :http2-core
-    (:nicknames #:http2/core)
+(mgl-pax:define-package #:http2/openssl
+  (:use #:cl #:cffi))
+
+(mgl-pax:define-package :http2/core
   (:use :cl :http2/hpack :http2/utils)
   (:import-from :anaphora #:awhen #:acond #:it)
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
@@ -20,12 +20,12 @@
   (:import-from :alexandria
                 #:read-stream-content-into-string #:read-stream-content-into-byte-vector))
 
+(mgl-pax:define-package #:http2/cl+ssl
+  (:use #:cl #:http2/core #:cl+ssl #:mgl-pax #:http2/openssl))
+
 (mgl-pax:define-package #:http2/stream-overlay
     (:use #:cl #:http2/core #:http2/utils)
   (:import-from #:anaphora #:acond #:awhen #:aif #:it))
-
-(mgl-pax:define-package #:http2/cl+ssl
-  (:use #:cl #:http2/core #:cl+ssl #:mgl-pax))
 
 (mgl-pax:define-package #:http2/client
     (:use #:cl #:http2/core #:http2/stream-overlay #:alexandria
@@ -33,14 +33,29 @@
   (:import-from #:anaphora #:acond #:aif #:it)
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
-; FIXME: 2024-12-26 this causes http2 package depend on cl+ssl, not ideal.
-; Fix this and then remove dependency.
-(mgl-pax:define-package #:http2-server
-    (:nicknames #:http2/server)
+(mgl-pax:define-package #:http2/server
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
-        #:http2/cl+ssl)
+        #:http2/openssl #:cffi)
+  (:nicknames #:http2/server/shared #:http2/server/poll #:http2/server/threaded)
+  #+nil  (:export #:start #:kill-server #:define-exact-handler #:handler #:server-socket-stream
+                  #:start-server-on-socket)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
 HANDLER macro to define content to serve."))
 
+#+bil(mgl-pax:define-package #:http2/server/poll
+    (:use #:cl #:cffi #:http2/server/shared #:http2/openssl
+          #:http2/core))
+
+#+bil(mgl-pax:define-package #:http2/server/threaded
+  (:use #:cl #:cl+ssl #:http2/cl+ssl #:http2/server/shared #:http2/server/poll
+        #:http2/openssl
+        #:http2/core))
+
+#+nil(mgl-pax:define-package #:http2/server
+    (:use #:cl #:cffi #:http2/server/shared #:http2/server/poll #:http2/server/threaded
+          #:http2/core)
+  (:export #:start #:kill-server #:define-exact-handler #:handler #:http-stream-to-string)
+  (:nicknames #:http2/server/cffi))
+
 (mgl-pax:define-package #:http2
-  (:use #:cl #:mgl-pax #:http2/server #:http2/client))
+    (:use #:cl #:mgl-pax #:http2/server #:http2/client))

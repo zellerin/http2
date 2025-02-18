@@ -1,3 +1,4 @@
+;;;; Copyright (C) 2023-2025 by Tomas Zellerin
 
 (in-package http2/core)
 
@@ -17,21 +18,6 @@
 
 
 (defgeneric add-header (connection stream name value)
-  (:method :around (connection (stream http2-stream) name value)
-    "Decode compressed headers"
-    (let ((decoded-name
-            (etypecase name
-              ((or string symbol) name)
-              ((vector (unsigned-byte 8)) (http2/hpack::decode-huffman name)))))
-      (when (and (stringp name) (some #'upper-case-p name))
-        (http-stream-error 'lowercase-header-field-name stream))
-      (call-next-method connection stream
-                        decoded-name
-                        (etypecase value
-                          (string value) ; integer can be removed if we removed "200"
-                          ((vector (unsigned-byte 8))
-                           (http2/hpack::decode-huffman value))))))
-
   (:method (connection stream name value)
     #+nil    (warn 'no-new-header-action :header name :stream stream))
 
@@ -108,6 +94,41 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 (defstruct priority
   "Structure capturing stream priority parameters." exclusive stream-dependency weight)
 
+(defun parse-header-frame* (active-stream data connection flags start length)
+  (handler-case
+      (with-padding-marks (connection flags start end)
+        (when (get-flag flags :priority)
+          (read-priority data active-stream start)
+          (incf start 5)
+          (when (< start end)
+            (connection-error 'frame-too-small-for-priority connection)))
+        (read-and-add-headers data active-stream start end flags flags))
+    (http-stream-error (e)
+      (format t "-> We close a stream due to ~a" e)
+      (values #'parse-frame-header 9))))
+
+(defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
+  (handler-case
+      (read-and-add-headers data (car (get-streams connection)) start end 5 5)
+    (http-stream-error (e)
+      (format t "-> We close a stream due to ~a" e)
+      (values #'parse-frame-header 9)))
+  ;; or just
+  #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
+
+(defun parse-headers-frame  (active-stream flags)
+  "Read incoming headers and call ADD-HEADER callback for each header.
+
+Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
+flag is set.
+
+At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
+  (if (and (eq active-stream (car (get-streams (get-connection active-stream))))
+           (= 5 flags))         ; end-headers, end-straem
+      #'parse-simple-frames-header-end-all
+      (lambda (connection data &optional (start 0) (length (length data)))
+        (parse-header-frame* active-stream data connection flags start length))))
+
 (define-frame-type 1 :headers-frame
     "```
 
@@ -135,26 +156,10 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
     ;; writer
     nil
     ;; reader
-    (lambda (connection data active-stream flags)
-      "Read incoming headers and call ADD-HEADER callback for each header.
-
-Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
-flag is set.
-
-At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
-      (assert (zerop start))
-      (handler-case
-          (with-padding-marks (connection flags start end)
-                (when (get-flag flags :priority)
-                  (read-priority data active-stream start)
-                  (incf start 5))
-                (read-and-add-headers data active-stream start end flags flags))
-            (http-stream-error (e)
-              (format t "-> We close a stream due to ~a" e)
-              (values #'parse-frame-header 9)))))
+    nil)
 
 (defun write-simple-headers-frame
-       (stream headers &rest keys &key end-headers end-stream)
+    (stream headers &rest keys &key end-headers end-stream)
   "No priority, no padding.
     +-+-------------+-----------------------------------------------+
     |                   Header Block Fragment (*)                 ...
@@ -166,12 +171,10 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
    .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state."
   (declare (ignore end-stream end-headers))
-  (let ((length (reduce '+ (mapcar 'length headers))))
+  (let ((length (length headers)))
     (write-frame stream length +headers-frame+ keys
                  (lambda (buffer start headers)
-                   (when (cdr headers)
-                     (error "Multiple header groups not supported now."))
-                   (replace buffer (car headers) :start1 start))
+                   (replace buffer headers :start1 start))
                  headers)))
 
 (defun write-headers-frame
@@ -197,14 +200,12 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
            (if priority
                5
                0)
-           (reduce '+ (mapcar 'length headers)))))
+           (length headers))))
     (write-frame stream length +headers-frame+ keys
                  (lambda (buffer start headers priority)
-                   (when (cdr headers)
-                     (error "Multiple header groups not supported now."))
                    (if priority
                        (write-priority priority buffer start headers)
-                       (replace buffer (car headers) :start1 start)))
+                       (replace buffer headers :start1 start)))
                  headers priority)))
 
 (defun read-and-add-headers (data http-stream start end flags header-flags)
@@ -217,39 +218,25 @@ read.
 Note that END-STREAM is present in the first header flag, not in the
 continuation flags, if any, so must be separate."
   ;; FIXME: add handler for failure to read full header.
-  (loop
-    with end-headers = (get-flag flags :end-headers)
-    with connection = (get-connection http-stream)
-    with length = (- end start)
-    ;; 20240708 TODO: stream -> octets
-    with data-as-stream = (make-instance 'pipe-end-for-read :buffer data :index start
-                                                            :end end)
-    for to-backtrace = (get-index data-as-stream)
-    while (< (get-index data-as-stream) length)
-    for (name value) =
-                     (handler-case
-                         (read-http-header data-as-stream
-                                           (get-decompression-context connection))
-                       (end-of-file ()
-                         :test
-                         (if end-headers
-                             ;; 20240718 TODO: make class for this connection error
-                             (error "Incomplete headers: ~a" (subseq data to-backtrace end))
-                             (return
-                               (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
-                                       9)))))
-    when name
-      do (add-header connection http-stream name value)
-    finally
-       (when end-headers
-         ;; If the END_HEADERS bit is not set, this frame MUST be followed by
-         ;; another CONTINUATION frame.
-         (process-end-headers connection http-stream)
-         ;; 20240719 TODO: end stream is in headers frame only, not continuation
-         (maybe-end-stream header-flags http-stream))
-       (return (values (if end-headers #'parse-frame-header
-                           (read-continuation-frame-on-demand http-stream data end end header-flags))
-                       9))))
+  (let* ((connection (get-connection http-stream))
+         (end-headers (get-flag flags :end-headers))
+         (to-backtrace
+           (do-decoded-headers (lambda (name value)
+                                 (add-header connection http-stream name value))
+             (get-compression-context connection) data start end)))
+    (cond
+      ((and end-headers to-backtrace)
+       ;; 20240718 TODO: make class for this connection error
+       (error "Incomplete headers: ~a" (subseq data to-backtrace end)))
+      (end-headers
+       (process-end-headers connection http-stream)
+       (maybe-end-stream header-flags http-stream)
+       (values #'parse-frame-header 9))
+      (to-backtrace
+       (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
+               9))
+      (t
+       (error "TODO: Implement me nicely")))))
 
 (defun read-priority (data http-stream start)
   (let* ((e+strdep (aref/wide data start 4))
