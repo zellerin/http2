@@ -37,8 +37,6 @@
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
         #:http2/openssl #:cffi)
   (:nicknames #:http2/server/shared #:http2/server/poll #:http2/server/threaded)
-  #+nil  (:export #:start #:kill-server #:define-exact-handler #:handler #:server-socket-stream
-                  #:start-server-on-socket)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
 HANDLER macro to define content to serve."))
 

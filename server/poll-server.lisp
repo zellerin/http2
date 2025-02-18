@@ -27,8 +27,7 @@
     (:title "Polling server")
 #+nil  (client type)
   (@app-interface mgl-pax:section)
-  (@request-handling mgl-pax:section)
-  (@communication-setup mgl-pax:section))
+  (@request-handling mgl-pax:section))
 
 (mgl-pax:defsection @app-interface
     (:title "Interface to the application")
@@ -44,11 +43,9 @@
   (poll-timeout condition)
   (compute-poll-timeout-value function))
 
-(mgl-pax:defsection @communication-setup
-    (:title "HTTP2 handling"))
-
 (mgl-pax:defsection @request-handling
-    (:title "Client actions loop")
+    (:title "Client actions loop (implementation)"
+     :export nil)
   "Each client has a STATE that encapsulates what actions are effectively possible.
 SELECT-NEXT-ACTION selects appropriate action. When no new action is available,
 next client is handled and eventually POLL called when all clients were served.

@@ -20,10 +20,23 @@ simple client to fetch a resource or how to serve simple pages."
     (:title "HTTP2 in Common Lisp")
   (@overview section)
   (@tutorials section)
-  (http2/server::@server-reference section)
-  (http2/server/poll::@async-server section)
+  (@reference section)
+  (@implementation section)
   #+nil
   (http2/core::@lisp-stream-emulation section))
+
+(defsection @reference
+    (:title "More detailed API documentation")
+  (http2/server::@server-reference section))
+
+(defsection @implementation
+    (:title "Implementation details (not part of API)")
+
+  "Here are some notes that try to explain how are things implemented. If this is
+out of sync or if it does not make sense at all, fixing it is not a hight
+priority, and definitely not a blocker."
+  (http2/hpack::@hpack-api section)
+  (http2/server/poll::@async-server section))
 
 (defsection @test
     ()
@@ -90,13 +103,22 @@ and proper parameters.
      :uri-fragment "overview.html")
     (:objects (, @tutorials)
      :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
-                                             :git-version "v2-main")
+                                             :git-version "master")
      :uri-fragment "tutorials.html")
 
     (:objects (, @index)
      :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
-                                             :git-version "v2-main")
-     :uri-fragment "index.html")))
+                                             :git-version "master")
+     :uri-fragment "index.html")
+
+    (:objects (, @reference)
+     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+                                             :git-version "master")
+     :uri-fragment "reference.html")
+    (:objects (, @implementation)
+     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+                                             :git-version "master")
+     :uri-fragment "implementation.html")))
 
 (defun make-release-documentation ()
   "Make package documentation for the release:
@@ -107,15 +129,4 @@ and proper parameters.
 "
   (mgl-pax:update-asdf-system-readmes @overview "http2")
   (mgl-pax:update-asdf-system-html-docs @index "http2"
-                                        :pages (pages))
-  (mgl-pax:update-asdf-system-html-docs @overview "http2"
-                                        :pages `((:objects (, @tutorials)
-                                                  :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"
-                                                                                          :uri-format-string "~a/~*~A~*")))
-                                        :target-dir "/tmp/http2/")
-
-  (mgl-pax:update-asdf-system-html-docs @index "http2"
-                                        :pages `((:objects (, @index)
-                                                  :source-uri-fn ,(make-git-source-uri-fn "http2"  "file:///Users/zellerin/projects/http2/"
-                                                                                          :uri-format-string "~a/~*~A~*")))
-                                        :target-dir "/tmp/http2/"))
+                                        :pages (pages)))

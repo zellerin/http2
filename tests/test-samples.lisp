@@ -67,6 +67,7 @@
                   :state 'open)
    (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
    :end-headers t))
+
 
 ;;;; Payloads after an existing stream is created
 (defmacro with-new-stream ((stream-name) &body body)

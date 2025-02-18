@@ -11,32 +11,31 @@ For quick start, quickload "http2" and run
 #+begin_src lisp
   (http2/client:retrieve-url "https://example.com")
 #+end_src
-to fetch a HTTP/2 resource, or check [[https://doc.zellerin.cz/http2/tutorials.html][tutorials]] that show in more detail how to use the client or the server.
+to fetch a HTTP/2 resource, and
+#+begin_src lisp
+  (http2/server:start 8443)
+
+  (define-exact-handler "/" (send-text-handler "Hello World"))
+#+end_src
+to start an empty TLS server and serve a "Hello world" page.
+
+Check [[https://doc.zellerin.cz/http2/tutorials.html][tutorials]] that show in more detail how to use the client or the server.
 
 ** Status
-In quicklisp.
+In quicklisp. Documentation on [[https://docs.zellerin.cz/http2/][separate page]].
 
-Tested primarily on sbcl, occasionally on ecl. Clisp should work for the client,
-for server there are obvious limitations due to lack of threads
+Implements both thread-per-client and poll-based single threaded server (that may be actually faster).
+
+Tested primarily on sbcl, occasionally on ecl.
 
 Almost all parts of the listed standards implemented, not necessary documented or declared stable
 
-The current major version, 2.x.x., had a major internal rewrite can be
-considered stable with regard to the interface - that means, interface as
-documented in tutorials should not change in backward incompatible ways. The
-non-documented internal parts may. The documentation of some other API parts is
-being planned.
-
 ** Missing pieces
-- No handling of priorities is implemented. This is more or lessOK, as these are
+- No handling of priorities is implemented. This is more or less OK, as these are
   only suggestions, and they are more or less dropped in RFC9113 anyway. But
   nothing from RFC9218 is implemented neither (except for the setting).
 - Push promises are not implemented in the client. This is OK, they are disabled
   by default (settings)
-- Option to encode headers to /Literal Header Field Never Indexed/ format is not
-  implemented. This is simple to do, but interface would need to be though out.
-- The algorithm to split data being sent out to windows and frames can be
-  confused sometimes
 - The MAX-HEADER-LIST-SIZE limit is not enforced, but it is declared as an
   advisory setting anyway.
 - Some checks on behaviour of the peer are not enforced

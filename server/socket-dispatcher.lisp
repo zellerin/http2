@@ -34,8 +34,7 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
 (defgeneric start-server-on-socket (dispatcher socket)
   (:method (dispatcher listening-socket)
     (usocket:with-server-socket (socket listening-socket)
-      (loop
-        (do-new-connection listening-socket dispatcher))))
+      (loop (do-new-connection listening-socket dispatcher))))
   (:method ((dispatcher detached-server-mixin) socket)
     (values (bordeaux-threads:make-thread
              #'call-next-method

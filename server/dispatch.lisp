@@ -235,7 +235,6 @@ optionally provides CONTENT with CONTENT-TYPE."
       (when content
         (princ content out)))))
 
-
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      dispatcher-mixin
@@ -337,27 +336,18 @@ signalled."
 
 Returns two values with a detached (see below) dispatcher, which is default:
 
-- thread with the server (to be able to close the server). The specific object
-  returned is subject to change, what is guaranteed is that it is suitable
-  parameter for STOP.
-
+- Server instance (that is appropriate parameter for stop)
 - base url of the server (most useful when PORT was 0 - any free port)
 
 With a non-detached dispatcher the value is not specified.
 
 DISPATCHER parameter sets the dispatcher to use for the server. Dispatchers
 determine how are new requests handled. Presently there are several sets of
-dispatchers defined:
+dispatchers defined, see @DISPATCHERS
 
-- POLL-DISPATCHER and DETACHED-POLL-DISPATCHER use polling interface that uses openssl directly,
-- TLS-THREADED-DISPATCHER and DETACHED-TLS-THREADED-DISPATCHER use thread per connection and use CL+SSL,
-- TLS-SINGLE-CLIENT-DISPATCHER and DETACHED-TLS-SINGLE-CLIENT-DISPATCHER handle one connection at time
-  in a single thread using CL+SSL and is simplest of these.
 
 Detached variants run the server in a separate thread and returns immediately
 after opening the socket.
-
-There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors.
 
 Value of *VANILLA-SERVER-DISPATCHER* is not specified (set it if you care) but
 should be presently best detached dispatcher.
@@ -380,13 +370,43 @@ respective parameters try to locate the files."
 
 (defsection @server-reference
     (:title "Server API reference")
-  (*vanilla-server-dispatcher* (variable nil))
-  (tls-single-client-dispatcher class)
-  (detached-tls-single-client-dispatcher class)
+  (@dispatchers section))
+
+(defsection @dispatchers
+    (:title "Server classes")
+  "The server behaviour is defined by used dispatcher (server class). The class is
+specified as a parameter to the START function."
+  "The dispatcher should be a subclass of the BASE-DISPATCHER and can use predefined mixins to specify:
+
+- How to handle multiple connections (THREADED-DISPATCHER, POLL-DISPATCHER-MIXIN, SINGLE-CLIENT-DISPATCHER)
+- For threaded dispatcher to add TLS wrapping (TLS-DISPATCHER-MIXIN)
+- To run the server in separate thread (DETACHED-SERVER-MIXIN).
+
+Some predefined combinations are below."
+  (poll-dispatcher class)
+  (detached-poll-dispatcher class)
   (detached-tls-threaded-dispatcher class)
   (tls-threaded-dispatcher class)
-  (poll-dispatcher class)
-  (detached-poll-dispatcher class))
+  (tls-single-client-dispatcher class)
+  (detached-tls-single-client-dispatcher class)
+  (*vanilla-server-dispatcher* (variable nil))
+  (@server-mixins section))
+
+(defsection @server-mixins
+    (:title "Server mixins and component classes")
+  (base-dispatcher class)
+  (threaded-dispatcher class)
+  (poll-dispatcher-mixin class)
+  (single-client-dispatcher class)
+  (tls-dispatcher-mixin class)
+  (detached-server-mixin class))
+
+"-  use polling interface that uses openssl directly,
+- TLS-THREADED-DISPATCHER and DETACHED-TLS-THREADED-DISPATCHER use thread per connection and use CL+SSL,
+- TLS-SINGLE-CLIENT-DISPATCHER and DETACHED-TLS-SINGLE-CLIENT-DISPATCHER handle one connection at time
+  in a single thread using CL+SSL and is simplest of these.
+
+There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors."
 
 (defun run (port &rest pars &key certificate-file private-key-file)
   "Run a default HTTP/2 server on PORT on foreground."

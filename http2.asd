@@ -81,8 +81,9 @@
   :version "2.0.1"
   :depends-on ("http2/client" "http2/server" "http2/server/poll")
   :components ((:file "overview"))
-  :description "Load this system to load all HTTP/2 components - in particular, both client and
-server."
+  :description "Otherwise empty system that depends on - and thus loads when loaded - both HTTP/2 client and HTTP/2 server.
+
+The system also supports TEST-OP to run the test suite."
   :properties ((:readme-section (@overview)))
   :in-order-to ((test-op (test-op "http2/test"))))
 
