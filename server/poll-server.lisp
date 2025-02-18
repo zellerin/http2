@@ -45,11 +45,7 @@
   (compute-poll-timeout-value function))
 
 (mgl-pax:defsection @communication-setup
-    (:title "HTTP2 handling")
-  (make-client-object function)
-  (process-header function)
-  (ignore-bytes function)
-  (print-goaway-frame function))
+    (:title "HTTP2 handling"))
 
 (mgl-pax:defsection @request-handling
     (:title "Client actions loop")
@@ -773,44 +769,3 @@ from C code."
         ((/= read octets)
          (error "Read ~d octets. This is not enough octets, why?~%~s~%" read (subseq vec 0 read)))
         (t (run-user-callback client vec))))))
-
-(defun print-goaway-frame (client frame)
-  (unless (every #'zerop  (subseq frame 4 8))
-    (write-line "Got goaway:")
-    (format t "Error code: ~s, last stream ~s" (subseq frame 4 8)
-            (subseq frame 0 4))
-    (write-line (map 'string 'code-char frame) *standard-output* :start 8)
-    (set-next-action client #'process-header 9)))
-
-(defun process-header (client header)
-  "Process 9 octets as a HTTP2 frame header."
-  (http2/core:parse-frame-header client header))
-
-(defun really-ignore-bytes (client vec count)
-  (let ((size (- (client-octets-needed client))))
-    (if (plusp size)
-      (ssl-read client vec (min size count))
-      0)))
-
-(defun really-ignore (client vec from to)
-  "Ignore COUNT bytes.
-
-It means, account for COUNT bytes to ignore in OCTETS-NEEDED slot and if done,
-process to read the next header."
-  (declare (ignorable client vec))
-
-  (when (zerop (incf (client-octets-needed client) (- to from)))
-    (set-next-action client #'process-header 9)
-    (on-complete-ssl-data client))
-  (- to from))
-
-(defun pull-from-ignore (client) ; name me
-  (pull-push-bytes (get-client client)
-                   #'really-ignore-bytes
-                   #'really-ignore))
-
-(defun ignore-bytes (client count)
-  (if (zerop count)
-      (set-next-action client #'process-header 9)
-      (set-next-action client #'pull-from-ignore (- count)))
-  t)
