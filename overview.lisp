@@ -26,8 +26,7 @@ simple client to fetch a resource or how to serve simple pages."
   (http2/core::@lisp-stream-emulation section))
 
 (defsection @reference
-    (:title "More detailed API documentation")
-  (http2/server::@server-reference section))
+    (:title "More detailed API documentation"))
 
 (defsection @implementation
     (:title "Implementation details (not part of API)")
@@ -36,6 +35,7 @@ simple client to fetch a resource or how to serve simple pages."
 out of sync or if it does not make sense at all, fixing it is not a hight
 priority, and definitely not a blocker."
   (http2/hpack::@hpack-api section)
+  (http2/server::@server-reference section)
   (http2/server/poll::@async-server section))
 
 (defsection @test
@@ -96,8 +96,8 @@ and proper parameters.
                               (request-headers :GET (puri:uri-path (puri:parse-uri url))
                                                (puri:uri-host (puri:parse-uri url)))
                               :end-stream t))
-```
-")
+```")
+
 (defun pages ()
   `((:objects (, @overview)
      :uri-fragment "overview.html")
