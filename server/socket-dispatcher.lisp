@@ -1,4 +1,4 @@
-(in-package http2/server)
+(in-package #:http2/server/shared)
 
 ;;; This is adapted from TLS-SERVER experiments package with some changes,
 ;;; biggest one being replacement of keywords with a class hierarchy.
@@ -40,7 +40,9 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
              :name "HTTP(s) server thread")
             socket)))
 
-(defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher)
+(defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher
+  "Default value of the server dispatcher. One of DETACHED-TLS-THREADED-DISPATCHER
+ot POLL-DISPATCHER")
 (defvar *vanilla-host* "localhost")
 
 (defun find-private-key-file (hostname)

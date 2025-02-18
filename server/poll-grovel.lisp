@@ -1,4 +1,4 @@
-(in-package #:http2/server/cffi)
+(in-package #:http2/server/poll)
 
 (include "poll.h")
 (include "fcntl.h")

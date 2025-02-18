@@ -1,3 +1,4 @@
+;;;; Copyright (C) 2023-2025 by Tomas Zellerin
 
 (in-package http2/core)
 
@@ -93,6 +94,41 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 (defstruct priority
   "Structure capturing stream priority parameters." exclusive stream-dependency weight)
 
+(defun parse-header-frame* (active-stream data connection flags start length)
+  (handler-case
+      (with-padding-marks (connection flags start end)
+        (when (get-flag flags :priority)
+          (read-priority data active-stream start)
+          (incf start 5)
+          (when (< start end)
+            (connection-error 'frame-too-small-for-priority connection)))
+        (read-and-add-headers data active-stream start end flags flags))
+    (http-stream-error (e)
+      (format t "-> We close a stream due to ~a" e)
+      (values #'parse-frame-header 9))))
+
+(defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
+  (handler-case
+      (read-and-add-headers data (car (get-streams connection)) start end 5 5)
+    (http-stream-error (e)
+      (format t "-> We close a stream due to ~a" e)
+      (values #'parse-frame-header 9)))
+  ;; or just
+  #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
+
+(defun parse-headers-frame  (active-stream flags)
+  "Read incoming headers and call ADD-HEADER callback for each header.
+
+Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
+flag is set.
+
+At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
+  (if (and (eq active-stream (car (get-streams (get-connection active-stream))))
+           (= 5 flags))         ; end-headers, end-straem
+      #'parse-simple-frames-header-end-all
+      (lambda (connection data &optional (start 0) (length (length data)))
+        (parse-header-frame* active-stream data connection flags start length))))
+
 (define-frame-type 1 :headers-frame
     "```
 
@@ -120,28 +156,10 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
     ;; writer
     nil
     ;; reader
-    (lambda (connection data active-stream flags)
-      "Read incoming headers and call ADD-HEADER callback for each header.
-
-Call PROCESS-END-HEADERS and PEER-ENDS-HTTP-STREAM (in this order) if relevant
-flag is set.
-
-At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
-      (handler-case
-          (with-padding-marks (connection flags start end)
-            (when (get-flag flags :priority)
-              (read-priority data active-stream start)
-              (incf start 5)
-              (when (< start end)
-                (connection-error 'frame-too-small-for-priority connection)))
-            (read-and-add-headers data active-stream start end flags flags))
-
-        (http-stream-error (e)
-          (format t "-> We close a stream due to ~a" e)
-          (values #'parse-frame-header 9)))))
+    nil)
 
 (defun write-simple-headers-frame
-       (stream headers &rest keys &key end-headers end-stream)
+    (stream headers &rest keys &key end-headers end-stream)
   "No priority, no padding.
     +-+-------------+-----------------------------------------------+
     |                   Header Block Fragment (*)                 ...

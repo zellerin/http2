@@ -43,44 +43,43 @@
                 :components ((:file "stream-based-connections")
                              (:file "payload-streams")))))
 
-(defsystem "http2/tls"
-  :description "Glue to wrap HTTP/2 client or server with TLS"
-  :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :license  "MIT"
-  :serial t
-  :pathname "tls"
-  :depends-on ("cl+ssl" "http2/stream-based" "bordeaux-threads" "http2/openssl")
-  :components ((:file "server"))
-                                        ;:in-order-to ((test-op (test-op "http2/test")))
-  )
-
 (defsystem "http2/client"
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.0"
+  :version "2.0.1"
   :serial t
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
   :components ((:file "client-utils")
                (:FILE "client")))
 
-(defsystem "http2/server"
+(defsystem "http2/server/shared"
   :description "An example of http/2 server"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.0"
   :serial t
   :pathname "server"
   ;; FIXME: is /tls really needed?
-  :depends-on ("puri" "http2/tls")
+  :depends-on ("puri" #+nil "http2/tls" "http2/core" "http2/stream-based" "http2/openssl")
   :components ((:file "socket-dispatcher")
-               (:file "scheduler")
-               (:file "dispatch")))
+               (:file "dispatch")
+               (:file "scheduler")))
+
+(defsystem "http2/server/threaded"
+  :description "An example of http/2 server"
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :license  "MIT"
+  :serial t
+  :pathname "server"
+  :depends-on ("puri" "http2/server/shared")
+  :components ((:file "../tls/server")
+               (:file "threaded")))
+
 
 (defsystem "http2"
-  :version "2.0.0"
-  :depends-on ("http2/client" "http2/server")
+  :version "2.0.1"
+  :depends-on ("http2/client" "http2/server" "http2/server/poll")
   :components ((:file "overview"))
   :description "Load this system to load all HTTP/2 components - in particular, both client and
 server."
@@ -110,19 +109,29 @@ Run these patterns against servers."
 (defsystem "http2/openssl"
   :version "0.1"
   :defsystem-depends-on ("cffi-grovel")
-  :depends-on ("cffi" "mgl-pax")
+  :depends-on ("cffi" "mgl-pax" "anaphora" "cl+ssl")
   :pathname "tls"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
-  :components ((:file "package")
-               (:cffi-grovel-file "openssl-grovel")
+  :components ((:file "../package") (:cffi-grovel-file "openssl-grovel")
                (:file "openssl")))
 
-(asdf:defsystem "http2/poll-server"
+(asdf:defsystem "http2/server/poll"
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :serial t
-  :depends-on ("mgl-pax" "puri" "http2/server" "http2/openssl")
+  :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl")
+  :pathname "server"
+  :components ((:cffi-grovel-file "poll-grovel")
+               (:file "poll-openssl")
+               (:file "poll-server")))
+
+(asdf:defsystem "http2/server"
+  :description "Asyncronous polling implementations of HTTP2 server."
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :version "2.0.1"
+  :serial t
+  :depends-on ("http2/server/threaded" "http2/server/poll")
   :pathname "server"
   :components ((:cffi-grovel-file "poll-grovel")
                (:file "poll-openssl")

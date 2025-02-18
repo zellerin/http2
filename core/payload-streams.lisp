@@ -81,7 +81,7 @@ to sent. Tracks DATA to sent and number of octets actually SENT."))
       ;; Should we handle also RST on send?
       (unless (eq 'closed state)
         (write-data-frame base-http2-stream output-buffer :end-stream t)
-        (force-output (get-network-stream connection)))))
+#+not-suitable-for-some        (force-output (get-network-stream connection)))))
 
 (defmethod trivial-gray-streams:stream-force-output ((stream payload-output-stream))
   (with-output-payload-slots stream
