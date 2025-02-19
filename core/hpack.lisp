@@ -304,7 +304,7 @@ Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
 
 - NO-INDEX indicates that it should be stored in the dynamic table (if possible), should not, or use the NEVER encoding (value :never),
 - HUFFMAN to use huffman encoding"
-  (declare ((or null hpack-context) context))
+  (declare (type (or null hpack-context) context))
   (loop
     with res = (make-array 0 :fill-pointer 0 :adjustable t)
     initially (when context
