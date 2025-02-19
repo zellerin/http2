@@ -538,8 +538,7 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
 (defclass poll-server-connection (server-http2-connection
-                                   dispatcher-mixin
-                                   threaded-server-mixin)
+                                   dispatcher-mixin)
   ((client :accessor get-client :initarg :client))
   (:default-initargs :stream-class 'vanilla-server-stream))
 
@@ -681,7 +680,7 @@ Default means an indefinite wait.")
         (let* ((s-mem (bio-s-mem))
                ;; FIXME: if *clients* was bound, it cannot be easily observed from
                ;; monitoring;
-               #+(or) (*clients* nil)
+               (*clients* nil)
                (*empty-fdset-items* (alexandria:iota (1- fdset-size) :start 1))
                (poll-timeout (compute-poll-timeout-value poll-timeout))
                (no-client-poll-timeout (compute-poll-timeout-value no-client-poll-timeout)))
@@ -714,7 +713,8 @@ poll (miliseconds or -1)"
                            :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
    (nagle                  :accessor get-nagle                  :initarg :nagle))
   (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
-                     :no-client-poll-timeout *no-client-poll-timeout*)
+                     :no-client-poll-timeout *no-client-poll-timeout*
+                     :nagle *nagle*)
   (:documentation
    "Uses poll to listen to a set of clients and handle arriving packets in a single
 thread.
@@ -744,7 +744,7 @@ them).
 This in the end does not use usocket, async nor cl+ssl - it is a direct rewrite
 from C code."
 
-  (let ((*nagle* *nagle*))
+  (let ((*nagle* (get-nagle dispatcher)))
     (serve-tls socket dispatcher))
   ;; there is an outer loop in create-server that we want to skip
   (invoke-restart 'kill-server))
