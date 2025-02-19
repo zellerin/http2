@@ -366,12 +366,6 @@ Then write the initial settings frame, and expect normal frame. Actually, this s
   (write-sequence +client-preface-start+ (get-network-stream connection))
   (write-settings-frame connection (get-settings connection)))
 
-;;;; network comm simplifications
-(defmethod close ((connection http2-connection) &key &allow-other-keys)
-  (break "This should not happen")
-  (when (get-network-stream connection)
-    (close (get-network-stream connection))))
-
 
 (defsection @old-frame-functions
     (:title "Read frames from Common Lisp streams")
