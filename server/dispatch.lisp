@@ -104,7 +104,7 @@ peer. Must be called from inside of HANDLER macro."
   (declare (ignore code debug-data))
   (error "SEND-GOAWAY must be used inside HANDLER macro."))
 
-(defclass dispatcher-mixin ()
+(defclass routing-mixin ()
   ((exact-handlers  :accessor get-exact-handlers  :initarg :exact-handlers)
    (prefix-handlers :accessor get-prefix-handlers :initarg :prefix-handlers))
   (:default-initargs :exact-handlers nil :prefix-handlers nil)
@@ -237,7 +237,7 @@ optionally provides CONTENT with CONTENT-TYPE."
 
 ;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
-                                     dispatcher-mixin
+                                     routing-mixin
                                      threaded-server-mixin
                                      stream-based-connection-mixin)
   ()

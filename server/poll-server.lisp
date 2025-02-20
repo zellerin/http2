@@ -538,9 +538,10 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
 (defclass poll-server-connection (server-http2-connection
-                                   dispatcher-mixin)
+                                   routing-mixin)
   ((client :accessor get-client :initarg :client))
-  (:default-initargs :stream-class 'vanilla-server-stream))
+  (:default-initargs :stream-class 'vanilla-server-stream)
+  (:documentation "The poll server connection has a client object and send data to it."))
 
 (defmethod http2/core:queue-frame ((connection poll-server-connection) frame)
   (send-unencrypted-bytes (get-client connection) frame nil))
