@@ -418,8 +418,9 @@ There are also non-TLS variants of the -TLS- dispatchers to simplify finding err
 
 ;;;; TLS dispatcher
 (defclass tls-dispatcher-mixin (certificated-dispatcher)
-  ((tls              :reader   get-tls              :initform :tls
-                     :allocation :class))
+  ()
   (:documentation
    "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,
 and START-SERVER-ON-SOCKET to use a context created by MAKE-HTTP2-TLS-CONTEXT."))
+
+(defmethod get-tls  ((dispatcher tls-dispatcher-mixin)) t)

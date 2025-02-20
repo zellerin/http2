@@ -105,7 +105,8 @@ Run these patterns against servers."
                (:file "test-samples")
                (:file "errors-lowlevel")
                (:file "high-level")
-               (:file "tests-hpack")))
+               (:file "tests-hpack")
+               (:file "server")))
 
 (defsystem "http2/openssl"
   :version "0.1"
