@@ -12,11 +12,11 @@
 (deftest client-server-match ()
   "Run server, fetch a response from it."
   (multiple-value-bind (response code)
-      (multiple-value-bind (thread url)
+      (multiple-value-bind (dispatcher url)
           (start 0)
         (unwind-protect
              (retrieve-url url)
-          (bordeaux-threads:destroy-thread thread)))
+          (stop dispatcher)))
     (is (= code 404))
     (is (search "Not found" response))))
 
@@ -31,11 +31,11 @@
 (deftest tutorial-server-content ()
   "Run server, fetch a response from it."
   (multiple-value-bind (response code)
-      (multiple-value-bind (thread url)
+      (multiple-value-bind (dispatcher url)
           (start 0)
         (unwind-protect
              (retrieve-url (puri:merge-uris "/hello-world" url))
-          (bordeaux-threads:destroy-thread thread)))
+          (stop dispatcher)))
     (is (= code 200))
     (is (search "Hello World, this is random" response))))
 
@@ -54,7 +54,7 @@
 (deftest tutorial-client-parameters ()
   "Run server, fetch a response from it."
   (dolist (dispatcher '(detached-tls-threaded-dispatcher http2/server::detached-poll-dispatcher))
-    (multiple-value-bind (thread url)
+    (multiple-value-bind (dispatcher url)
         (start 0 :dispatcher dispatcher)
       (unwind-protect
            (progn
@@ -68,4 +68,4 @@
                                :content #(1 2 3))
                (is (= code 200))
                (is (equal response "POST request;  ((\"content-type\" . \"application/octet-stream\")); #(1 2 3)"))))
-        (bordeaux-threads:destroy-thread thread)))))
+        (stop dispatcher)))))
