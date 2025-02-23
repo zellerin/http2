@@ -38,6 +38,8 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
     (with-slots (name url) server
       (format out "~a~@[ on ~a~]" name url))))
 
+(defvar *vanilla-host* "localhost")
+
 (defgeneric start-server-on-socket (dispatcher socket)
   (:method (dispatcher listening-socket)
     (usocket:with-server-socket (socket listening-socket)
@@ -53,7 +55,6 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
 (defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher
   "Default value of the server dispatcher. One of DETACHED-TLS-THREADED-DISPATCHER
 ot POLL-DISPATCHER")
-(defvar *vanilla-host* "localhost")
 
 (defun find-private-key-file (hostname)
   "Find the private key for HOSTNAME or create it.

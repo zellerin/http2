@@ -16,7 +16,7 @@
 (constant (f-getfl "F_GETFL"))
 (constant (o-nonblock "O_NONBLOCK"))
 (constant (tcp-nodelay "TCP_NODELAY"))
-(constant (tcp-cork "TCP_CORK"))
+#+unused (constant (tcp-cork "TCP_CORK"))
 (constant (ipproto-tcp "IPPROTO_TCP"))
 
 (constant (c-pollin "POLLIN"))

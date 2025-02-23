@@ -9,6 +9,11 @@
 
 (defvar *payloads* (make-hash-table))
 
+(defstruct (payload (:print-object (lambda (object stream) (format stream "<Payload: ~a>" (get-first-line (payload-documentation object))))))
+  (documentation "N/A" :type string)
+  (code (make-octet-buffer 0) :type (or octet-vector compiled-function))
+  (test (constantly nil) :type compiled-function))
+
 (defun get-test-sample-code (name)
   (http2/core::payload-code (gethash name *payloads*)))
 
@@ -16,13 +21,8 @@
   (with-input-from-string (in text)
     (read-line in)))
 
-(defstruct (payload (:print-object (lambda (object stream) (format stream "<Payload: ~a>" (get-first-line (payload-documentation object))))))
-  (documentation "N/A" :type string)
-  (code (make-octet-buffer 0) :type (or octet-vector compiled-function))
-  (test (constantly nil) :type compiled-function))
-
 (defmacro define-static-test-payload (name (&optional (connection-name) (error-name name))
-                               &body body)
+                                      &body body)
   `(setf (gethash ',name *payloads* )
          (make-payload
           :documentation ,(if (stringp (car body)) (pop body) "N/A")

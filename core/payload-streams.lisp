@@ -124,6 +124,16 @@ Return new START."
 
            (read-again ())))))
 
+
+(define-condition window-is-closed (condition)
+  ((start :accessor get-start :initarg :start)
+   (data  :accessor get-data  :initarg :data)))
+
+(defmethod print-object ((o window-is-closed) stream)
+  (with-slots (start data) o
+    (print-unreadable-object (o stream)
+      (format o "at ~d of ~d" start (length data)))))
+
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream payload-output-stream) sequence start end &key)
   (with-output-payload-slots stream
@@ -138,6 +148,7 @@ Return new START."
         for frame-size = (http2/core::get-max-peer-frame-size connection)
         while (and (>= total-length frame-size))
         do
+           (signal 'window-is-closed :start start :data sequence)
            (wait-for-window-is-at-least-frame-size connection base-http2-stream)
            (setf start (send-data stream  sequence start
                                   (- frame-size (length output-buffer))))

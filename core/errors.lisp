@@ -46,7 +46,8 @@
   (too-big-frame condition)
   (frame-too-small-for-priority condition)
   (go-away condition)
-  (do-goaway generic-function))
+  (do-goaway generic-function)
+  (h2-not-supported-by-server condition))
 
 (define-condition go-away (serious-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code)
