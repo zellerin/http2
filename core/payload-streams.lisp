@@ -54,23 +54,33 @@ enough to send the data as a data frame on BASE-HTTP2-STREAM (or forced to by cl
   (:documentation "Signalled when data are to be sent and there is not big enough window available
 to sent. Tracks DATA to sent and number of octets actually SENT."))
 
+(defun send-buffer-to-peer (output-buffer peer-window-size stream connection)
+  (loop while (< peer-window-size (length output-buffer))
+        ;; we want to send more than window allows, so lets wait for more
+        ;; window
+        ;; this assumes that the client will not shrink the window too much.
+        do (read-frame connection))
+  (write-data-frame stream output-buffer)
+  (setf (fill-pointer output-buffer) 0))
+
 (defmethod trivial-gray-streams:stream-write-byte ((stream payload-output-stream) byte)
+  "Write an octet to the output buffer.
+
+Special cases:
+
+- Buffer is full -> warn and do nothing (FIXME: handle it somehow)
+- Buffer contains more that max peer frame size octets -> send the data out "
   (with-output-payload-slots stream
     (if (< (fill-pointer output-buffer) (array-dimension output-buffer 0))
         (vector-push byte output-buffer)
         (warn "Not enough space in buffer: ~d<~d"
               (fill-pointer output-buffer) (array-dimension output-buffer 0)))
-    (when (>= (min (fill-pointer output-buffer))
+    (when (>= (fill-pointer output-buffer)
               (http2/core::get-max-peer-frame-size connection))
-      (loop while (<  (min peer-window-size
-                           (http2/core::get-peer-window-size connection))
-                      (length output-buffer))
-            ;; we want to send more than window allows, so lets wait for more
-            ;; window
-            ;; this assumes that the client will not shrink the window too much.
-            do (read-frame connection))
-      (write-data-frame base-http2-stream output-buffer)
-      (setf (fill-pointer output-buffer) 0))))
+      (send-buffer-to-peer output-buffer
+                           (min peer-window-size
+                                (http2/core::get-peer-window-size connection))
+                           base-http2-stream connection))))
 
 (defmethod close ((stream payload-output-stream) &key &allow-other-keys)
   (with-output-payload-slots stream
