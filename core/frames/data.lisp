@@ -37,19 +37,25 @@ frame from START to END.")
       (write-window-update-frame connection (length data))
       (write-window-update-frame stream (length data)))))
 
+(defclass flow-control-mixin ()
+  ((window-size      :accessor get-window-size      :initarg :window-size)
+   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size)
+   (window-open-fn   :accessor get-window-open-fn   :initarg :window-open-fn
+                     :initform nil))
+  (:documentation
+   "The flow control parameters that are kept both per-stream and per-connection."))
+
 (defgeneric apply-window-size-increment (object increment)
   (:documentation
    "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
 the strem or connection.")
   (:method ((object (eql :closed)) increment))
   (:method (object increment)
-    (incf (get-peer-window-size object) increment)))
-
-(defclass flow-control-mixin ()
-  ((window-size      :accessor get-window-size      :initarg :window-size)
-   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size))
-  (:documentation
-   "The flow control parameters that are kept both per-stream and per-connection."))
+    (incf (get-peer-window-size object) increment))
+  (:method :after ((object flow-control-mixin) increment)
+    (with-slots (window-open-fn) object
+      (when window-open-fn
+        (funcall window-open-fn)))))
 
 (define-frame-type 0 :data-frame
     "```

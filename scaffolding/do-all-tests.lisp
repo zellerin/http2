@@ -7,5 +7,6 @@
             'ql::system-definition-searcher))
 
 (asdf:load-asd (truename "./http2.asd"))
-
-(asdf:test-system :http2)
+(asdf:load-system "mgl-pax")
+(asdf:load-system "http2")
+(asdf:test-system "http2")

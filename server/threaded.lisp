@@ -29,8 +29,7 @@
                  (http2/server::process-server-stream stream
                                                       :connection
                                                       (apply #'make-instance (get-connection-class dispatcher)
-                                                             (get-connection-args dispatcher)
-                                                       )))
+                                                             (get-connection-args dispatcher))))
              (kill-client-connection () nil))))) ; FIXME:
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
