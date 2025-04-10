@@ -149,6 +149,8 @@ We should also limit allowed ciphers, but we do not.")
         (ssl-ctx-use-private-key-file context private-key-file +ssl-filetype-pem+)
         (unless (= 1 (ssl-ctx-check-private-key context))
           (error "server private/public key mismatch"))
+        ;; TODO: we could check that hostname is compatible with the certificate
+        ;; and warn if not.
         context))))
 
 (defmacro with-ssl-context ((ctx dispatcher) &body body)
