@@ -138,3 +138,12 @@ Run these patterns against servers."
   :components ((:cffi-grovel-file "poll-grovel")
                (:file "poll-openssl")
                (:file "poll-server")))
+
+(asdf:defsystem "http2/server/demo"
+  :description "Asyncronous polling implementations of HTTP2 server."
+  :author "Tomáš Zellerin <tomas@zellerin.cz>"
+  :version "2.0.1"
+  :serial t
+  :depends-on ("http2/server" "cl-who" "parenscript" "let-over-lambda")
+  :pathname "server"
+  :components ((:file "demo")))
