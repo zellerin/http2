@@ -79,7 +79,7 @@ to sent. Tracks DATA to sent and number of octets actually SENT."))
       ;; larger than the window.
 
       ;; Should we handle also RST on send?
-      (unless (eq 'closed state)
+      (unless (eq 'http2/core::closed state)
         (write-data-frame base-http2-stream output-buffer :end-stream t)
 #+not-suitable-for-some        (force-output (get-network-stream connection)))))
 
