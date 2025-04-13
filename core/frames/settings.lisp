@@ -28,7 +28,7 @@ The setting relates to the CONNECTION. NAME is a keyword symbol (see
 
   (:method (connection (name (eql :header-table-size)) value)
     (declare (type (unsigned-byte 32) value))
-    (let ((context (get-compression-context connection)))
+    (let ((context (get-decompression-context connection)))
       (when (< value (the (unsigned-byte 32) (get-dynamic-table-size context)))
         (update-dynamic-table-size context value))
       (push value (get-updates-needed context))))

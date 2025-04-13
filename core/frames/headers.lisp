@@ -104,14 +104,14 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
             (connection-error 'frame-too-small-for-priority connection)))
         (read-and-add-headers data active-stream start end flags flags))
     (http-stream-error (e)
-      (format t "-> We close a stream due to ~a" e)
+      (format t "We close a stream due to ~a~%" e)
       (values #'parse-frame-header 9))))
 
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
   (handler-case
       (read-and-add-headers data (car (get-streams connection)) start end 5 5)
     (http-stream-error (e)
-      (format t "-> We close a stream due to ~a" e)
+      (format t "We close a stream due to ~a~%" e)
       (values #'parse-frame-header 9)))
   ;; or just
   #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
@@ -223,7 +223,7 @@ continuation flags, if any, so must be separate."
          (to-backtrace
            (do-decoded-headers (lambda (name value)
                                  (add-header connection http-stream name value))
-             (get-compression-context connection) data start end)))
+             (get-decompression-context connection) data start end)))
     (cond
       ((and end-headers to-backtrace)
        ;; 20240718 TODO: make class for this connection error
