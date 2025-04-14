@@ -49,7 +49,7 @@
                   (values 0  'has-data-to-encrypt 'can-write-ssl))
                  ((= status ssl-error-zero-return)
                   (warn "Peer send close notify alert. One possible cause - it does not like our certificate")
-                  (signal 'done))
+                  (signal 'http2/server/poll::done))
                  (t (error "SSL write failed, status ~d" status))))))))
 
 (defun bio-should-retry (wbio)
