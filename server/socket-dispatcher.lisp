@@ -29,17 +29,26 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (maybe-create-certificate function))
 
 (defclass detached-server-mixin ()
-  ())
+  ((thread :accessor get-thread :initarg :thread)
+   (name   :accessor get-name   :initarg :name))
+  (:default-initargs :name "HTTP/2 server"))
+
+(defmethod print-object ((server detached-server-mixin) out)
+  (print-unreadable-object (server out :type t)
+    (with-slots (name url) server
+      (format out "~a~@[ on ~a~]" name url))))
 
 (defgeneric start-server-on-socket (dispatcher socket)
   (:method (dispatcher listening-socket)
     (usocket:with-server-socket (socket listening-socket)
       (loop (do-new-connection listening-socket dispatcher))))
   (:method ((dispatcher detached-server-mixin) socket)
-    (values (bordeaux-threads:make-thread
-             #'call-next-method
-             :name "HTTP(s) server thread")
-            socket)))
+    (with-slots (thread name) dispatcher
+      (setf (get-url dispatcher) (url-from-socket socket *vanilla-host* (get-tls dispatcher))
+            thread (bordeaux-threads:make-thread
+                    #'call-next-method
+                    :name name)))
+    (values dispatcher socket)))
 
 (defvar *vanilla-server-dispatcher* 'detached-tls-threaded-dispatcher
   "Default value of the server dispatcher. One of DETACHED-TLS-THREADED-DISPATCHER
@@ -98,7 +107,9 @@ the dispatcher."
                                                      :reuse-address t
                                                      :element-type '(unsigned-byte 8))))
         (start-server-on-socket dispatcher listening-socket))
-    (kill-server (&optional value) :report "Kill server" value)))
+    (kill-server (&optional value) :report "Kill server"
+      (setf (get-url dispatcher) nil)
+      value)))
 
 (defun url-from-socket (socket host tls)
   "Return URL that combines HOST with the port of the SOCKET.
@@ -186,7 +197,8 @@ connection depending on the dispatch method.")
   ((tls              :reader   get-tls
                      :initform nil               :allocation :class)
    (connection-class :accessor get-connection-class :initarg  :connection-class)
-   (connection-args  :accessor get-connection-args  :initarg  :connection-args))
+   (connection-args  :accessor get-connection-args  :initarg  :connection-args)
+   (url              :accessor get-url              :initarg  :url))
   (:default-initargs
    :connection-class 'vanilla-server-connection
    :connection-args nil))

@@ -2,15 +2,7 @@
 
 (in-package :http2/server/shared)
 
-(defsection @server
-    (:title "Starting HTTP/2 server")
-  "Start server on foreground with RUN, or on background with START.
-
-This creates (as of this version) a multithreaded server that serves 404 Not
-found responses on any request."
-  (run function)
-  (start function))
-
+
 (defsection @server-content
     (:title "Define content for HTTP/2 server")
   "To server something else than 404 Not found, you need to define handlers for specific paths. Simple handler definition can look like
@@ -40,6 +32,7 @@ or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
   (send-headers function)
   (send-goaway function))
 
+
 (defsection @request-details
     (:title "Getting request details")
   "Sometimes you need to get some data from the request.
@@ -324,7 +317,19 @@ signalled."
 (defclass detached-tls-single-client-dispatcher (detached-server-mixin tls-single-client-dispatcher)
   ())
 
-(defvar *last-server*)
+
+(defsection @server
+    (:title "Starting HTTP/2 server")
+  "Start server on foreground with RUN, or on background with START.
+
+This creates (as of this version) a multithreaded server that serves 404 Not
+found responses on any request."
+  (run function)
+  (start function)
+  (stop function))
+
+(defvar *servers* nil
+  "List of started servers")
 
 (defun start (port &rest args &key
                                 (host *vanilla-host*)
@@ -365,9 +370,29 @@ respective parameters try to locate the files."
                      :private-key-file private-key-file
                      :host host
                      args)
-    (values (setf *last-server* server)
+    (push server *servers*)
+    (values server
             (url-from-socket socket host t))))
 
+(defun run (port &rest pars &key certificate-file private-key-file)
+  "Run a default HTTP/2 server on PORT on foreground."
+  (declare (ignore certificate-file private-key-file))
+  (apply 'start port :dispatcher 'tls-threaded-dispatcher pars))
+
+(defun stop (&optional (server (car *servers*)))
+  "Stop a server and remove it from list of servers."
+  (cond
+    ((null server)
+     (warn "No running server to stop"))
+    (t
+     (stop-server server)
+     (setf *servers* (remove server *servers*))))
+  server)
+
+(defmethod stop-server ((dispatcher detached-server-mixin))
+  (bordeaux-threads:destroy-thread  (get-thread dispatcher)))
+
+
 (defsection @server-reference
     (:title "Server API reference")
   (@dispatchers section))
@@ -407,14 +432,6 @@ Some predefined combinations are below."
   in a single thread using CL+SSL and is simplest of these.
 
 There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors."
-
-(defun run (port &rest pars &key certificate-file private-key-file)
-  "Run a default HTTP/2 server on PORT on foreground."
-  (declare (ignore certificate-file private-key-file))
-  (apply 'start port :dispatcher 'tls-threaded-dispatcher pars))
-
-(defun stop (&optional (server *last-server*))
-  (bordeaux-threads:destroy-thread server))
 
 ;;;; TLS dispatcher
 (defclass tls-dispatcher-mixin (certificated-dispatcher)
