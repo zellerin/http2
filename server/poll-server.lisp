@@ -676,6 +676,31 @@ On timeout signals POLL-TIMEOUT error.
 
 Default means an indefinite wait.")
 
+(defun compute-timeout (dispatcher)
+  "Compute time for wait for any communication.
+
+This is determined by lesser of timeout for ending the communication and
+scheduler timeout.
+
+Second value indicates whether the timeout should signal a condition (i.e., it
+is not from scheduler)"
+  (with-slots (fdset-size nagle poll-timeout no-client-poll-timeout) dispatcher
+    (let*
+        ((no-task-time (if *clients* poll-timeout no-client-poll-timeout))
+         (timeout (compute-poll-timeout-value no-task-time))
+         (scheduler-time (round (* 1000.0 (time-to-action (car (get-scheduled-tasks *scheduler*)))))))
+      (cond
+        ((and (scheduler-empty-p *scheduler*) (eql no-task-time :∞))
+         ;; Wait till next task available or forever.]
+         (values -1 nil))
+        ((eql no-task-time :∞)
+         (values scheduler-time nil))
+        ((scheduler-empty-p *scheduler*)
+         (values timeout t))
+        ((> scheduler-time timeout)
+         (values timeout t))
+        (t (values scheduler-time nil))))))
+
 (defun serve-tls (listening-socket dispatcher)
   ;; Now this is maybe too diverse:
   ;; some things are in the dispatcher (poll timeout, nagle, size of fdset),
@@ -684,28 +709,30 @@ Default means an indefinite wait.")
   (declare (optimize safety debug (speed 0))
            (type poll-dispatcher-mixin dispatcher))
   (with-foreign-object (fdset '(:struct pollfd) (get-fdset-size dispatcher))
-    (init-fdset fdset (get-fdset-size dispatcher))
-    (with-ssl-context (ctx dispatcher)
-      (with-slots (fdset-size nagle poll-timeout no-client-poll-timeout) dispatcher
-        (let* ((s-mem (bio-s-mem))
-               ;; FIXME: if *clients* was bound, it cannot be easily observed from
-               ;; monitoring;
-               (*clients* nil)
-               (*empty-fdset-items* (alexandria:iota (1- fdset-size) :start 1))
-               (poll-timeout (compute-poll-timeout-value poll-timeout))
-               (no-client-poll-timeout (compute-poll-timeout-value no-client-poll-timeout)))
-          (setup-new-connect-pollfd fdset listening-socket)
-          (unwind-protect
-               (locally (declare (optimize speed (debug 1) (safety 1))
-                                 (ftype (function (t t t) fixnum) poll))
-                 (loop
-                   (let ((nread (poll fdset fdset-size
-                                      (if *clients* poll-timeout no-client-poll-timeout))))
-                     (when (zerop nread) (cerror "Ok" 'poll-timeout))
-                     (process-new-client fdset listening-socket ctx s-mem)
-                     (process-client-sockets fdset nread))))
-            (dolist (client *clients*)
-              (close-client-connection fdset client))))))))
+    (let ((*scheduler* (make-instance 'scheduler)))
+      (init-fdset fdset (get-fdset-size dispatcher))
+      (with-ssl-context (ctx dispatcher)
+        (with-slots (fdset-size nagle) dispatcher
+          (let* ((s-mem (bio-s-mem))
+                 ;; FIXME: if *clients* was bound, it cannot be easily observed from
+                 ;; monitoring;
+                 (*clients* nil)
+                 (*empty-fdset-items* (alexandria:iota (1- fdset-size) :start 1)))
+            (setup-new-connect-pollfd fdset listening-socket)
+            (unwind-protect
+                 (locally (declare (optimize speed (debug 1) (safety 1))
+                                   (ftype (function (t t t) fixnum) poll))
+                   (loop
+                     (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
+                       (let*
+                           ((nread (poll fdset fdset-size timeout)))
+                         (run-mature-tasks *scheduler*)
+                         (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
+                         (process-client-sockets fdset nread)
+
+                         (process-new-client fdset listening-socket ctx s-mem)))))
+              (dolist (client *clients*)
+                (close-client-connection fdset client)))))))))
 
 (defun compute-poll-timeout-value (human-form)
   "Compute poll timeout from \"nice\" value (seconds or :∞) to value accepted by

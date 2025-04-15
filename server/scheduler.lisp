@@ -8,7 +8,8 @@
   (schedule-task generic-function)
   (run-scheduler-in-thread function)
   (stop-scheduler-in-thread function)
-  (threaded-server-mixin class))
+  (threaded-server-mixin class)
+  (scheduler-empty-p function))
 
 (defclass scheduled-task ()
   ((internal-time-to-run :accessor get-internal-time-to-run :initarg :internal-time-to-run)
@@ -16,14 +17,15 @@
    (action-name          :accessor get-action-name          :initarg :action-name))
   (:default-initargs :action-name nil))
 
-(defvar *scheduler*)
-
 (defvar *dummy-last-task*
   (make-instance 'scheduled-task :internal-time-to-run most-positive-fixnum))
 
+(defun scheduler-empty-p (scheduler)
+  (eql (car (get-scheduled-tasks scheduler)) *dummy-last-task*))
+
 (defun time-to-action (task)
   (/ (- (get-internal-time-to-run task)
-              (get-internal-real-time))
+        (get-internal-real-time))
      1.0
      internal-time-units-per-second))
 
