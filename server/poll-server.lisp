@@ -86,7 +86,7 @@ The actions are in general indicated by arrows in the diagram:
 - Number of octets required by IO-ON-READ. Negative values have special handling.
 - Client state from the low-level data flow point of view (STATE)
 - Application data (slot to be used by the application)"
-  (fd -1 :type fixnum :read-only t)
+  (fd -1 :type fixnum)
   (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
   (rbio (null-pointer) :type cffi:foreign-pointer :read-only t)
   (wbio (null-pointer) :type cffi:foreign-pointer :read-only t)
@@ -334,6 +334,8 @@ keep what did not fit."
                   (t (error "Write failed")))))))
 
 (defun encrypt-and-send (client)
+  (unless (plusp (client-fd client))
+    (error 'end-of-file :stream client))
   (encrypt-data client)
   (move-encrypted-bytes client)
   (write-data-to-socket client))
@@ -544,7 +546,10 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
   (:documentation "The poll server connection has a client object and send data to it."))
 
 (defmethod queue-frame ((connection poll-server-connection) frame)
-  (send-unencrypted-bytes (get-client connection) frame nil))
+  (with-slots (client) connection
+    (unless (plusp (client-fd client))
+      (error 'end-of-file :stream connection))
+    (send-unencrypted-bytes client frame nil)))
 
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
@@ -633,7 +638,8 @@ reading of client hello."
   (setf (client-ssl client) (null-pointer))
   (push (client-fdset-idx client) *empty-fdset-items*)
   (set-fd-slot fdset -1 0 (client-fdset-idx client))
-  (close-fd (client-fd client)))
+  (close-fd (client-fd client))
+  (setf (client-fd client) -1))
 
 (defun process-client-sockets (fdset nread)
   (unless (zerop nread)
