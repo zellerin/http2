@@ -70,7 +70,7 @@ error was reported.")
   (let ((e (apply #'make-instance e :stream stream args)))
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
-#+nil      (force-output (get-network-stream stream)))
+      (flush-http2-data (get-connection stream)))
     (warn e)
     (close-http2-stream stream)))
 

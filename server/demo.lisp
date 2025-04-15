@@ -287,4 +287,4 @@ extended and return."
                                                          (decode-universal-time (get-universal-time))
                                                        (format out "data: ~2,'0dT~2,'0d:~2,'0d:~2,'0d~2%" day
                                                                hr min sec)))))
-                                (force-output (http2/core:get-network-stream connection)))))))
+                                (http2/core:flush-http2-data connection))))))

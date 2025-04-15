@@ -144,7 +144,7 @@ actually to be sent, or possibly schedule sending more data for later."
               (send-goaway (code debug-data)
                 (write-goaway-frame connection
                                     0 code debug-data)
-                (force-output (get-network-stream connection))))
+                (flush-http2-data connection)))
          (declare (ignorable #'send-goaway))
          ,@body))))
 
@@ -171,7 +171,7 @@ another thread) responses:
                 (apply #'send-headers stream args))
               (send-goaway (code debug-data)
                 (write-goaway-frame connection 0 code debug-data)
-                (force-output (get-network-stream connection)))
+                (flush-http2-data connection))
               (schedule (delay action)
                 (schedule-task-wake-thread (get-scheduler connection) delay action
                                            'scheduling-handler)

@@ -8,7 +8,8 @@
   (queue-frame generic-function)
   (stream-based-connection-mixin class)
   (write-buffer-connection-mixin class)
-  (frame-context class))
+  (frame-context class)
+  (flush-http2-data generic-function))
 
 (defclass frame-context ()
   ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
@@ -37,6 +38,17 @@ buffer are opaque."))
   (:documentation
    "A mixin for connections that read frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
+
+(defgeneric flush-http2-data (connection)
+  (:documentation "Send all the pending connection data to the peer.")
+  (:method (connection)
+    nil ; maybe nothing needed
+    )
+  (:method ((connection stream-based-connection-mixin))
+    (handler-case
+        (force-output (get-network-stream connection))
+      (cl+ssl::ssl-error-syscall ()
+        (error 'end-of-file :stream connection)))))
 
 (defgeneric queue-frame (connection frame)
   (:documentation "Send or queue FRAME (octet vector) to the connection.

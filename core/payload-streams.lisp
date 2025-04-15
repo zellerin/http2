@@ -91,14 +91,14 @@ Special cases:
       ;; Should we handle also RST on send?
       (unless (eq 'http2/core::closed state)
         (write-data-frame base-http2-stream output-buffer :end-stream t)
-#+not-suitable-for-some        (force-output (get-network-stream connection)))))
+        (flush-http2-data connection))))
 
 (defmethod trivial-gray-streams:stream-force-output ((stream payload-output-stream))
   (with-output-payload-slots stream
     (unless (zerop (length output-buffer))
       (write-data-frame base-http2-stream output-buffer :end-stream nil)
       (setf (fill-pointer output-buffer) 0))
-    (force-output (get-network-stream connection))))
+    (flush-http2-data connection)))
 
 ;; TODO: finish-output could wait for window updates arriving. Except afaics
 ;; noone forces the other side to keep window size unchanged over time...
@@ -204,6 +204,7 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
   (push-frame (get-data (get-payload-input-stream stream))
               (subseq  frame-data start end)))
 
+;;;; TODO: is this still used? Does not work with poll server.
 (defmethod trivial-gray-streams:stream-listen ((stream payload-input-stream))
   (with-slots (base-http2-stream index data to-store to-provide) stream
     (with-slots (connection state) base-http2-stream
@@ -213,7 +214,7 @@ It keeps data from last data frame in BUFFER, starting with INDEX."))
             ;; we assume we would not get just part of the frame.
             (loop while (listen network-stream)
                   do (read-frame connection)
-                  when (member state '(closed half-closed/remote))
+                  when (member state '(http2/core::closed http2/core::half-closed/remote))
                     do (return nil)
                   when (caar data) do (return t)))))))
 

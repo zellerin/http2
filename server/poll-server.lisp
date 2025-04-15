@@ -543,8 +543,11 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation "The poll server connection has a client object and send data to it."))
 
-(defmethod http2/core:queue-frame ((connection poll-server-connection) frame)
+(defmethod queue-frame ((connection poll-server-connection) frame)
   (send-unencrypted-bytes (get-client connection) frame nil))
+
+(defmethod flush-http2-data ((connection poll-server-connection))
+  (encrypt-and-send (get-client connection)))
 
 (defun make-client-object (socket ctx s-mem)
   "Create new CLIENT object suitable for TLS server.
