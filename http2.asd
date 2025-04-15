@@ -47,7 +47,7 @@
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.1"
+  :version "2.0.2"
   :serial t
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
@@ -78,7 +78,7 @@
 
 
 (defsystem "http2"
-  :version "2.0.1"
+  :version "2.0.2"
   :depends-on ("http2/client" "http2/server" "http2/server/poll")
   :components ((:file "overview"))
   :description "Otherwise empty system that depends on - and thus loads when loaded - both HTTP/2 client and HTTP/2 server.
@@ -131,7 +131,7 @@ Run these patterns against servers."
 (asdf:defsystem "http2/server"
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.1"
+  :version "2.0.2"
   :serial t
   :depends-on ("http2/server/threaded" "http2/server/poll")
   :pathname "server"
@@ -140,9 +140,9 @@ Run these patterns against servers."
                (:file "poll-server")))
 
 (asdf:defsystem "http2/server/demo"
-  :description "Asyncronous polling implementations of HTTP2 server."
+  :description "Demo content for the server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.1"
+  :version "2.0.2"
   :serial t
   :depends-on ("http2/server" "cl-who" "parenscript" "let-over-lambda")
   :pathname "server"
