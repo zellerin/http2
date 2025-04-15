@@ -61,7 +61,8 @@ events)."))
      :key private-key-file)))
 
 "For a TLS server wrap the global context."
-(defmethod http2/server::start-server-on-socket ((server tls-dispatcher-mixin) socket)
+(defmethod http2/server::start-server-on-socket ((server tls-threaded-dispatcher) socket)
+  (cl+ssl:ensure-initialized)
   (cl+ssl:with-global-context ((make-http2-tls-context server) :auto-free-p t)
     (call-next-method)))
 
