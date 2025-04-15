@@ -263,13 +263,15 @@ extended and return."
 
 (defun schedule-repeated-fn (connection stream delay period fn)
   (labels ((send-event-and-plan-next ()
-             (ignore-errors
-              ;; stream might be closed already
-              ;; in such case just dont schedule more
-              (funcall fn connection stream)
-              (schedule-task http2/server::*scheduler* period
-                             #'send-event-and-plan-next
-                             stream))))
+             (handler-case
+                 (progn
+                   ;; stream might be closed already
+                   ;; in such case just dont schedule more
+                   (funcall fn connection stream)
+                   (schedule-task http2/server::*scheduler* period
+                                  #'send-event-and-plan-next
+                                  stream))
+               (end-of-file () nil))))
     (schedule-task http2/server::*scheduler* delay
                           #'send-event-and-plan-next 'stream)))
 
