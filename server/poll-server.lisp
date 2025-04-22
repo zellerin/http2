@@ -647,7 +647,9 @@ reading of client hello."
       (restart-case
           (handler-case
               (handle-client-io client fdset)
-            (done () (invoke-restart 'http2/core:close-connection)))
+            (done () (invoke-restart 'http2/core:close-connection))
+            (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
+            (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
         (http2/core:close-connection ()
           (close-client-connection fdset client))))))
 
