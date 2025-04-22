@@ -59,14 +59,6 @@
   ()
   (:documentation "All errors raised from HTTP2 package inherit from this error."))
 
-(define-condition client-preface-mismatch (http2-error)
-  ((received :accessor get-received :initarg :received)))
-
-(defmethod print-object ((err client-preface-mismatch) out)
-  (with-slots (received) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a ~a" received  (map 'string 'code-char received)))))
-
 (defmethod print-object ((err go-away) out)
   (with-slots (error-code debug-data last-stream-id) err
     (print-unreadable-object (err out :type t)
@@ -89,6 +81,14 @@ NETWORK-STREAM."))
 (define-condition protocol-error (connection-error)
   ()
   (:default-initargs :code +protocol-error+))
+
+(define-condition client-preface-mismatch (protocol-error)
+  ((received :accessor get-received :initarg :received)))
+
+(defmethod print-object ((err client-preface-mismatch) out)
+  (with-slots (received) err
+    (print-unreadable-object (err out :type t)
+      (format out "~a ~a" received  (map 'string 'code-char received)))))
 
 (define-condition too-big-frame (connection-error)
   ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)

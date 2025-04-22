@@ -70,11 +70,6 @@
   ;; use that one in ffi world.
   "Set ALPN to h2 if it was offered, otherwise to the first offered."
   (declare (ignore args ssl))
-  #+nil
-  (cffi:with-foreign-string ((server serverlen) (make-alpn-proto-string '("h2")))
-    (ssl-select-next-proto out outlen server (print (1- serverlen)) in inlen)
-    0)
-
   (loop for idx = 0 then (+ (cffi:mem-ref in :char idx) idx)
         while (< idx inlen)
         when (and (= (cffi:mem-ref in :char idx) 2)
@@ -87,11 +82,7 @@
              (return 0)
         finally
            ;; h2 not found, but maybe server can handle
-           ;; set the proto to first offered
-           (setf
-            (cffi:mem-ref outlen :char) (cffi:mem-ref in :char 0)
-            (cffi:mem-ref out :pointer) (cffi:inc-pointer in 1))
-           (return 0)))
+           (return ssl-tlsext-err-alert-fatal))) ; no agreement
 
 (defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
   :int

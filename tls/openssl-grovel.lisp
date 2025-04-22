@@ -11,6 +11,10 @@
 (constant (ssl-error-syscall "SSL_ERROR_SYSCALL"))
 (constant (ssl-error-zero-return "SSL_ERROR_ZERO_RETURN"))
 
+(constant (ssl-tlsext-err-ok "SSL_TLSEXT_ERR_OK"))
+(constant (ssl-tlsext-err-alert-fatal "SSL_TLSEXT_ERR_ALERT_FATAL"))
+(constant (ssl-tlsext-err-noack "SSL_TLSEXT_ERR_NOACK"))
+
 (constant (ssl-filetype-pem "SSL_FILETYPE_PEM"))
 (constant (tls-1.2-version "TLS1_2_VERSION"))
 (constant (ssl-op-all "SSL_OP_ALL"))
