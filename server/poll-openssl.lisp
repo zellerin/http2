@@ -32,8 +32,8 @@
        (process-ssl-errors)
        nil)
       ((= err-code ssl-error-syscall)
-       ;; TODO:
-       (warn "SSL syscall error ~d (~a) " "FIXME" "FIXME" #+nil(errno) #+nil(strerror (errno)))
+       (let ((errno (http2/server/poll::errno)))
+         (warn "SSL syscall error ~d (~a) " errno (http2/server/poll::strerror errno)))
        (invoke-restart 'http2/core:close-connection))
       (t (warn "SSL error ~d" err-code)
          (invoke-restart 'http2/core:close-connection)))))
