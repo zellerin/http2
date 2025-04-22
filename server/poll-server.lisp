@@ -93,9 +93,9 @@ The actions are in general indicated by arrows in the diagram:
   (write-buf nil :type (or null cons))
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8)))
-  (io-on-read #'http2/core::parse-client-preface :type compiled-function)
+  (io-on-read #'parse-client-preface :type compiled-function)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
-  (octets-needed (length  http2/core::+client-preface-start+) :type fixnum)
+  (octets-needed (length +client-preface-start+) :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
   (start-time (get-internal-real-time) :type fixnum)
   (state (list 'CAN-WRITE 'CAN-WRITE-SSL 'bio-needs-read 'ssl-init-needed))
@@ -569,7 +569,7 @@ reading of client hello."
     (setf (get-client (client-application-data client)) client)
     (ssl-set-accept-state (client-ssl client)) ; no return value
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
-    (http2/core::write-settings-frame (client-application-data client) nil)
+    (write-settings-frame (client-application-data client) nil)
     client))
 
 (defun set-fd-slot (fdset socket new-events idx)
@@ -619,7 +619,7 @@ reading of client hello."
   (with-foreign-slots ((revents) fdset (:struct pollfd))
     (if (plusp (logand c-pollin revents))
         (let* ((socket (accept
-                        (sb-bsd-sockets::socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
+                        (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
                (client (when *empty-fdset-items* (make-client-object socket ctx s-mem))))
           (cond
             (client
