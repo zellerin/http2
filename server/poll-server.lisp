@@ -724,38 +724,51 @@ is not from scheduler)"
          (values timeout t))
         (t (values scheduler-time nil))))))
 
+(lol:defmacro! with-fdset ((fdset-name o!size) &body body)
+  `(with-foreign-object (,fdset-name '(:struct pollfd) ,g!size)
+     (init-fdset ,fdset-name ,g!size)
+     (let* ((*empty-fdset-items* (alexandria:iota (1- ,g!size) :start 1)))
+       (flet ((poll (timeout) (poll fdset ,g!size timeout)))
+         ,@body))))
+
+(defmacro with-clients (&body body)
+  `(let ((*clients* nil))
+    (unwind-protect
+         ,@body
+      (dolist (client *clients*)
+        (close-client-connection fdset client)))))
+
 (defun serve-tls (listening-socket dispatcher)
+  "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
+
+Establish appropriate context (clients list, fdset, TLS context, scheduler).
+
+Handle new connections on LISTENING-SOCKET (creates new managed socket) and
+managed sockets (read and write data, call client callback when data are
+available), and run scheduled actions.
+"
   ;; Now this is maybe too diverse:
-  ;; some things are in the dispatcher (poll timeout, nagle, size of fdset),
+  ;; some things are in the dispatcher (poll timeout, size of fdset),
   ;; some bound lexically (fdset)
   ;; some in global variable without binding (*clients*),
   (declare (optimize safety debug (speed 0))
            (type poll-dispatcher-mixin dispatcher))
-  (with-foreign-object (fdset '(:struct pollfd) (get-fdset-size dispatcher))
+  (with-fdset (fdset (get-fdset-size dispatcher))
+    (setup-new-connect-pollfd fdset listening-socket)
     (let ((*scheduler* (make-instance 'scheduler)))
-      (init-fdset fdset (get-fdset-size dispatcher))
       (with-ssl-context (ctx dispatcher)
-        (with-slots (fdset-size nagle) dispatcher
-          (let* ((s-mem (bio-s-mem))
-                 ;; FIXME: if *clients* was bound, it cannot be easily observed from
-                 ;; monitoring;
-                 (*clients* nil)
-                 (*empty-fdset-items* (alexandria:iota (1- fdset-size) :start 1)))
-            (setup-new-connect-pollfd fdset listening-socket)
-            (unwind-protect
-                 (locally (declare (optimize speed (debug 1) (safety 1))
-                                   (ftype (function (t t t) fixnum) poll))
-                   (loop
-                     (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
-                       (let*
-                           ((nread (poll fdset fdset-size timeout)))
-                         (run-mature-tasks *scheduler*)
-                         (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
-                         (process-client-sockets fdset nread)
-
-                         (process-new-client fdset listening-socket ctx s-mem)))))
-              (dolist (client *clients*)
-                (close-client-connection fdset client)))))))))
+        (let* ((s-mem (bio-s-mem)))
+          (with-clients
+            (locally (declare (optimize speed (debug 1) (safety 1))
+                              (ftype (function (t) fixnum) poll))
+              (loop
+                (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
+                  (let*
+                      ((nread (poll timeout)))
+                    (run-mature-tasks *scheduler*)
+                    (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
+                    (process-client-sockets fdset nread)
+                    (process-new-client fdset listening-socket ctx s-mem)))))))))))
 
 (defun compute-poll-timeout-value (human-form)
   "Compute poll timeout from \"nice\" value (seconds or :∞) to value accepted by

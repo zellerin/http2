@@ -122,7 +122,7 @@ Run these patterns against servers."
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :serial t
-  :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl")
+  :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl" "let-over-lambda")
   :pathname "server"
   :components ((:cffi-grovel-file "poll-grovel")
                (:file "poll-openssl")
