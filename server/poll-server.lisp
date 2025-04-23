@@ -632,10 +632,11 @@ reading of client hello."
 (defvar *nagle* t
   "If nil, disable Nagle algorithm (= enable nodelay)")
 
+#+nil
 (defvar *clients* nil
   "List of clients processed.")
 
-(defun process-new-client (fdset listening-socket ctx s-mem)
+(defun process-new-client (fdset listening-socket ctx s-mem dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
   (with-foreign-slots ((revents) fdset (:struct pollfd))
     (if (plusp (logand c-pollin revents))
@@ -646,14 +647,15 @@ reading of client hello."
             (client
              (setup-port socket *nagle*)
              (add-socket-to-fdset fdset socket client)
-             (push client *clients*))
+             (push client (get-clients dispatcher)))
             (t (close-fd socket)
                (warn "Too many clients, refused to connect a new one.")))))
     (if (plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
         (error "Error on listening socket"))))
 
-(defun close-client-connection (fdset client)
-  (setf *clients* (remove client *clients*))
+(defun close-client-connection (fdset client dispatcher)
+  (with-slots (clients) dispatcher
+    (setf clients (remove client clients)))
   (unless (null-pointer-p (client-ssl client))
     (ssl-free (client-ssl client)))     ; BIOs are closed automatically
   (setf (client-ssl client) (null-pointer))
@@ -662,17 +664,18 @@ reading of client hello."
   (close-fd (client-fd client))
   (setf (client-fd client) -1))
 
-(defun process-client-sockets (fdset nread)
-  (unless (zerop nread)
-    (dolist (client *clients*)
-      (restart-case
-          (handler-case
-              (handle-client-io client fdset)
-            (done () (invoke-restart 'http2/core:close-connection))
-            (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
-            (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
-        (http2/core:close-connection ()
-          (close-client-connection fdset client))))))
+(defun process-client-sockets (fdset nread dispatcher)
+  (with-slots (clients) dispatcher
+    (unless (zerop nread)
+      (dolist (client clients)
+          (restart-case
+              (handler-case
+                  (handle-client-io client fdset)
+                (done () (invoke-restart 'http2/core:close-connection))
+                (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
+                (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
+            (http2/core:close-connection ()
+              (close-client-connection fdset client dispatcher)))))))
 
 (define-condition poll-timeout (error)
   ()
@@ -709,7 +712,7 @@ Second value indicates whether the timeout should signal a condition (i.e., it
 is not from scheduler)"
   (with-slots (fdset-size nagle poll-timeout no-client-poll-timeout) dispatcher
     (let*
-        ((no-task-time (if *clients* poll-timeout no-client-poll-timeout))
+        ((no-task-time (if (get-clients dispatcher) poll-timeout no-client-poll-timeout))
          (timeout (compute-poll-timeout-value no-task-time))
          (scheduler-time (round (* 1000.0 (time-to-action (car (get-scheduled-tasks *scheduler*)))))))
       (cond
@@ -731,12 +734,12 @@ is not from scheduler)"
        (flet ((poll (timeout) (poll fdset ,g!size timeout)))
          ,@body))))
 
-(defmacro with-clients (&body body)
+(defmacro with-clients ((dispatcher) &body body)
   `(let ((*clients* nil))
     (unwind-protect
          ,@body
-      (dolist (client *clients*)
-        (close-client-connection fdset client)))))
+      (dolist (client (get-clients ,dispatcher))
+        (close-client-connection fdset client dispatcher)))))
 
 (defun serve-tls (listening-socket dispatcher)
   "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
@@ -758,7 +761,7 @@ available), and run scheduled actions.
     (let ((*scheduler* (make-instance 'scheduler)))
       (with-ssl-context (ctx dispatcher)
         (let* ((s-mem (bio-s-mem)))
-          (with-clients
+          (with-clients (dispatcher)
             (locally (declare (optimize speed (debug 1) (safety 1))
                               (ftype (function (t) fixnum) poll))
               (loop
@@ -767,8 +770,8 @@ available), and run scheduled actions.
                       ((nread (poll timeout)))
                     (run-mature-tasks *scheduler*)
                     (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
-                    (process-client-sockets fdset nread)
-                    (process-new-client fdset listening-socket ctx s-mem)))))))))))
+                    (process-client-sockets fdset nread dispatcher)
+                    (process-new-client fdset listening-socket ctx s-mem dispatcher)))))))))))
 
 (defun compute-poll-timeout-value (human-form)
   "Compute poll timeout from \"nice\" value (seconds or :∞) to value accepted by
@@ -784,10 +787,12 @@ poll (miliseconds or -1)"
                            :documentation "See *POLL-TIMEOUT*.")
    (no-client-poll-timeout :accessor get-no-client-poll-timeout :initarg :no-client-poll-timeout
                            :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
-   (nagle                  :accessor get-nagle                  :initarg :nagle))
+   (nagle                  :accessor get-nagle                  :initarg :nagle)
+   (clients                :accessor get-clients                :initarg :clients))
   (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
                      :no-client-poll-timeout *no-client-poll-timeout*
-                     :nagle *nagle*)
+                     :nagle *nagle*
+                     :clients nil)
   (:documentation
    "Uses poll to listen to a set of clients and handle arriving packets in a single
 thread.
