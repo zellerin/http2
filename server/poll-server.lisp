@@ -1,16 +1,31 @@
 (in-package #:http2/server/poll)
 
+(defsection @poll-server (:title "STDIO basic API" :export nil)
+  (fcntl function)
+  (poll function)
+  (close-fd function)
+  (errno function)
+  (read function)
+  (accept function)
+  (setsockopt function)
+  (strerror function))
+
 #-os-macosx(defcfun ("__errno_location" errno%) :pointer)
 #+os-macosx(defcfun ("__error" errno%) :pointer)
-(defcfun ("strerror_r" strerror-r%) :pointer (errnum :int) (buffer :pointer) (buflen :int))
+(defcfun ("strerror_r" strerror-r%) :pointer
+  "System error message for error number" (errnum :int) (buffer :pointer) (buflen :int))
 
-(defcfun "poll" :int (fdset :pointer) (rb :int) (timeout :int))
-(defcfun ("close" close-fd) :int (fd :int))
+(defcfun "poll" :int "Synchronous I/O multiplexing."
+  (fdset :pointer) (rb :int) (timeout :int))
+(defcfun ("close" close-fd) :int
+    "See close(2). The Lisp name is changed so that not to cause a conflict." (fd :int))
 (defcfun ("read" read-2) :int (fd :int) (buf :pointer) (size :int))
 (defcfun ("write" write-2) :int (fd :int) (buf :pointer) (size :int))
-(defcfun "fcntl" :int (fd :int) (cmd :int) (value :int))
+(defcfun "fcntl" :int "See man fcntl(2). Used to set the connection non-blocking."
+  (fd :int) (cmd :int) (value :int))
 (defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :int))
-(defcfun "setsockopt" :int (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
+(defcfun "setsockopt" :int "See man setsockopt(2). Optionally used to switch Nagle algorithm."
+  (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
 
 (defun strerror (errnum)
   "Lisp string for particular error. See man strerror(3)."
@@ -23,15 +38,21 @@
   (mem-ref (errno%) :int))
 
 
-(mgl-pax:defsection  @async-server
-    (:title "Polling server")
+(mgl-pax:defsection  @async-server (:title "Polling server overview")
 #+nil  (client type)
   (@app-interface mgl-pax:section)
   (@request-handling mgl-pax:section))
 
-(mgl-pax:defsection @app-interface
-    (:title "Interface to the application")
+(mgl-pax:defsection @app-interface (:title "Interface to the polling server")
+  "POLL-DISPATCHER-MIXIN tracks a pool of clients that are connected to a
+socket. Each client has a user registered callback function and required number
+of octets to have available to call the callback. Callbacks call
+SEND-UNENCRYPTED-BYTES to encrypt and send more data.
+
+The central function is SERVE-TLS that orchestrates reading, decrypting,
+encrypting and writing of data for all the sockets."
   (poll-dispatcher-mixin class)
+  (send-unencrypted-bytes function)
   (get-fdset-size (method nil (poll-dispatcher-mixin)))
   (get-poll-timeout (method nil (poll-dispatcher-mixin)))
   (get-no-client-poll-timeout (method nil (poll-dispatcher-mixin)))
