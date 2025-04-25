@@ -39,6 +39,8 @@
 
 (defsection @errors
     (:title "Errors handlers")
+  (http2-simple-error condition)
+  (http2-simple-warning condition)
   (connection-error condition)
   (connection-error function)
   (http-stream-error condition)
@@ -58,6 +60,9 @@
 (define-condition http2-error (error)
   ()
   (:documentation "All errors raised from HTTP2 package inherit from this error."))
+
+(define-condition http2-simple-error (http2-error simple-condition)
+  ())
 
 (defmethod print-object ((err go-away) out)
   (with-slots (error-code debug-data last-stream-id) err
@@ -279,6 +284,8 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (define-condition http2-warning (warning)
   ())
+
+(define-condition http2-simple-warning (simple-condition http2-warning) ())
 
 (define-condition implement-by-user (http2-warning simple-condition)
   ()
