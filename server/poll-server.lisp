@@ -2,7 +2,7 @@
 
 (defsection @poll-server (:title "STDIO basic API" :export nil)
   (fcntl function)
-  (poll function)
+  (poll% function)
   (close-fd function)
   (errno function)
   (read function)
@@ -15,7 +15,7 @@
 (defcfun ("strerror_r" strerror-r%) :pointer
   "System error message for error number" (errnum :int) (buffer :pointer) (buflen :int))
 
-(defcfun "poll" :int "Synchronous I/O multiplexing."
+(defcfun ("poll" poll%) :int "Synchronous I/O multiplexing. Called by POLL."
   (fdset :pointer) (rb :int) (timeout :int))
 (defcfun ("close" close-fd) :int
     "See close(2). The Lisp name is changed so that not to cause a conflict." (fd :int))
@@ -39,7 +39,7 @@
 
 
 (mgl-pax:defsection  @async-server (:title "Polling server overview")
-#+nil  (client type)
+  #+nil  (client type)
   (@app-interface mgl-pax:section)
   (@request-handling mgl-pax:section))
 
@@ -86,16 +86,19 @@ The actions are in general indicated by arrows in the diagram:
   (move-encrypted-bytes function)
   (write-data-to-socket function))
 
+(deftype buffer-size () `(integer 0 ,array-dimension-limit))
+(declaim (buffer-size *default-buffer-size* *encrypt-buf-size*))
+
 (defvar *encrypt-buf-size* 256
   "Initial size of the vector holding data to encrypt.")
 
 (defvar *default-buffer-size* 1500) ; close to socket size
 
 (defstruct (client  (:constructor make-client%)
-            (:print-object
-                    (lambda (object out)
-                      (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
-                              (client-octets-needed object) (client-io-on-read object)))))
+                    (:print-object
+                     (lambda (object out)
+                       (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
+                               (client-octets-needed object) (client-io-on-read object)))))
   "Data of one client connection. This includes:
 
 - File descriptor of underlying socket (FD),
@@ -551,6 +554,7 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 (defvar *fdset-size* 10
   "Size of the fdset - that, is, maximum number of concurrent clients.")
 
+#+nil
 (defvar *empty-fdset-items* nil "List of empty slots in the fdset table.")
 
 (defun set-next-action (client action size)
@@ -600,11 +604,10 @@ reading of client hello."
                        (:struct pollfd))
     (when socket (setf fd socket events new-events))))
 
-(defun add-socket-to-fdset (fdset socket client)
+(defun add-socket-to-fdset (fdset socket client fd-idx)
   "Find free slot in the FDSET and put client there."
-  (let ((fd-idx (pop *empty-fdset-items*)))
-    (set-fd-slot fdset socket  (logior c-pollerr c-pollhup c-pollnval c-pollin) fd-idx )
-    (setf (client-fdset-idx client) fd-idx)))
+  (set-fd-slot fdset socket  (logior c-pollerr c-pollhup c-pollnval c-pollin) fd-idx )
+  (setf (client-fdset-idx client) fd-idx))
 
 (defun init-fdset (fdset size)
   (loop for i from 0 to (1- size)
@@ -636,36 +639,46 @@ reading of client hello."
 (defvar *clients* nil
   "List of clients processed.")
 
-(defun process-new-client (fdset listening-socket ctx s-mem dispatcher)
+(defun process-new-client (listening-socket ctx s-mem dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
-  (with-foreign-slots ((revents) fdset (:struct pollfd))
-    (if (plusp (logand c-pollin revents))
-        (let* ((socket (accept
-                        (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
-               (client (when *empty-fdset-items* (make-client-object socket ctx s-mem))))
-          (cond
-            (client
-             (setup-port socket *nagle*)
-             (add-socket-to-fdset fdset socket client)
-             (push client (get-clients dispatcher)))
-            (t (close-fd socket)
-               (warn "Too many clients, refused to connect a new one.")))))
-    (if (plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
-        (error "Error on listening socket"))))
+  (with-slots (fdset empty-fdset-items clients) dispatcher
+    (cond
+      (empty-fdset-items
+       (let* ((socket (accept
+                       (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
+              (client-id (pop empty-fdset-items))
+              (client (when client-id (make-client-object socket ctx s-mem))))
+         (setup-port socket *nagle*)
+         (add-socket-to-fdset fdset socket client client-id)
+         (push client clients)))
+      (t (warn 'http2-simple-warning :format-control "No place in fdset for the new client. Accepting and immediately closing it.")
+         ;; Let the server catch it and
+         (close-fd (accept
+                    (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))))))
 
-(defun close-client-connection (fdset client dispatcher)
-  (with-slots (clients) dispatcher
-    (setf clients (remove client clients)))
-  (unless (null-pointer-p (client-ssl client))
-    (ssl-free (client-ssl client)))     ; BIOs are closed automatically
-  (setf (client-ssl client) (null-pointer))
-  (push (client-fdset-idx client) *empty-fdset-items*)
-  (set-fd-slot fdset -1 0 (client-fdset-idx client))
-  (close-fd (client-fd client))
-  (setf (client-fd client) -1))
+(defun maybe-process-new-client (listening-socket ctx s-mem dispatcher)
+  "Add new client: accept connection, create client and add it to pollfd and to *clients*."
+  (with-slots (fdset empty-fdset-items clients) dispatcher
+    (with-foreign-slots ((revents) fdset (:struct pollfd))
+      (cond
+        ((plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
+         (error "Error on listening socket"))
+        ((zerop (logand c-pollin revents))) ; no new client, do nothing
+        (t (process-new-client listening-socket ctx s-mem dispatcher))))))
 
-(defun process-client-sockets (fdset nread dispatcher)
-  (with-slots (clients) dispatcher
+(defun close-client-connection (client dispatcher)
+  (with-slots (clients fdset) dispatcher
+    (setf clients (remove client clients))
+    (unless (null-pointer-p (client-ssl client))
+      (ssl-free (client-ssl client)))   ; BIOs are closed automatically
+    (setf (client-ssl client) (null-pointer))
+    (push (client-fdset-idx client) (get-empty-fdset-items dispatcher))
+    (set-fd-slot fdset -1 0 (client-fdset-idx client))
+    (close-fd (client-fd client))
+    (setf (client-fd client) -1)))
+
+(defun process-client-sockets (nread dispatcher)
+  (with-slots (fdset clients) dispatcher
     (unless (zerop nread)
       (dolist (client clients)
           (restart-case
@@ -675,7 +688,7 @@ reading of client hello."
                 (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
                 (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
             (http2/core:close-connection ()
-              (close-client-connection fdset client dispatcher)))))))
+              (close-client-connection client dispatcher)))))))
 
 (define-condition poll-timeout (error)
   ()
@@ -727,19 +740,32 @@ is not from scheduler)"
          (values timeout t))
         (t (values scheduler-time nil))))))
 
-(lol:defmacro! with-fdset ((fdset-name o!size) &body body)
-  `(with-foreign-object (,fdset-name '(:struct pollfd) ,g!size)
-     (init-fdset ,fdset-name ,g!size)
-     (let* ((*empty-fdset-items* (alexandria:iota (1- ,g!size) :start 1)))
-       (flet ((poll (timeout) (poll fdset ,g!size timeout)))
-         ,@body))))
+(defun call-with-fdset (dispatcher fn)
+  (with-slots (fdset-size fdset) dispatcher
+    (with-foreign-object (fdset* '(:struct pollfd) fdset-size)
+      (setf fdset fdset*)
+      (init-fdset fdset fdset-size)
+      (setf (get-empty-fdset-items dispatcher)  (alexandria:iota (1- fdset-size) :start 1))
+      (unwind-protect
+           (funcall fn)
+        (setf fdset nil)))))
+
+(defmacro with-fdset ((dispatcher) &body body)
+  "Run BODY with fdset set to a set of file descriptos for poll.
+
+Initialize descriptors, and "
+  `(call-with-fdset ,dispatcher
+                    (lambda () ,@body)))
+
+(defun poll (dispatcher timeout)
+  (with-slots (fdset fdset-size) dispatcher
+      (poll% fdset fdset-size timeout)))
 
 (defmacro with-clients ((dispatcher) &body body)
-  `(let ((*clients* nil))
-    (unwind-protect
-         ,@body
-      (dolist (client (get-clients ,dispatcher))
-        (close-client-connection fdset client dispatcher)))))
+  `(unwind-protect
+        ,@body
+     (dolist (client (get-clients ,dispatcher))
+       (close-client-connection client dispatcher))))
 
 (defun serve-tls (listening-socket dispatcher)
   "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
@@ -748,33 +774,28 @@ Establish appropriate context (clients list, fdset, TLS context, scheduler).
 
 Handle new connections on LISTENING-SOCKET (creates new managed socket) and
 managed sockets (read and write data, call client callback when data are
-available), and run scheduled actions.
-"
-  ;; Now this is maybe too diverse:
-  ;; some things are in the dispatcher (poll timeout, size of fdset),
-  ;; some bound lexically (fdset)
-  ;; some in global variable without binding (*clients*),
+available), and run scheduled actions."
   (declare (optimize safety debug (speed 0))
            (type poll-dispatcher-mixin dispatcher))
-  (with-fdset (fdset (get-fdset-size dispatcher))
-    (setup-new-connect-pollfd fdset listening-socket)
+  (with-fdset (dispatcher)
+    (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
     (let ((*scheduler* (make-instance 'scheduler)))
       (with-ssl-context (ctx dispatcher)
         (let* ((s-mem (bio-s-mem)))
           (with-clients (dispatcher)
             (locally (declare (optimize speed (debug 1) (safety 1))
-                              (ftype (function (t) fixnum) poll))
+                              (ftype (function (t t) fixnum) poll))
               (loop
                 (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
                   (let*
-                      ((nread (poll timeout)))
+                      ((nread (poll dispatcher timeout)))
                     (run-mature-tasks *scheduler*)
                     (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
-                    (process-client-sockets fdset nread dispatcher)
-                    (process-new-client fdset listening-socket ctx s-mem dispatcher)))))))))))
+                    (process-client-sockets nread dispatcher)
+                    (maybe-process-new-client listening-socket ctx s-mem dispatcher)))))))))))
 
 (defun compute-poll-timeout-value (human-form)
-  "Compute poll timeout from \"nice\" value (seconds or :∞) to value accepted by
+  "Compute poll timeout from human readable value (seconds or :∞) to value accepted by
 poll (miliseconds or -1)"
   (etypecase human-form
     ((eql :∞) -1)
@@ -788,7 +809,9 @@ poll (miliseconds or -1)"
    (no-client-poll-timeout :accessor get-no-client-poll-timeout :initarg :no-client-poll-timeout
                            :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
    (nagle                  :accessor get-nagle                  :initarg :nagle)
-   (clients                :accessor get-clients                :initarg :clients))
+   (clients                :accessor get-clients                :initarg :clients)
+   (fdset                  :accessor get-fdset                  :initarg :fdset)
+   (empty-fdset-items      :accessor get-empty-fdset-items      :initarg :empty-fdset-items))
   (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
                      :no-client-poll-timeout *no-client-poll-timeout*
                      :nagle *nagle*
@@ -801,6 +824,10 @@ Maximum number of clients is fixed (by default *fdset-size*, by default
 10). Additional clients wait until one of existing client leaves.
 
 Timeouts can be specified for polling."))
+
+(defmethod print-object ((dispatcher poll-dispatcher-mixin) out)
+  (print-unreadable-object (dispatcher out :type t)
+    (format out "~a/~a clients" (length (get-clients dispatcher)) (get-fdset-size dispatcher))))
 
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin base-dispatcher)
   ())
