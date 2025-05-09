@@ -117,7 +117,7 @@ The actions are in general indicated by arrows in the diagram:
   (write-buf nil :type (or null cons))
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8)))
-  (io-on-read #'parse-client-preface :type compiled-function)
+  (io-on-read (constantly nil) :type compiled-function)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
   (octets-needed (length +client-preface-start+) :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
@@ -579,21 +579,31 @@ The new possible action corresponding to ① or ⑥ on the diagram above is adde
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
 
-(defun make-client-object (socket ctx s-mem)
-  "Create new CLIENT object suitable for TLS server.
+(defun make-client (socket ctx application-data)
+  "Make a generic instance of a CLIENT usable both for a client and for a server.
 
-Initially, the ENCRYPT-BUFFER contains the settings to send, and next action is
-reading of client hello."
-  (let* ((client (make-client% :fd socket
+The read and write buffers are intitialized to new  "
+  (let* ((s-mem (bio-s-mem))
+         (client (make-client% :fd socket
                                :rbio (bio-new s-mem)
                                :wbio (bio-new s-mem)
                                :ssl (ssl-new ctx)
                                :octets-needed +client-preface-length+
                                ;; FIXME: use class from the dispatcher
-                               :application-data (make-instance 'poll-server-connection))))
-    (setf (get-client (client-application-data client)) client)
-    (ssl-set-accept-state (client-ssl client)) ; no return value
+                               :application-data application-data)))
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
+    client))
+
+(defun make-client-object (socket ctx)
+  "Create new CLIENT object suitable for TLS server.
+
+Initially, the ENCRYPT-BUFFER contains the settings to send, and next action is
+reading of client hello."
+  ;; FIXME: use class from the dispatcher
+  (let* ((client (make-client socket ctx (make-instance 'poll-server-connection))))
+    (setf (get-client (client-application-data client)) client) ;
+    (ssl-set-accept-state (client-ssl client)) ; set as server; no return value
+    (set-next-action client #'parse-client-preface +client-preface-length+)
     (write-settings-frame (client-application-data client) nil)
     client))
 
@@ -639,7 +649,7 @@ reading of client hello."
 (defvar *clients* nil
   "List of clients processed.")
 
-(defun process-new-client (listening-socket ctx s-mem dispatcher)
+(defun process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
   (with-slots (fdset empty-fdset-items clients) dispatcher
     (cond
@@ -647,7 +657,7 @@ reading of client hello."
        (let* ((socket (accept
                        (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
               (client-id (pop empty-fdset-items))
-              (client (when client-id (make-client-object socket ctx s-mem))))
+              (client (when client-id (make-client-object socket ctx))))
          (setup-port socket *nagle*)
          (add-socket-to-fdset fdset socket client client-id)
          (push client clients)))
@@ -656,7 +666,7 @@ reading of client hello."
          (close-fd (accept
                     (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))))))
 
-(defun maybe-process-new-client (listening-socket ctx s-mem dispatcher)
+(defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
   (with-slots (fdset empty-fdset-items clients) dispatcher
     (with-foreign-slots ((revents) fdset (:struct pollfd))
@@ -664,7 +674,7 @@ reading of client hello."
         ((plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
          (error "Error on listening socket"))
         ((zerop (logand c-pollin revents))) ; no new client, do nothing
-        (t (process-new-client listening-socket ctx s-mem dispatcher))))))
+        (t (process-new-client listening-socket ctx dispatcher))))))
 
 (defun close-client-connection (client dispatcher)
   (with-slots (clients fdset) dispatcher
@@ -741,19 +751,24 @@ is not from scheduler)"
         (t (values scheduler-time nil))))))
 
 (defun call-with-fdset (dispatcher fn)
-  (with-slots (fdset-size fdset) dispatcher
+  "Helper for WITH-FDSET."
+  (with-slots (fdset-size fdset empty-fdset-items) dispatcher
     (with-foreign-object (fdset* '(:struct pollfd) fdset-size)
       (setf fdset fdset*)
       (init-fdset fdset fdset-size)
-      (setf (get-empty-fdset-items dispatcher)  (alexandria:iota (1- fdset-size) :start 1))
+      (setf empty-fdset-items (alexandria:iota (1- fdset-size) :start 1))
       (unwind-protect
            (funcall fn)
         (setf fdset nil)))))
 
 (defmacro with-fdset ((dispatcher) &body body)
-  "Run BODY with fdset set to a set of file descriptos for poll.
+  "Run BODY with FDSET slot of DISPATCHER set to a set of file descriptors for
+poll (of size FDSET-SIZE, another DISPATCHER slot).
 
-Initialize descriptors, and "
+Initialize FDSET. Set EMPTY-FDSET-ITEMS slot of the dispatcher to all slot
+items.
+
+Cleanup FDSET after BODY is run."
   `(call-with-fdset ,dispatcher
                     (lambda () ,@body)))
 
@@ -781,18 +796,17 @@ available), and run scheduled actions."
     (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
     (let ((*scheduler* (make-instance 'scheduler)))
       (with-ssl-context (ctx dispatcher)
-        (let* ((s-mem (bio-s-mem)))
-          (with-clients (dispatcher)
-            (locally (declare (optimize speed (debug 1) (safety 1))
-                              (ftype (function (t t) fixnum) poll))
-              (loop
-                (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
-                  (let*
-                      ((nread (poll dispatcher timeout)))
-                    (run-mature-tasks *scheduler*)
-                    (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
-                    (process-client-sockets nread dispatcher)
-                    (maybe-process-new-client listening-socket ctx s-mem dispatcher)))))))))))
+        (with-clients (dispatcher)
+          (locally (declare (optimize speed (debug 1) (safety 1))
+                            (ftype (function (t t) fixnum) poll))
+            (loop
+              (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
+                (let*
+                    ((nread (poll dispatcher timeout)))
+                  (run-mature-tasks *scheduler*)
+                  (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
+                  (process-client-sockets nread dispatcher)
+                  (maybe-process-new-client listening-socket ctx dispatcher))))))))))
 
 (defun compute-poll-timeout-value (human-form)
   "Compute poll timeout from human readable value (seconds or :∞) to value accepted by
