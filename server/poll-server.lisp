@@ -885,3 +885,80 @@ from C code."
         ((/= read octets)
          (error "Read ~d octets. This is not enough octets, why?~%~s~%" read (subseq vec 0 read)))
         (t (run-user-callback client vec))))))
+
+;;;; Sandbox
+(defcfun socket :int "S"
+  (domain :int) (type :int) (protocol :int))
+
+(defun socketpair ()
+  (with-foreign-object (pair :int 2)
+    (let ((res (socketpair% 1 1  pair)))
+      (unless (zerop res)
+        (error "Socketpair failed: ~d" (errno))))
+    (values (mem-aref pair :int 0 )
+            (mem-aref pair :int 1 ))))
+
+(defun call-with-tcp-pair (fn)
+  (let* ((a (socket pf-inet sock-stream 0))
+         (b (socket pf-inet sock-stream 0)))
+    (unwind-protect
+         (unwind-protect
+              (dolist (socket (list a b))
+                (unless (zerop (fcntl socket f-setfl
+                                      (logior o-nonblock (fcntl socket f-getfl 0))))
+                  (error "Could not set O_NONBLOCK on the client"))
+                (unless (plusp (logand o-nonblock (fcntl socket f-getfl 0)))
+                  (error "O_NONBLOCK on the client did not stick")))
+
+           #+nil          (progn
+                               (sb-bsd-sockets:socket-bind a)
+                               (sb-bsd-sockets:socket-bind b)
+                               (sb-thread:make-thread (lambda () (sb-bsd-sockets:socket-connect a #(127 0 0 1) (nth-value 1 (sb-bsd-sockets:socket-name b)))))
+                               (sb-bsd-sockets:socket-connect b #(127 0 0 1) (nth-value 1 (sb-bsd-sockets:socket-name a)))
+                               (funcall fn a b))
+           (close-fd a))
+      (close-fd b))))
+
+(defmacro with-tcp-pair ((a b) &body body)
+  (alexandria:with-gensyms (as bs)
+    `(multiple-value-bind (,as ,bs) (make-tcp-pair)
+       (let ((,a (sb-bsd-sockets:socket-file-descriptor ,as))
+             (,b (sb-bsd-sockets:socket-file-descriptor ,bs)))
+         (unwind-protect
+              ,@body
+)))))
+
+(defun test ()
+  (let ((dispatcher (make-instance 'poll-dispatcher-mixin :fdset-size 2)))
+    (with-fdset (dispatcher)
+      (with-ssl-context (ctx dispatcher)
+        (with-tcp-pair (server-socket client-socket)
+          (dolist (socket (list client-socket server-socket))
+            (unless (zerop (fcntl socket f-setfl
+                                  (logior o-nonblock (fcntl socket f-getfl 0))))
+              (error "Could not set O_NONBLOCK on the client"))
+            (unless (plusp (logand o-nonblock (fcntl socket f-getfl 0)))
+              (error "Could not set O_NONBLOCK on the client")))
+          (unwind-protect
+               (let ((client (make-client client-socket ctx nil))
+                     (server (make-client server-socket ctx nil)))
+
+                 (print client)
+                 (print server)
+                 (set-next-action client #'print-data 10)
+                 (set-next-action server #'print-data 10)
+                 (setf (get-clients dispatcher) (list server client))
+                 (with-slots (fdset) dispatcher
+                   (ssl-accept (client-ssl server))
+                   (ssl-connect (client-ssl client))
+                   (add-socket-to-fdset fdset server-socket client 0)
+                   (add-socket-to-fdset fdset client-socket server 1)
+                   (send-unencrypted-bytes client (make-octet-buffer 10) nil)
+                   (send-unencrypted-bytes server (make-octet-buffer 10) nil)
+                   (encrypt-and-send client)
+                   (encrypt-and-send server)
+                   (dotimes (i 10)
+                     (let ((nread (poll dispatcher 0)))
+                       (process-client-sockets nread dispatcher)))))
+            (close-fd server-socket)
+            (close-fd client-socket)))))))

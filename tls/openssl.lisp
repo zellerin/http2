@@ -11,7 +11,7 @@
 (export '(bio-needs-read peer-closed-connection has-data-to-encrypt can-write-ssl
           can-read-bio bio-s-mem bio-new ssl-new ssl-set-accept-state ssl-set-bio ssl-free
           bio-write ssl-read% ssl-error-condition err-reason-error-string
-          bio-read% ssl-is-init-finished ssl-accept))
+          bio-read% ssl-is-init-finished ssl-accept ssl-connect))
 
 (use-foreign-library openssl)
 
@@ -25,6 +25,7 @@
 (defcfun "ERR_get_error" :int)
 
 (defcfun "SSL_accept" :int (ssl :pointer))
+(defcfun "SSL_connect" :int (ssl :pointer))
 (defcfun "SSL_get_error" :int (ssl :pointer) (ret :int))
 (defcfun "SSL_free" :int (ssl :pointer))
 (defcfun "SSL_is_init_finished" :int (ssl :pointer))

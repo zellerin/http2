@@ -27,3 +27,6 @@
 (constant (c-pollnval "POLLNVAL"))
 
 (constant (eagain "EAGAIN"))
+
+(constant (pf-inet "PF_INET"))
+(constant (sock-stream "SOCK_STREAM"))
