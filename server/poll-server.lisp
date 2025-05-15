@@ -23,7 +23,7 @@
 (defcfun ("write" write-2) :int (fd :int) (buf :pointer) (size :int))
 (defcfun "fcntl" :int "See man fcntl(2). Used to set the connection non-blocking."
   (fd :int) (cmd :int) (value :int))
-(defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :int))
+(defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :pointer))
 (defcfun "setsockopt" :int "See man setsockopt(2). Optionally used to switch Nagle algorithm."
   (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
 
@@ -695,6 +695,7 @@ reading of client hello."
               (handler-case
                   (handle-client-io client fdset)
                 (done () (invoke-restart 'http2/core:close-connection))
+                #+too-early-and-loses-info
                 (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
                 (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
             (http2/core:close-connection ()
@@ -890,6 +891,20 @@ from C code."
 (defcfun socket :int "S"
   (domain :int) (type :int) (protocol :int))
 
+(defcfun bind :int "S"
+  (sockfd :int) (addr :pointer) (addr-len :int))
+
+(defcfun connect :int "S"
+  (sockfd :int) (addr :pointer) (addr-len :int))
+
+(defcfun (socketpair% "socketpair") :int "S"
+  (domain :int) (type :int) (sv :pointer))
+
+(defcfun getsockname :int "S"
+  (sockfd :int) (addr :pointer) (addr-len :pointer))
+
+(defcfun (listen-2 "listen") :int (sockfd :int) (backlog :int))
+
 (defun socketpair ()
   (with-foreign-object (pair :int 2)
     (let ((res (socketpair% 1 1  pair)))
@@ -899,8 +914,8 @@ from C code."
             (mem-aref pair :int 1 ))))
 
 (defun call-with-tcp-pair (fn)
-  (let* ((a (socket pf-inet sock-stream 0))
-         (b (socket pf-inet sock-stream 0)))
+  (let* ((a (socket 2 1 0))
+         (b (socket 2 1 0)))
     (unwind-protect
          (unwind-protect
               (dolist (socket (list a b))
@@ -910,26 +925,43 @@ from C code."
                 (unless (plusp (logand o-nonblock (fcntl socket f-getfl 0)))
                   (error "O_NONBLOCK on the client did not stick")))
 
-           #+nil          (progn
-                               (sb-bsd-sockets:socket-bind a)
-                               (sb-bsd-sockets:socket-bind b)
-                               (sb-thread:make-thread (lambda () (sb-bsd-sockets:socket-connect a #(127 0 0 1) (nth-value 1 (sb-bsd-sockets:socket-name b)))))
-                               (sb-bsd-sockets:socket-connect b #(127 0 0 1) (nth-value 1 (sb-bsd-sockets:socket-name a)))
-                               (funcall fn a b))
+           (with-foreign-object (addr '(:struct sockaddr-in))
+             (with-foreign-object (len :int)
+                 (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
+                   (setf sin-family af-inet (mem-ref len :int) size-of-sockaddr-in)
+                   (setf sin-port #xaaaa sin-addr #x0100007f)
+                   (bind a addr size-of-sockaddr-in)
+                   (listen-2 a 1)
+
+                   (setf sin-port 0 sin-addr #x0100007f)
+                   (bind b addr size-of-sockaddr-in)
+                   (getsockname a addr len)
+                   (connect b addr size-of-sockaddr-in )
+                   (strerror (errno))
+                   (let ((srv (accept a addr len)))
+                     (unwind-protect
+                          (progn (strerror (errno))
+                                 (funcall fn srv b))
+                       (close-fd srv))))))
            (close-fd a))
       (close-fd b))))
 
 (defmacro with-tcp-pair ((a b) &body body)
-  (alexandria:with-gensyms (as bs)
-    `(multiple-value-bind (,as ,bs) (make-tcp-pair)
-       (let ((,a (sb-bsd-sockets:socket-file-descriptor ,as))
-             (,b (sb-bsd-sockets:socket-file-descriptor ,bs)))
-         (unwind-protect
-              ,@body
-)))))
+  `(call-with-tcp-pair (lambda (,a ,b) ,@body)))
+
+(defun print-data (client data)
+  (print (list client data))
+  (values #'print-data 10))
+
+(defclass certificated-poll-dispatcher (certificated-dispatcher poll-dispatcher-mixin)
+  ())
 
 (defun test ()
-  (let ((dispatcher (make-instance 'poll-dispatcher-mixin :fdset-size 2)))
+  (let* ((key-file (find-private-key-file "localhost"))
+         (dispatcher (make-instance 'certificated-poll-dispatcher
+                                    :fdset-size 2
+                                    :private-key-file (namestring key-file)
+                                    :certificate-file (namestring (find-certificate-file key-file)))))
     (with-fdset (dispatcher)
       (with-ssl-context (ctx dispatcher)
         (with-tcp-pair (server-socket client-socket)
@@ -939,26 +971,22 @@ from C code."
               (error "Could not set O_NONBLOCK on the client"))
             (unless (plusp (logand o-nonblock (fcntl socket f-getfl 0)))
               (error "Could not set O_NONBLOCK on the client")))
-          (unwind-protect
-               (let ((client (make-client client-socket ctx nil))
-                     (server (make-client server-socket ctx nil)))
-
-                 (print client)
-                 (print server)
-                 (set-next-action client #'print-data 10)
-                 (set-next-action server #'print-data 10)
-                 (setf (get-clients dispatcher) (list server client))
-                 (with-slots (fdset) dispatcher
-                   (ssl-accept (client-ssl server))
-                   (ssl-connect (client-ssl client))
-                   (add-socket-to-fdset fdset server-socket client 0)
-                   (add-socket-to-fdset fdset client-socket server 1)
-                   (send-unencrypted-bytes client (make-octet-buffer 10) nil)
-                   (send-unencrypted-bytes server (make-octet-buffer 10) nil)
-                   (encrypt-and-send client)
-                   (encrypt-and-send server)
-                   (dotimes (i 10)
-                     (let ((nread (poll dispatcher 0)))
-                       (process-client-sockets nread dispatcher)))))
-            (close-fd server-socket)
-            (close-fd client-socket)))))))
+          (let ((client (make-client client-socket ctx 'client))
+                (server (make-client server-socket ctx 'server)))
+            (set-next-action client #'print-data 10)
+            (set-next-action server #'print-data 10)
+            (setf (get-clients dispatcher) (list server client))
+            (with-slots (fdset) dispatcher
+              (ssl-accept (client-ssl server))
+              (ssl-connect (client-ssl client))
+              (add-socket-to-fdset fdset server-socket server 0)
+              (add-socket-to-fdset fdset client-socket client 1)
+              (describe client)
+              (describe server)
+              (send-unencrypted-bytes client (trivial-utf-8:string-to-utf-8-bytes "Hello worl") nil)
+              (send-unencrypted-bytes server (trivial-utf-8:string-to-utf-8-bytes "Hello back") nil)
+              (encrypt-and-send client)
+              (encrypt-and-send server)
+              (dotimes (i 10)
+                (let ((nread (poll dispatcher 0)))
+                  (process-client-sockets nread dispatcher))))))))))
