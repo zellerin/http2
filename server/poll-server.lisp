@@ -92,6 +92,9 @@ The actions are in general indicated by arrows in the diagram:
 (defvar *encrypt-buf-size* 256
   "Initial size of the vector holding data to encrypt.")
 
+(defvar *encrypted-buf-size* 1500
+  "Initial size of the vector holding encrypted data")
+
 (defvar *default-buffer-size* 1500) ; close to socket size
 
 (defstruct (client  (:constructor make-client%)
@@ -114,7 +117,9 @@ The actions are in general indicated by arrows in the diagram:
   (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
   (rbio (null-pointer) :type cffi:foreign-pointer :read-only t)
   (wbio (null-pointer) :type cffi:foreign-pointer :read-only t)
-  (write-buf nil :type (or null cons))
+  (write-buf (make-array *encrypted-buf-size* :element-type '(unsigned-byte 8))
+   :type (and (simple-array (unsigned-byte 8))))
+  (write-buf-size 0 :type fixnum)
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8)))
   (io-on-read #'parse-client-preface :type compiled-function)
@@ -260,19 +265,57 @@ Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
      (max 0 res)))
 
 ;;;; Encrypt queue
-(defun send-unencrypted-bytes (client new-data comment)
-  "Collect new data to be encrypted and sent to client.
+(defun add-and-maybe-pass-data (client buffer new-data from to old-size cleaner)
+  "Add new data to buffer if they fit.
 
-Data are just concatenated to the ENCRYPT-BUF. Later, they would be encrypted
-and passed."
+If they do not, send it in several parts:
+- send the allocated buffer filled up to the max with new data,
+- send the new data as bulk if the rest is big enough
+
+Return new buffer actual size and number of new-data octets processed.
+
+The NEW-DATA vector is not stored (can be dynamic-extent)."
+  (declare ((function (t octet-vector fixnum fixnum) fixnum) cleaner))
+  (replace buffer new-data :start1 old-size :start2 from)
+  (let* ((max-size (length buffer))
+         (gap (- max-size old-size))
+         (new-data-size (- to from)))
+    (when (>= gap new-data-size)
+      (return-from add-and-maybe-pass-data (values (+ old-size new-data-size) new-data-size)))
+    ;; The new data fill the buffer and some more
+    (let ((sent (funcall cleaner client buffer 0 max-size)))
+      (unless (= sent max-size)
+        (error "Could not process data. Implement me.")
+#+nil        (replace buffer buffer :start2 sent)
+#+nil        (return-from add-and-maybe-pass-data (values (- max-size sent) gap))))
+    ;; now the buffer is emptied and we processed some data
+    (incf from gap)
+    (decf new-data-size gap)
+    (when (< new-data-size max-size) ; actually, it might be a bit less strict check
+      (replace buffer new-data :start2 from)
+      (return-from add-and-maybe-pass-data (values new-data-size (+ gap new-data-size))))
+    ;; try to send new data as a bulk
+    (let ((sent (funcall cleaner client new-data from to)))
+      (unless (= sent new-data-size)
+        (error "Could not process data. Implement me.")))
+    (values 0 (+ gap new-data-size))))
+
+(defun send-unencrypted-bytes (client new-data comment)
+  "Add new data to be encrypted and sent to client.
+
+Data are buffered in the ENCRYPT-BUF of the client and when there is enough of
+them they are encrypted.
+
+NEW-DATA are completely used up (can be dynamic-extent)."
   (declare (ignore comment))
-  (let ((old-fp (client-encrypt-buf-size client)))
-    (setf (client-encrypt-buf-size client) (+ old-fp (length new-data)))
-    (loop
-      while (> (client-encrypt-buf-size client) (length (client-encrypt-buf client)))
-      do (setf (client-encrypt-buf client)
-               (double-buffer-size (client-encrypt-buf client))))
-    (replace (client-encrypt-buf client) new-data :start1 old-fp))
+  (multiple-value-bind (new-size processed)
+      (add-and-maybe-pass-data client
+                               (client-encrypt-buf client)
+                               new-data 0 (length new-data)
+                               (client-encrypt-buf-size client)
+                               #'encrypt-some)
+    (setf (client-encrypt-buf-size client) new-size)
+    (assert (= processed (length new-data))))
   (add-state client 'has-data-to-encrypt))
 
 ;;;; Write to SSL
@@ -343,19 +386,21 @@ that expects a response."
 (defun write-data-to-socket (client)
   "Write buffered encrypted data Ⓔ to the client socket ⑥. Update the write buffer to
 keep what did not fit."
-  (let ((concated (concatenate* (client-write-buf client)))) ;;DEBUG
+  (let ((concated (client-write-buf client))) ;;DEBUG
     (let ((written
             (push-bytes client (constantly nil)
                          #'send-to-peer
-                         concated 0 (length concated))))
-      (setf (client-write-buf client)
-            (cond ((= written (length concated))
-                   (remove-state client 'has-data-to-write)
-                   nil)
-                  ((plusp written)
-                   (remove-state client 'can-write)
-                   (list (subseq concated written)))
-                  (t (error "Write failed")))))))
+                         concated 0 (client-write-buf-size client))))
+      (cond ((= written (client-write-buf-size client))
+             (remove-state client 'has-data-to-write)
+             (setf (client-write-buf-size client) 0))
+            ((plusp written)
+             (remove-state client 'can-write)
+             (warn "This should be rare: too much data to encrypt")
+             (replace (client-write-buf client) (client-write-buf client)
+                      :start2 written :end2 (client-write-buf-size client))
+             (decf (client-write-buf-size client) written))
+            (t (error "Write failed"))))))
 
 (defun encrypt-and-send (client)
   (unless (plusp (client-fd client))
@@ -445,6 +490,7 @@ Assumes writes cannot fail."
            (writer out-fn))
   (let* ((vec (make-array *default-buffer-size* :element-type '(unsigned-byte 8)))
          (n (funcall in-fn client vec *default-buffer-size*)))
+    (declare (dynamic-extent vec))
     (assert (= n (funcall out-fn client vec 0 n)))
     (= (the fixnum *default-buffer-size*) n)))
 
@@ -509,10 +555,27 @@ Raise error otherwise."
     new))
 
 (define-writer queue-encrypted-bytes write-buffer (client new-data from to)
-  (setf (client-write-buf client)
-        (append (client-write-buf client)
-                (list (subseq new-data from to))))
-  (- to from))
+;;  "Queue and possibly write encrypted data to write to the socket."
+  (cond
+    ((> (length (client-write-buf client)) (+ (client-write-buf-size client) (- to from)))
+     (replace (client-write-buf client) new-data
+              :start1 (client-write-buf-size client)
+              :start2 from
+              :end2 to)
+     (incf (client-write-buf-size client) (- to from))
+     (- to from))
+    ((if-state client 'can-write)
+     ;; There is too much data, but we can write to socket
+     (replace (client-write-buf client) new-data
+              :start1 (client-write-buf-size client)
+              :start2 from)
+     (incf from (- (length (client-write-buf client)) from))
+     (write-data-to-socket client)
+     (queue-encrypted-bytes  client new-data from to))
+    (t
+     (error "FIXME: extend buffer ~s (used ~d) to accomodate ~d more and do proper stuff"
+            (client-write-buf client) (client-write-buf-size client)
+            (- to from)))))
 
 (define-condition done (error)
   ()
@@ -788,7 +851,7 @@ available), and run scheduled actions."
               (loop
                 (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
                   (let*
-                      ((nread (poll dispatcher timeout)))
+                      ((nread (the fixnum (poll dispatcher timeout))))
                     (run-mature-tasks *scheduler*)
                     (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
                     (process-client-sockets nread dispatcher)

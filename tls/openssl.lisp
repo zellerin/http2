@@ -45,6 +45,8 @@
 (defcfun ("SSL_CTX_set_alpn_select_cb" ssl-ctx-set-alpn-select-cb) :void
   (ctx :pointer)
   (alpn-select-cb :pointer))
+(defcfun "SSL_CTX_set_cipher_list" :int (ctx :pointer) (str :string))
+(defcfun "SSL_CTX_set_ciphersuites" :int (ctx :pointer) (str :string))
 
 (defcfun "TLS_method" :pointer)
 

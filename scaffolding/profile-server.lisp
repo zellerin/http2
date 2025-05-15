@@ -17,7 +17,7 @@
 (in-package http2/server)
 (require 'sb-sprof)
 
-(defclass measured-dispatcher (single-client-dispatcher)
+(defclass measured-dispatcher (poll-dispatcher)
   ())
 
 (defmethod do-new-connection (socket (dispatcher measured-dispatcher))
@@ -26,6 +26,9 @@
     (call-next-method))
   (sb-sprof:report))
 
-(handler-case
-    (start 8088 :dispatcher 'measured-dispatcher )
-  (sb-sys:interactive-interrupt ()))
+
+(sb-sprof:with-profiling (:mode :time :threads (list sb-thread:*current-thread*))
+    (handler-case
+        (start 8088 :dispatcher 'measured-dispatcher )
+      (sb-sys:interactive-interrupt ())))
+(with-open-file (out "/tmp/foo.out" :direction :output :if-exists :supersede) (sb-sprof:report :max 20  :stream out))

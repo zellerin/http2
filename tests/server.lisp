@@ -1,5 +1,5 @@
 (cl:defpackage #:http2/tests/server
-  (:use #:cl #:fiasco #:http2/server))
+  (:use #:cl #:fiasco #:http2/server #:http2/utils))
 
 (in-package #:http2/tests/server)
 
