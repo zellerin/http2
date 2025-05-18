@@ -97,6 +97,62 @@ The actions are in general indicated by arrows in the diagram:
 
 (defvar *default-buffer-size* 1500) ; close to socket size
 
+
+;;;; Async TLS endpoint state
+(eval-when (:load-toplevel :compile-toplevel)
+  (defparameter *states*
+    '(CAN-READ-PORT CAN-READ-SSL CAN-WRITE-SSL CAN-READ-BIO  CAN-WRITE HAS-DATA-TO-WRITE
+        HAS-DATA-TO-ENCRYPT  BIO-NEEDS-READ SSL-INIT-NEEDED)
+    "List of state bits that can a TLS endpoint have."))
+
+(defun states-to-string (state)
+  "Short string describing the state using codes on the diagram."
+  (with-output-to-string (*standard-output*)
+    (loop ;for state in *states*
+          for state-idx from 0
+          for label across "①③④⑤⑥ⓤⒺBS"
+          do (princ
+              (if (plusp (ldb (byte 1 state-idx) state)) label #\Space)))))
+
+(deftype state ()
+  `(unsigned-byte ,(length *states*)))
+
+(defmacro state-idx (state)
+  `(let ((idx (position ,state ',*states*)))
+     (or idx (error "No state ~a" ,state))))
+
+(defun if-state* (client state-idx)
+  (plusp (ldb (byte 1 state-idx)
+              (client-state client))))
+
+(declaim (inline if-state add-state remove-state if-state* test-state*))
+
+(defun if-state (client state)
+  (if-state* client (state-idx state)))
+
+(defun set-state* (client idx value)
+  (declare (bit value)
+           (fixnum  idx))
+  (setf (ldb (byte 1 idx)
+             (client-state client))
+        value)
+  (print (states-to-string (client-state client))))
+
+(defun add-state (client state)
+  (set-state* client (state-idx state) 1))
+
+(defun remove-state (client state)
+  (set-state* client (state-idx state) 0))
+
+(defvar *initial-state*
+  (loop with state = 0
+        for item in
+                  '(CAN-WRITE CAN-WRITE-SSL bio-needs-read ssl-init-needed)
+        do (setf (ldb (byte 1 (state-idx item)) state) 1)
+        finally (return state)))
+
+
+
 (defstruct (client  (:constructor make-client%)
                     (:print-object
                      (lambda (object out)
@@ -127,7 +183,7 @@ The actions are in general indicated by arrows in the diagram:
   (octets-needed (length +client-preface-start+) :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
   (start-time (get-internal-real-time) :type fixnum)
-  (state (list 'CAN-WRITE 'CAN-WRITE-SSL 'bio-needs-read 'ssl-init-needed))
+  (state *initial-state* :type state)
   ;; set of CAN-READ-PORT, CAN-READ-SSL, HAS-DATA-TO-ENCRYPT, CAN-WRITE-SSL,
   ;; CAN-READ-BIO, HAS-DATA-TO-WRITE, CAN-WRITE
   ;; BIO-NEEDS-READ SSL-INIT-NEEDED
@@ -159,38 +215,6 @@ available. Raise an error on error." vector destination)
          (progn ,@body))
        (setf (get ',name 'destination) ',destination))))
 
-
-;;;; Client state
-(defun if-state (client state)
-  (member state (client-state client)))
-
-(defun add-state (client state)
-  (pushnew state (client-state client)))
-
-(defun remove-state (client state)
-  (setf (client-state client)
-        (remove state (client-state client))))
-
-(defun states-to-string (state)
-  "Short string describing the state using codes on the diagram."
-  (with-output-to-string (*standard-output*)
-    (when (member 'can-read-port state)
-      (princ #\①))
-    (when (member 'can-read-ssl state)
-      (princ #\③))
-    (when (member 'has-data-to-write state)
-      (princ #\ⓤ))
-    (when (member 'can-write-ssl state)
-      (princ #\④))
-    (when (member 'can-read-bio state)
-      (princ #\⑤))
-    (when (member 'has-data-to-write state)
-      (princ #\Ⓔ))
-    (when (member 'can-write state)
-      (princ #\⑥))))
-
-
-
 ;;;; Input port
 
 (defun setup-port (socket nagle)
@@ -529,7 +553,8 @@ Raise error otherwise."
   (let ((ssl (client-ssl client))
         (wbio (client-rbio client)))
     (let ((new-state (handle-ssl-errors* ssl wbio ret)))
-      (add-state client new-state))))
+      (when new-state
+        (add-state client new-state)))))
 
 (defun ssl-err-reason-error-string (code)
   (foreign-string-to-lisp (err-reason-error-string code)))
