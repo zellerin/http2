@@ -177,9 +177,9 @@ The actions are in general indicated by arrows in the diagram:
   (write-buf-size 0 :type fixnum)
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8)))
-  (io-on-read #'parse-client-preface :type compiled-function)
+  (io-on-read (constantly nil) :type compiled-function)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
-  (octets-needed (length +client-preface-start+) :type fixnum)
+  (octets-needed 0 :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
   (start-time (get-internal-real-time) :type fixnum)
   (state *initial-state* :type state)
@@ -676,6 +676,7 @@ The read and write buffers are intitialized to new  "
                                :wbio (bio-new s-mem)
                                :ssl (ssl-new ctx)
                                :octets-needed +client-preface-length+
+                               :io-on-read #'parse-client-preface
                                ;; FIXME: use class from the dispatcher
                                :application-data application-data)))
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
