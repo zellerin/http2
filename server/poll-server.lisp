@@ -135,8 +135,7 @@ The actions are in general indicated by arrows in the diagram:
            (fixnum  idx))
   (setf (ldb (byte 1 idx)
              (client-state client))
-        value)
-  (print (states-to-string (client-state client))))
+        value))
 
 (defun add-state (client state)
   (set-state* client (state-idx state) 1))
