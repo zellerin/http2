@@ -215,12 +215,28 @@ available. Raise an error on error." vector destination)
        (setf (get ',name 'destination) ',destination))))
 
 ;;;; Input port
+(defsection @socket-setup (:title "Socket setup")
+  (checked-syscall function)
+  (set-nonblock function))
+(defun checked-syscall (check call &rest params)
+  "Return the result value of the syscall when check passes.
+
+Otherwise signal an error."
+  (let ((res (apply call params)))
+    (unless (funcall check res)
+      (error "~a failed: ~a" call (strerror (errno))))
+    res))
+
+(defun set-nonblock (socket)
+  (checked-syscall #'zerop #'fcntl socket f-setfl
+                   (logior o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
+  (unless (plusp (logand o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
+    (error "O_NONBLOCK on the socket ~a did not stick" socket)))
+
 
 (defun setup-port (socket nagle)
   "Set the TCP socket: nonblock and possibly nagle."
-  (unless (zerop (fcntl socket f-setfl
-                        (logior o-nonblock (fcntl socket f-getfl 0))))
-    (error "Could not set O_NONBLOCK on the client"))
+  (set-nonblock socket)
   (unless nagle
     (unless (zerop
              (with-foreign-object (flag :int)
@@ -733,16 +749,12 @@ reading of client hello."
 (defvar *nagle* t
   "If nil, disable Nagle algorithm (= enable nodelay)")
 
-#+nil
-(defvar *clients* nil
-  "List of clients processed.")
-
 (defun process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
   (with-slots (fdset empty-fdset-items clients) dispatcher
     (cond
       (empty-fdset-items
-       (let* ((socket (accept
+       (let* ((socket (checked-syscall #'plusp #'accept
                        (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
               (client-id (pop empty-fdset-items))
               (client (when client-id (make-client-object socket ctx))))
