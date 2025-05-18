@@ -27,3 +27,12 @@
 (constant (c-pollnval "POLLNVAL"))
 
 (constant (eagain "EAGAIN"))
+(constant (einprogress "EINPROGRESS"))
+
+(constant (pf-inet "PF_INET"))
+(constant (af-inet "AF_INET"))
+(constant (sock-stream "SOCK_STREAM"))
+(cstruct sockaddr-in "struct sockaddr_in"
+         (sin-family "sin_family" :type :int16)
+         (sin-port "sin_port" :type :uint16)
+         (sin-addr "sin_addr" :type :uint32))
