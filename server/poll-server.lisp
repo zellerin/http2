@@ -23,7 +23,7 @@
 (defcfun ("write" write-2) :int (fd :int) (buf :pointer) (size :int))
 (defcfun "fcntl" :int "See man fcntl(2). Used to set the connection non-blocking."
   (fd :int) (cmd :int) (value :int))
-(defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :int))
+(defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :pointer))
 (defcfun "setsockopt" :int "See man setsockopt(2). Optionally used to switch Nagle algorithm."
   (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
 
@@ -708,7 +708,7 @@ reading of client hello."
     (cond
       (empty-fdset-items
        (let* ((socket (accept
-                       (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))
+                       (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
               (client-id (pop empty-fdset-items))
               (client (when client-id (make-client-object socket ctx s-mem))))
          (setup-port socket *nagle*)
