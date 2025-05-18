@@ -309,7 +309,7 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
     ;; The new data fill the buffer and some more
     (let ((sent (funcall cleaner client buffer 0 max-size)))
       (unless (= sent max-size)
-        (error "Could not process data. Implement me.")
+        (error "(unimplemented) Could not process data, sent ~a from max ~a, writer ~a" sent max-size cleaner)
 #+nil        (replace buffer buffer :start2 sent)
 #+nil        (return-from add-and-maybe-pass-data (values (- max-size sent) gap))))
     ;; now the buffer is emptied and we processed some data
