@@ -102,7 +102,7 @@ The actions are in general indicated by arrows in the diagram:
 (eval-when (:load-toplevel :compile-toplevel)
   (defparameter *states*
     '(CAN-READ-PORT CAN-READ-SSL CAN-WRITE-SSL CAN-READ-BIO  CAN-WRITE HAS-DATA-TO-WRITE
-        HAS-DATA-TO-ENCRYPT  BIO-NEEDS-READ SSL-INIT-NEEDED)
+        HAS-DATA-TO-ENCRYPT  BIO-NEEDS-READ SSL-INIT-NEEDED PEER-CLOSED-CONNECTION)
     "List of state bits that can a TLS endpoint have."))
 
 (defun states-to-string (state)
@@ -110,7 +110,7 @@ The actions are in general indicated by arrows in the diagram:
   (with-output-to-string (*standard-output*)
     (loop ;for state in *states*
           for state-idx from 0
-          for label across "①③④⑤⑥ⓤⒺBS"
+          for label across "①③④⑤⑥ⓤⒺBSC"
           do (princ
               (if (plusp (ldb (byte 1 state-idx) state)) label #\Space)))))
 
