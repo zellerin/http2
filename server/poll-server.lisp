@@ -1,6 +1,6 @@
 (in-package #:http2/server/poll)
 
-(defsection @poll-server (:title "STDIO basic API" :export nil)
+(defsection @poll-server-syscalls (:title "STDIO basic API" :export t)
   (fcntl function)
   (poll% function)
   (close-fd function)
@@ -8,7 +8,14 @@
   (read function)
   (accept function)
   (setsockopt function)
-  (strerror function))
+  (strerror function)
+  (sockaddr-in type)
+  (size-of-sockaddr-in constant)
+  (poll function)
+
+  (with-fdset macro)
+  (fdset symbol)
+  (socket-bind function))
 
 #-os-macosx(defcfun ("__errno_location" errno%) :pointer)
 #+os-macosx(defcfun ("__error" errno%) :pointer)
@@ -24,6 +31,7 @@
 (defcfun "fcntl" :int "See man fcntl(2). Used to set the connection non-blocking."
   (fd :int) (cmd :int) (value :int))
 (defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :pointer))
+(defcfun "bind" :int (fd :int) (addr :pointer) (addrlen :int))
 (defcfun "setsockopt" :int "See man setsockopt(2). Optionally used to switch Nagle algorithm."
   (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
 
@@ -51,8 +59,16 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
+  (make-client function)
+  (get-clients function)
+  (client-application-data function)
+  (client-ssl function)
   (poll-dispatcher-mixin class)
+  (process-client-sockets function)
+  (add-socket-to-fdset function)
   (send-unencrypted-bytes function)
+  (encrypt-and-send function)
+  (set-next-action function)
   (get-fdset-size (method nil (poll-dispatcher-mixin)))
   (get-poll-timeout (method nil (poll-dispatcher-mixin)))
   (get-no-client-poll-timeout (method nil (poll-dispatcher-mixin)))
@@ -231,8 +247,15 @@ Otherwise signal an error."
   (checked-syscall #'zerop #'fcntl socket f-setfl
                    (logior o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
   (unless (plusp (logand o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
-    (error "O_NONBLOCK on the socket ~a did not stick" socket)))
+    (error "O_NONBLOCK on the socket ~a did not stick" socket))
+  socket)
 
+(defun socket-bind (socket &optional (host #x0100007f) (port 0))
+  (with-foreign-object (addr '(:struct sockaddr-in))
+    (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
+      (setf sin-family af-inet sin-port port sin-addr host)
+      (checked-syscall #'zerop #'bind socket addr size-of-sockaddr-in)))
+  socket)
 
 (defun setup-port (socket nagle)
   "Set the TCP socket: nonblock and possibly nagle."

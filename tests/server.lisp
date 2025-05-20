@@ -1,5 +1,6 @@
 (cl:defpackage #:http2/tests/server
-  (:use #:cl #:fiasco #:http2/server #:http2/utils))
+  (:use #:cl #:fiasco #:http2/server #:http2/utils
+        #:mgl-pax #:cffi))
 
 (in-package #:http2/tests/server)
 

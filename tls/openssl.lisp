@@ -4,6 +4,9 @@
   #-os-macosx (:unix "libssl.so")
   (t (:default "libssl.3")))
 
+(mgl-pax:defsection @openssl (:title "Openssl interface")
+  (with-ssl-context mgl-pax:macro))
+
 (export '(certificated-dispatcher make-http2-tls-context
           handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry
           certificate-file private-key-file))
