@@ -77,12 +77,14 @@ Close thos sockets afterwards."
 (defclass certificated-poll-dispatcher (http2/openssl::certificated-dispatcher poll-dispatcher-mixin)
   ())
 
-(defun poll-server-test (&key prepare-fn after-poll-fn)
+(defun poll-server-test (&key prepare-fn after-poll-fn (dispatcher 'certificated-poll-dispatcher))
   (let* ((key-file (find-private-key-file "localhost"))
-         (dispatcher (make-instance 'certificated-poll-dispatcher
+         (dispatcher (make-instance dispatcher
                                     :fdset-size 2
+
                                     :private-key-file (namestring key-file)
-                                    :certificate-file (namestring (find-certificate-file key-file)))))
+                                    :certificate-file (namestring (find-certificate-file key-file))
+                                    :allow-other-keys t)))
     (with-fdset (dispatcher)
       (http2/openssl:with-ssl-context (ctx dispatcher)
         (with-tcp-pair (server-socket client-socket)
@@ -109,6 +111,23 @@ Close thos sockets afterwards."
   (declare (ignore client))
   (values #'ignore-data (length data)))
 
+(deftest test-no-certificates ()
+  "No certificate on the server. Expected result is an error, as there is no agreed
+cipher.
+
+We do not want errors of this kind masked too early."
+  (signals http2/openssl:ssl-error-condition
+    (poll-server-test
+     :dispatcher 'poll-dispatcher-mixin
+     :prepare-fn (lambda (client server)
+                   (set-next-action client #'ignore-data 1)
+                   (set-next-action server #'ignore-data 1)
+                   (send-unencrypted-bytes server (make-octet-buffer 1) nil)
+                   (send-unencrypted-bytes client (make-octet-buffer 1) nil)
+                   (encrypt-and-send client)
+                   (encrypt-and-send server))
+     :after-poll-fn (constantly nil))))
+
 (defun test-send-in-advance (blob-size)
   (let ((received 0))
     (labels ((receive (client data)
@@ -129,5 +148,5 @@ Close thos sockets afterwards."
     received))
 
 (deftest send-in-advance ()
-  (dolist (size '(10 100 200))
+  (dolist (size '(10 100 200 2000))
     (is (equal size (test-send-in-advance size)))))
