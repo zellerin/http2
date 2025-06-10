@@ -171,15 +171,15 @@ This is to be used as callback on an open server for testing it."
   (let ((restart (find-restart 'kill-server)))
     (if restart (invoke-restart restart result))))
 
-(mgl-pax:define-restart kill-server (&optional value)
+(define-restart kill-server (&optional value)
   "Restart established in CREATE-SERVER that can be invoked to terminate the server
 properly and return VALUE.")
 
-(mgl-pax:define-restart kill-parent (&optional value)
+(define-restart kill-parent (&optional value)
   "Restart established in CREATE-SERVER that TODO")
 
 ;;;; TODO: document and review
-(mgl-pax:define-restart go-away (&optional value)
+(define-restart go-away (&optional value)
   "Handler to be invoked to close HTTP connection from our side.
 
 It is established either in TLS-SERVER/SYNCHRONOUS:DO-CONNECTION.
