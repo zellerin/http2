@@ -29,7 +29,7 @@
 
 (mgl-pax:define-package #:http2/client
     (:use #:cl #:http2/core #:http2/stream-overlay #:alexandria
-          #:http2/utils)
+          #:http2/utils #:mgl-pax #:dref)
   (:import-from #:anaphora #:acond #:aif #:it)
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
@@ -38,7 +38,7 @@
 (mgl-pax:define-package #:http2-server
     (:nicknames #:http2/server)
   (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
-        #:http2/cl+ssl)
+        #:http2/cl+ssl #:dref)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
 HANDLER macro to define content to serve."))
 

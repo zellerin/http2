@@ -66,7 +66,7 @@ protocol (H2 by default)."
    logs. See individual superclasses for details."))
 
 
-(mgl-pax:define-restart finish-stream (http2-stream)
+(define-restart finish-stream (http2-stream)
   "Invoked when server fully sends the response to the VANILLA-CLIENT-STREAM.")
 
 (defmethod peer-ends-http-stream ((stream vanilla-client-stream))
