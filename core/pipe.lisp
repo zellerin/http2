@@ -25,7 +25,7 @@ At the moment, it is strictly for the purpose of testing, so not generally usabl
   (binary-stream class)
   (@buffer-stream-and-pipes-impl section))
 
-(mgl-pax:defsection @buffer-stream-and-pipes-impl
+(defsection @buffer-stream-and-pipes-impl
     (:title "Vector backed streams - impementation"
      :export nil)
   (trivial-gray-streams:stream-read-byte (method () (pipe-end-for-read)))

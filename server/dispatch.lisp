@@ -22,8 +22,8 @@ This defines a handler on \"/hello-world\" path that sends reasonable headers, w
 In general, the handlers are set using DEFINE-PREFIX-HANDLER or
 DEFINE-EXACT-HANDLER, and are functions typically created by HANDLER macro,
 or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
-  (define-prefix-handler mgl-pax:macro)
-  (define-exact-handler mgl-pax:macro)
+  (define-prefix-handler macro)
+  (define-exact-handler macro)
   (handler type)
   (handler macro)
   (constant-handler macro)

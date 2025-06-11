@@ -5,7 +5,7 @@
 (named-readtables:in-readtable
             pythonic-string-reader:pythonic-string-syntax)
 
-(mgl-pax:defsection @client
+(defsection @client
     (:title "Using built-in HTTP/2 client")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
@@ -32,7 +32,7 @@ header name and value."
                 (list (car a) (cdr a)))
               additional-headers)))
 
-(mgl-pax:defsection @customizing-client-example-multi
+(defsection @customizing-client-example-multi
     (:title "Client example: multiple requests")
 
 
@@ -83,17 +83,17 @@ And finally, you need to pass these as the call parameter:
   (get-connection (method nil (http2-stream-minimal)))
   (get-streams (method nil (stream-collection))))
 
-(mgl-pax:defsection @customizing-client
+(defsection @customizing-client
     (:title "Customize client")
   "RETRIEVE-URL is in fact a thin wrapper over FETCH-RESOURCE generic function."
   (fetch-resource generic-function)
   " You can customize its behaviour by creating subclasses for the GENERIC-REQUEST
  class and specialized methods for your new classes, as well as by changing
  documented variables."
-  (@customizing-client-example-multi mgl-pax:section)
-  (@customizing-client-reference mgl-pax:section))
+  (@customizing-client-example-multi section)
+  (@customizing-client-reference section))
 
-(mgl-pax:defsection @customizing-client-reference
+(defsection @customizing-client-reference
     (:title "Client reference")
   "For a simple request without body, following documented methods are called in
 sequence:"

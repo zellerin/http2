@@ -1,6 +1,6 @@
 (in-package http2/client)
 
-(mgl-pax:defsection @test-samples-client
+(defsection @test-samples-client
     (:title "Send test samples to servers")
   (test-payload function))
 

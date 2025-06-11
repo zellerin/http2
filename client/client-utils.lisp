@@ -5,7 +5,7 @@
 ;;;; ports.
 (in-package :http2/client)
 
-(mgl-pax:defsection @client
+(defsection @client
   (:title "Creating a client")
   (connect-to-tls-server function)
 #+nil  (with-http2-connection macro)
