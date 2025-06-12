@@ -666,7 +666,8 @@ Raise error otherwise."
 (defun process-client-fd (fd-ptr client)
   "Process events available on FD-PTR (a pointer to struct pollfd) with CLIENT.
 
-The new possible action corresponding to ① or ⑥ on the diagram above is added to the client state and DO-AVAILABLE-ACTIONS is called to react to that."
+The new possible action corresponding to ① or ⑥ on the diagram above is added to
+the client state and DO-AVAILABLE-ACTIONS is called to react to that."
   (with-foreign-slots ((fd events revents) fd-ptr (:struct pollfd))
     (when (plusp (logand c-pollin revents)) (add-state client 'can-read-port))
     (when (plusp (logand c-pollout revents)) (add-state client 'can-write))
