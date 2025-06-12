@@ -209,7 +209,11 @@ falling back to *DEFAULT-CLIENT-CONNECTION-CLASS*. ARGS are passed to the MAKE-I
                       :network-stream network-stream
                       args)))
       (fetch-resource connection request args)
-      (process-pending-frames connection)))
+      (handler-case
+          (process-pending-frames connection)
+        (http-stream-error (e)
+          ;; promote stream error that is usually just warning to an error
+          (error e)))))
 
   (:method ((connection client-http2-connection) (request generic-request) args)
     "Open the new stream by sending headers frame to the server.
@@ -277,7 +281,7 @@ done."))
                      &allow-other-keys)
   "Retrieve URL (a string) through HTTP/2 over TLS.
 
-See RETRIEVE-URL-USING-CONNECTION for documentation of the keyword parameters.
+See FETCH-RESOURCE for documentation of the keyword parameters.
 
 Example:
 
