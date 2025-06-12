@@ -7,20 +7,20 @@
                  `(progn
                     (defconstant ,name ,code ,documentation))))
       (vector
-       (defcode +no-error+            0  "graceful shutdown")
-       (defcode +protocol-error+      1  "protocol error detected")
-       (defcode +internal-error+      2  "implementation fault")
-       (defcode +flow-control-error+  3  "flow-control limits exceeded")
-       (defcode +settings-timeout+    4  "settings not acknowledged")
-       (defcode +stream-closed+       5  "frame received for closed stream")
-       (defcode +frame-size-error+    6  "frame size incorrect")
-       (defcode +refused-stream+      7  "stream not processed")
-       (defcode +cancel+              8  "stream cancelled")
-       (defcode +compression-error+   9  "compression state not updated")
-       (defcode +connect-error+       #xa  "tcp connection error for connect method")
-       (defcode +enhance-your-calm+   #xb  "processing capacity exceeded")
-       (defcode +inadequate-security+ #xc  "negotiated tls parameters not acceptable")
-       (defcode +http-1-1-required+   #xd  "Use HTTP/1.1 for the request")))
+       (defcode +no-error+            0  "The associated condition is not a result of an error")
+       (defcode +protocol-error+      1  "The endpoint detected an unspecific protocol error")
+       (defcode +internal-error+      2  "The endpoint encountered an unexpected internal error")
+       (defcode +flow-control-error+  3  "The endpoint detected that its peer violated the flow-control protocol")
+       (defcode +settings-timeout+    4  "The endpoint sent a SETTINGS frame but did not receive a response in a timely manner")
+       (defcode +stream-closed+       5  "The endpoint received a frame after a stream was half-closed")
+       (defcode +frame-size-error+    6  "The endpoint received a frame with an invalid size")
+       (defcode +refused-stream+      7  "The endpoint refused the stream prior to performing any application processing")
+       (defcode +cancel+              8  "The endpoint indicates that the stream is no longer needed")
+       (defcode +compression-error+   9  "The endpoint is unable to maintain the header compression context for the connection")
+       (defcode +connect-error+       #xa  "The connection established in response to a      CONNECT request was reset or abnormally closed")
+       (defcode +enhance-your-calm+   #xb  "The endpoint detected that its peer is exhibiting a behavior that might be generating excessive load")
+       (defcode +inadequate-security+ #xc  "The underlying transport has properties that do not meet minimum security requirements")
+       (defcode +http-1-1-required+   #xd  "The endpoint requires that HTTP/11 be used instead of HTTP/2")))
 
     "This table maps error codes to mnemonic names - symbols.
 
@@ -171,8 +171,9 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 (defmethod print-object ((err http-stream-error) out)
   (with-slots (stream code) err
       (print-unreadable-object (err out :type t)
-        (format out "~a on ~s"
-                (documentation (aref *error-codes* code) 'variable)
+        (format out "~d (~a) on ~s"
+                (get-error-name code)
+                (documentation (get-error-name code) 'variable)
                 stream))))
 
 (define-condition incorrect-frame-size (http-stream-error)
