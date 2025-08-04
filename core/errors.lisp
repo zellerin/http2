@@ -32,10 +32,19 @@
    semantics in the other context."))
 
 (defun get-error-name (code)
-  "Get HTTP/2 error name from the error code."
+  ;; This is used only by the error printer
+  "Get HTTP/2 error name from the error code.
+
+```cl-transcript
+(http2/core::get-error-name 1)
+=> HTTP2/CORE::+PROTOCOL-ERROR+
+
+(http2/core::get-error-name 33)
+=> HTTP2/CORE::UNDEFINED-ERROR-CODE-21
+```"
   (if (<= 0 code #xd)
       (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
+      (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2/core))))
 
 (defsection @errors
     (:title "Errors handlers")
