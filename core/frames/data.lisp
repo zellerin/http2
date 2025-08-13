@@ -45,6 +45,12 @@ frame from START to END.")
   (:documentation
    "The flow control parameters that are kept both per-stream and per-connection."))
 
+(defmethod get-peer-window-size ((dummy (eql :closed)))
+  "No data to send to closed peer, so make it 0.
+
+This is used only in tracing, not during normal use."
+  0)
+
 (defgeneric apply-window-size-increment (object increment)
   (:documentation
    "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
@@ -204,3 +210,51 @@ APPLY-WINDOW-SIZE-INCREMENT callback."
           (t
            (http-stream-error 'null-stream-window-update http-stream))))
       (values #'parse-frame-header 9)))
+
+(defsection @tracing-windows (:title "Debugging window events")
+  "You can run TRACE-PEER-WINDOW or TRACE-WINDOW to trace window change events. On
+sbcl it looks like
+
+```
+(http2/core:trace-peer-window)
+(handler-bind ((warning 'muffle-warning)) ; retrieve-url on example.com warns normally
+   (http2/client:retrieve-url \"https://www.example.com\")
+  (values))
+.. (>0) Processed 1256 octets on Half-Closed/Local stream #1
+.. (>0) Window update size sent on #<VANILLA-CLIENT-CONNECTION >, from 64279 by 1256
+.. (>0) Window update size sent on Half-Closed/Local stream #1, from 64279 by 1256
+..
+```
+
+As always, use untrace to stop tracing."
+  (trace-window function)
+  (trace-peer-window function))
+
+(defun trace-peer-window ()
+  "Trace events related to the windows that peer has to set data:
+
+- when we send out the window update frame (window increases), and
+- when we receive data (windows decreases)."
+  (trace-object  write-window-update-frame 0
+      ("Window update size sent on ~a, from ~d by ~d"
+       (& 0) (get-window-size (& 0)) (& 1)))
+  (trace-object apply-data-frame 0 ("Processed ~a octets on ~a" (- (& 3) (& 2))
+                                                                (& 0))))
+
+(defun trace-window ()
+  "Trace events related to the window we have to send data:
+
+- When we send data, and
+- when we process window size frame callback"
+  (trace-object apply-window-size-increment 0
+      ("~s updates window size from ~d by ~d" (& 0) (get-peer-window-size (& 0))
+                                              (& 1)))
+  (trace-object write-data-frame 0 ("~d octets of data to write to ~a, my window ~a"
+                                    (length (& 1)) (& 0)
+                                    (get-peer-window-size (& 0))))
+  (trace-object write-data-frame-multi 0 ("~d octets of data (multi) to write to ~a, my window ~a"
+                                    (reduce #'+ (& 1) :key #'length) (& 0)
+                                    (get-peer-window-size (& 0))))
+  (trace-object (method set-peer-setting (t (eql :initial-window-size) t))
+      0
+      ("Peer on ~a set window size to ~a" (& 0) (& 2))))
