@@ -3,11 +3,6 @@
 (in-package :http2/utils)
 
 (defsection @utils (:title "Utilities")
-  (read-bytes function)
-  (write-bytes function)
-  (read-byte* function)
-
-  (get-error-name function)
   (find-setting-code function)
   (find-setting-by-id function)
 
@@ -19,20 +14,33 @@
   (aref/wide function)
   (vector-from-hex-text function)
   (frame-size type)
-  (octet-vector type))
+  (octet-vector type)
+
+  (trace-object macro))
+
+(export '&)
 
 (declaim (inline make-octet-buffer))
 
 #|
-The size of a frame payload is limited by the maximum size that a
-receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
-setting can have any value between 2^14 (16,384) and 2^24-1
-(16,777,215) octets, inclusive.
 |#
 
-(deftype frame-size ()  '(unsigned-byte 24))
+(deftype frame-size ()
+  "The size of a frame payload is limited by the maximum size that a
+receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
+setting can have any value between 2^14 (16,384) and 2^24-1
+(16,777,215) octets, inclusive."
+  '(unsigned-byte 24))
 
 (defun make-octet-buffer (size)
+  "
+```cl-transcript
+(make-octet-buffer 10)
+=> #(0 0 0 0 0 0 0 0 0 0)
+
+(type-of *)
+=> (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (10))
+```"
   (declare (type frame-size size))
   (make-array size :element-type '(unsigned-byte 8)))
 
@@ -47,8 +55,27 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   `(array (unsigned-byte 8) (,length)))
 
 (defun aref/wide (sequence start size)
-  "Same as read-bytes, but from a sequence"
-  (declare ((integer 1 8) size))
+  "Construct a little indian number from SIZE octets in SEQUENCE, starting at START.
+
+```cl-transcript
+=> ``CL-TRANSCRIPT
+(aref/wide (make-initialized-octet-buffer #(1 2 3)) 0 0)
+=> 0
+
+(aref/wide (make-initialized-octet-buffer #(1 2 3)) 0 2)
+=> 258
+
+(aref/wide  (make-initialized-octet-buffer #(1 2 3)) 0 3)
+=> 66051
+
+(aref/wide  (make-initialized-octet-buffer #(1 2 3)) 0 4)
+.. debugger invoked on SB-INT:INVALID-ARRAY-INDEX-ERROR:
+..   Invalid index 3 for (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (3)), should be a non-negative integer below 3.
+=> ; No value
+
+```
+"
+  (declare ((integer 0 8) size))
   (loop with res = 0
         for i from 0 to (+ -1 size)
         do
@@ -57,6 +84,15 @@ setting can have any value between 2^14 (16,384) and 2^24-1
         finally (return res)))
 
 (defun (setf aref/wide) (value sequence start size)
+  "Store a little indian number as SIZE octets to the SEQUENCE.
+
+```cl-transcript
+(let ((seq (make-octet-buffer 5)))
+  (setf (aref/wide seq 0 3) 66051)
+  seq)
+=> #(1 2 3 0 0)
+```
+"
   (declare ((integer 1 8) size))
   (loop for i from 0 to (+ -1 size)
         do
@@ -179,7 +215,18 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   "See https://www.iana.org/assignments/http2-parameters/http2-parameters.xhtml")
 
 (defun find-setting-code (name)
-  "Find setting name by code"
+  "Find setting name by code
+
+```cl-transcript
+(find-setting-code :max-header-list-size)
+=> 6
+
+(find-setting-code :foo)
+.. debugger invoked on SIMPLE-ERROR:
+..   No setting named FOO
+=> ; No value
+```
+"
   (or (position name *settings* :key #'car)
       (error "No setting named ~a" name)))
 
@@ -197,3 +244,33 @@ setting can have any value between 2^14 (16,384) and 2^24-1
   '(member idle open closed
     half-closed/local half-closed/remote
     reserved/local reserved/remote))
+
+
+(defvar *trace-level* 1)
+(defvar *global-trace-level* 1)
+
+(defmacro trace-object (function level
+                          (format &rest args)
+                          &optional after-format)
+  "Add reporting tracing for FUNCTION. See sbcl manual for trace to see what a
+function can be.
+
+The FORMAT is a format string and ARGS is order of an argument in the function input.
+
+This is intended primarily for SBCL. It would use basic tracing on other platform (and this is not tested...)"
+  `(handler-bind
+       ((simple-warning #'muffle-warning))
+     (trace ,function .
+            #-sbcl nil
+            #+sbcl (:report nil
+                    :condition (> ,(or (find-symbol "*TRACE-LEVEL*" *package*)
+                                       '*global-trace-level*)
+                                  ,level)
+                    ,@(when format `(:print
+                                     (flet ((& (nr) (sb-debug:arg nr)))
+                                       (format nil "(>~d) ~?" ,level ,format (list ,@args)))))
+                    ,@(when after-format
+                        (destructuring-bind (format-after &rest args-after) after-format
+                          `(:print-after
+                            (flet ((& (nr) (sb-debug:arg nr)))
+                              (format nil "(<~d) ~? " ,level ,format-after (list ,@args-after))))))))))
