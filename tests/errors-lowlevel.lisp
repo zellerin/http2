@@ -11,15 +11,7 @@
 (defun process-data-by-connection (data-name)
   "Parse data sample named by DATA-NAME till the end."
   (with-reciever
-    (loop with data of-type octet-vector = (funcall (payload-code (gethash data-name *payloads*)) nil)
-            with start of-type frame-size = 0 and end of-type frame-size = (length data)
-            with fn of-type receiver-fn = #'parse-frame-header
-            with size of-type frame-size = 9
-            for old-size of-type frame-size = size
-            while (> end start)
-            do
-               (multiple-value-setq (fn size) (funcall fn receiver data start (min end (+ start size))))
-               (incf start old-size))))
+    (process-frames receiver  (funcall (payload-code (gethash data-name *payloads*)) nil))))
 
 (defun test-for-error (payload-name error-name)
   (declare (optimize debug))

@@ -569,3 +569,15 @@ FIXME: might be also continuation-frame-header"
       ("Writing ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
        (aref *frame-types* (& 3))  (& 4) (get-flag-keywords (& 3) (& 2))
        (when (plusp (sb-debug:arg 5)) (& 5)) (& 6))))
+
+(defun process-frames (connection data)
+  "Process DATA as frames by CONNECTION."
+  (loop
+    with start of-type frame-size = 0 and end of-type frame-size = (length data)
+    with fn of-type receiver-fn = #'parse-frame-header
+    with size of-type frame-size = 9
+    for old-size of-type frame-size = size
+    while (> end start)
+    do
+       (multiple-value-setq (fn size) (funcall fn connection data start (min end (+ start size))))
+       (incf start old-size)))
