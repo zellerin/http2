@@ -107,7 +107,8 @@ Run these patterns against servers."
                (:file "high-level")
                (:file "tests-hpack")
                (:file "server")
-               (:file "poll-server")))
+               (:file "poll-server")
+               (:file "frames")))
 
 (defsystem "http2/openssl"
   :version "0.1"
