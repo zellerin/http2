@@ -62,7 +62,11 @@ Existing implementations are for:
 ")
 
   (:method ((connection write-buffer-connection-mixin) frame)
-    (vector-push-extend frame (get-to-write connection))
+    (with-slots (to-write) connection
+      (let ((old-size (fill-pointer to-write)))
+        (adjust-array to-write (+ (length to-write) (length frame)))
+        (incf (fill-pointer to-write) (length frame))
+        (replace to-write frame :start1 old-size)))
     frame)
   (:method ((connection stream-based-connection-mixin) frame)
     (write-sequence frame (get-network-stream connection))
