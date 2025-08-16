@@ -225,7 +225,13 @@ This makes use of the fact that same flag name has same index in all headers
 where it is used.")
 
 (defun flags-to-code (pars)
-  "Convert list of flags to a flag octet code. This is not supposed to be fast."
+  "Convert list of flags to a flag octet code. This is not supposed to be fast.
+
+```cl-transcript
+(http2/core:flags-to-code '(:padded t))
+=> 8
+```
+"
   (loop for (par val) on pars by #'cddr
         when val
           sum (getf *flag-codes-keywords* par)))
@@ -286,7 +292,8 @@ For constant FLAG-NAME this is supposed to be fast.
      (replace buffer padded :start1 (- (length buffer) (length padded)))))
   buffer)
 
-(defsection @padding-read)
+(defsection @padding-read ()
+  (with-padding-marks macro))
 
 (defmacro with-padding-marks ((connection flags start end) &body body)
   "Look at the FLAGS and LENGTH (captured variable, FIXME) of a frame, with possibly padded payload that starts at START, and adjust START and set END for this frame to start and end of the actual payload.
@@ -546,6 +553,10 @@ FIXME: might be also continuation-frame-header"
           collect flag-name))
 
 (defun trace-frames ()
+  "Trace incoming and outgoing frames on a generic level. Example:
+```
+(http2/core::trace-frames)
+"
   (trace-object decode-frame-header 0 (nil)
                 ("Read ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
                  (& 0)  (& 1)  (get-flag-keywords (& 0) (& 2))
