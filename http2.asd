@@ -109,7 +109,8 @@ Run these patterns against servers."
                (:file "server")
                (:file "poll-server")
                (:file "frames")
-               (:file "frames/headers")))
+               (:file "frames/headers")
+               (:file "frames/data")))
 
 (defsystem "http2/openssl"
   :version "0.1"

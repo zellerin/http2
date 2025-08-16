@@ -1,5 +1,9 @@
 (in-package http2/core)
 
+(defvar *custom-headers-code*
+  (vector-from-hex-text
+   "400a637573746f6d2d6b65790d637573746f6d2d686561646572"))
+
 (fiasco:deftest write-headers-frame/test ()
   (handler-bind ((no-new-header-action 'muffle-warning))
     (test-write-parse-fn #'write-headers-frame
