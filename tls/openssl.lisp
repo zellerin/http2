@@ -87,7 +87,7 @@
               (cffi:mem-ref out :pointer) (cffi:inc-pointer in (1+ idx)))
              (return 0)
         finally
-           ;; h2 not found, but maybe server can handle
+           ;; h2 not found, alert
            (return ssl-tlsext-err-alert-fatal))) ; no agreement
 
 (defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
