@@ -16,7 +16,8 @@
   (frame-size type)
   (octet-vector type)
 
-  (trace-object macro))
+  (trace-object macro)
+  (*example-url* variable))
 
 (export '&)
 
@@ -249,9 +250,11 @@ setting can have any value between 2^14 (16,384) and 2^24-1
 (defvar *trace-level* 1)
 (defvar *global-trace-level* 1)
 
+(defvar *example-url* "https://example.com")
+
 (defmacro trace-object (function level
-                          (format &rest args)
-                          &optional after-format)
+                        (format &rest args)
+                        &optional after-format)
   "Add reporting tracing for FUNCTION. See sbcl manual for trace to see what a
 function can be.
 

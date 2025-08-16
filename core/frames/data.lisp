@@ -63,6 +63,23 @@ the strem or connection.")
       (when window-open-fn
         (funcall window-open-fn)))))
 
+(defun parse-data-frame (active-stream flags)
+   (declare (ignorable active-stream flags))
+   (values
+    (lambda (connection data &optional (start 0) (length (length data)))
+      "Read octet vectors from the stream and call APPLY-DATA-FRAME on them.
+
+Reduce tracked incoming window.
+
+Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
+      (assert (zerop start))
+      (with-padding-marks (connection flags start end)
+        (account-read-window-contribution connection active-stream
+                                          (- end start))
+        (apply-data-frame active-stream data start end)
+        (maybe-end-stream flags active-stream)
+        (values #'parse-frame-header 9)))))
+
 (define-frame-type 0 :data-frame
     "```
   +---------------+-----------------------------------------------+
@@ -78,18 +95,7 @@ the strem or connection.")
      :flags (padded end-stream)
      :must-have-stream-in (open half-closed/local))
     nil
-    (lambda (connection data active-stream flags)
-      "Read octet vectors from the stream and call APPLY-DATA-FRAME on them.
-
-Reduce tracked incoming window.
-
-Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
-      (assert (zerop start))
-      (with-padding-marks (connection flags start end)
-        (account-read-window-contribution connection active-stream (- end start))
-        (apply-data-frame active-stream data start end)
-        (maybe-end-stream flags active-stream)
-        (values #'parse-frame-header 9))))
+    nil)
 
 (defun account-read-window-contribution (connection stream length)
   ;; TODO: throw an error when this goes below zero
@@ -101,13 +107,11 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
   (decf (get-peer-window-size stream) length))
 
 (defun write-priority (priority buffer start &optional headers)
-  (unless (null (cdr headers))
-    (error "FIXME: not implemented "))
   (write-31-bits buffer start
                  (priority-stream-dependency priority)
                  (priority-exclusive priority))
   (setf (aref buffer (+ 4 start)) (priority-weight priority))
-  (replace buffer (car headers) :start1 (+ start 5))
+  (when headers (replace buffer headers :start1 (+ start 5)))
   buffer)
 
 (defun write-data-frame (stream data &rest keys &key padded end-stream)
@@ -218,12 +222,11 @@ sbcl it looks like
 ```
 (http2/core:trace-peer-window)
 (handler-bind ((warning 'muffle-warning)) ; retrieve-url on example.com warns normally
-   (http2/client:retrieve-url \"https://www.example.com\")
+   (http2/client:retrieve-url *example-url*)
   (values))
 .. (>0) Processed 1256 octets on Half-Closed/Local stream #1
 .. (>0) Window update size sent on #<VANILLA-CLIENT-CONNECTION >, from 64279 by 1256
 .. (>0) Window update size sent on Half-Closed/Local stream #1, from 64279 by 1256
-..
 ```
 
 As always, use untrace to stop tracing."
