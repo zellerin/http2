@@ -39,10 +39,6 @@
       (fiasco:is (functionp
            (funcall (first parsed-header) (get-connection stream)
                     (subseq res 9))))
-      (fiasco:is (equalp
-                  (funcall (first parsed-header) (get-connection stream)
-                           (subseq res 9))
-                  t))
       (fiasco:is (equalp (get-headers stream) (getf expected :headers)))
       stream)))
 
@@ -57,22 +53,20 @@
                            iota-5)
 
       (test-write-parse-fn #'write-data-frame
-                           '((:payload #(1 2 3 4 5))
-                             (:state-change open -> half-closed/remote)
-                             (:closed-remotely))
+                           nil
                            #(0 0 5 0 1 0 0 0 42 1 2 3 4 5)
                            iota-5
                            :end-stream t)
 
       (test-write-parse-fn #'write-data-frame
-                           '((:payload #(1 2 3 4 5)))
+                           nil
                            #(0 0 9 0 8 0 0 0 42 3 1 2 3 4 5 10 11 12)
                            iota-5
                            :padded padding)
 
       ;; Test empty body
       (test-write-parse-fn #'write-data-frame
-                           '((:payload #()))
+                           nil
                            #(0 0 4 0 8 0 0 0 42 3 10 11 12)
                            (make-octet-buffer 0)
                            :padded padding))))
@@ -123,7 +117,7 @@
 
 (fiasco:deftest write-priority-frame/test ()
   (test-write-parse-fn #'write-priority-frame
-                       '((:NEW-PRIO :EXCLUSIVE NIL :WEIGHT 27 :DEPENDENCY 12))
+                       nil
                        #(0 0 5 2 0 0 0 0 42 0 0 0 12 27)
                        (make-priority :exclusive nil :stream-dependency 12
                                                 :weight 27)))

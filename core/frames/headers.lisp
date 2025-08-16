@@ -232,11 +232,14 @@ continuation flags, if any, so must be separate."
        (process-end-headers connection http-stream)
        (maybe-end-stream header-flags http-stream)
        (values #'parse-frame-header 9))
-      (to-backtrace
+#+sameasbelow      (to-backtrace
        (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
                9))
       (t
-       (error "TODO: Implement me nicely")))))
+       ;; We read full headers, but we need to read more (continuation frame)
+       ;; FIXME: simplify it for this case and write tests for this
+       (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
+               9)))))
 
 (defun read-priority (data http-stream start)
   (let* ((e+strdep (aref/wide data start 4))
