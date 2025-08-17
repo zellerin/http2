@@ -20,27 +20,25 @@
     ,@body))
 
 (defun test-write-parse-fn (write-fn expected octets &rest pars)
-  "Test that
+  "Run WRITE-FN on the dummy stream and get the generated octets. Compare them with OCTETS.
+
+Test that
 - WRITE-FN applied on the dummy stream with PARS gives OCTETS.
-- OCTETS can be parsed
+- OCTETS can be parsed back
 "
   (with-dummy-stream (stream :state 'open)
-    (setf (get-last-id-seen (get-connection stream)) 42)
-    (let* ((res (apply write-fn (make-instance 'dummy-stream :state 'open) pars))
-           (parsed-header
-             (multiple-value-list
-              (parse-frame-header
-               (get-connection stream)
-               res 0 9))))
-      (fiasco:is (equalp octets res)
-          "Generated octets do not match for~& ~a~&Seen:   ~a~&Wanted: ~a" pars  res octets)
-      (fiasco:is (equalp (second parsed-header) (- (length octets) 9))
-          "Parsed size does not match")
-      (fiasco:is (functionp
-           (funcall (first parsed-header) (get-connection stream)
-                    (subseq res 9))))
-      (fiasco:is (equalp (get-headers stream) (getf expected :headers)))
-      stream)))
+    (with-dummy-stream (stream-out :state 'open)
+      (let ((connection (get-connection stream-out)))
+        (setf (get-last-id-seen (get-connection stream)) 42)
+        (apply write-fn stream-out pars)
+        (let ((res (get-to-write connection)))
+          (fiasco:is (equalp octets res)
+              "Generated octets do not match for parameters~& ~a~&Seen:   ~a~&Wanted: ~a" pars
+              res
+              octets)
+          (process-frames (get-connection stream) (make-initialized-octet-buffer res))
+          (fiasco:is (equalp (get-headers stream) (getf expected :headers)))
+          stream)))))
 
 (fiasco:deftest with-padding-marks/test ()
   "Test that the padding is removed correctly for further processing."
