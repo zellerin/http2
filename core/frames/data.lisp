@@ -72,7 +72,6 @@ the strem or connection.")
 Reduce tracked incoming window.
 
 Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
-      (assert (zerop start))
       (with-padding-marks (connection flags start end)
         (account-read-window-contribution connection active-stream
                                           (- end start))

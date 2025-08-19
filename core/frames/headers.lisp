@@ -291,12 +291,11 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     (lambda (connection data http-stream flags)
       "Read priority frame. Invoke APPLY-STREAM-PRIORITY if priority was present."
       (declare (ignore connection))
-      (assert (zerop start))
-      (unless (= 5 length)
+      (unless (= 5 (- length start))
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-        (http-stream-error 'frame-size-error http-stream))
-      (read-priority data http-stream 0)))
+        (http-stream-error 'incorrect-frame-size http-stream))
+      (read-priority data http-stream start)))
 
 (define-frame-type 9 :continuation-frame
     "```
