@@ -530,12 +530,11 @@ Assumes writes cannot fail."
     (loop
       for read = nil then t
       for n fixnum = (funcall in-fn client vec *default-buffer-size*)
-
-          while (plusp n)
-          ;; assumption: never fail
-          do
-             (assert (= n (funcall out-fn client vec 0 n)))
-          finally (return read))))
+      while (plusp n)
+      ;; assumption: never fail
+      do
+         (assert (= n (funcall out-fn client vec 0 n)))
+      finally (return read))))
 
 (defun pull-once-push-bytes (client in-fn out-fn)
   "Read data using IN-FN and write them out using OUT-FN.
