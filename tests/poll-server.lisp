@@ -78,10 +78,13 @@ Close thos sockets afterwards."
   ())
 
 (defun poll-server-test (&key prepare-fn after-poll-fn (dispatcher 'certificated-poll-dispatcher))
+  "Make a server-client TCP pair (nonblocking), let them establish the TLS connection (accept-connect),
+define CLIENT and SERVER as poll clients, call PREPARE-FN with SERVER and client
+as the parameters, and then read and write messages among them and call the
+AFTER-POLL-FN on them after data exchange."
   (let* ((key-file (find-private-key-file "localhost"))
          (dispatcher (make-instance dispatcher
                                     :fdset-size 2
-
                                     :private-key-file (namestring key-file)
                                     :certificate-file (namestring (find-certificate-file key-file))
                                     :allow-other-keys t)))
@@ -101,7 +104,7 @@ Close thos sockets afterwards."
               (add-socket-to-fdset fdset server-socket server 0)
               (add-socket-to-fdset fdset client-socket client 1)
               (funcall prepare-fn server client)
-                   (loop for nread = (poll dispatcher 100)
+              (loop for nread = (poll dispatcher 100)
                     while (plusp nread)
                     do
                        (process-client-sockets nread dispatcher)
@@ -129,6 +132,10 @@ We do not want errors of this kind masked too early."
      :after-poll-fn (constantly nil))))
 
 (defun test-send-in-advance (blob-size)
+  "Send BLOB-SIZE octets from one TLS endpoint to another before the TLS connection
+is set up. This should be queued and used at the very start of the communication.
+
+Return number of received octets (that should be same as number of octets sent)"
   (let ((received 0))
     (labels ((receive (client data)
                (incf received (length data))
