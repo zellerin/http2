@@ -917,10 +917,10 @@ available), and run scheduled actions."
   (declare (optimize safety debug (speed 0))
            (type poll-dispatcher-mixin dispatcher))
   (with-fdset (dispatcher)
-    (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
     (let ((*scheduler* (make-instance 'scheduler)))
       (with-ssl-context (ctx dispatcher)
         (with-clients (dispatcher)
+          (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
           (locally (declare (optimize speed (debug 1) (safety 1))
                             (ftype (function (t t) fixnum) poll))
             (loop
