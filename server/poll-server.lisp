@@ -19,7 +19,7 @@
 
 #-os-macosx(defcfun ("__errno_location" errno%) :pointer)
 #+os-macosx(defcfun ("__error" errno%) :pointer)
-(defcfun ("strerror_r" strerror-r%) :pointer
+(defcfun (#+linux "strerror_r" #-linux "strerror" strerror-r%) :pointer
   "System error message for error number" (errnum :int) (buffer :pointer) (buflen :int))
 
 (defcfun ("poll" poll%) :int "Synchronous I/O multiplexing. Called by POLL."
@@ -240,7 +240,7 @@ available. Raise an error on error." vector destination)
 Otherwise signal an error."
   (let ((res (apply call params)))
     (unless (funcall check res)
-      (error "~a failed: ~a" call (strerror (errno))))
+      (error "~a failed: ~d (~a)" call (errno) (strerror (errno))))
     res))
 
 (defun set-nonblock (socket)
