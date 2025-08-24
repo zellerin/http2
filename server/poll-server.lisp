@@ -1,50 +1,5 @@
 (in-package #:http2/server/poll)
 
-(defsection @poll-server-syscalls (:title "STDIO basic API" :export t)
-  (fcntl function)
-  (poll% function)
-  (close-fd function)
-  (errno function)
-  (read function)
-  (accept function)
-  (setsockopt function)
-  (strerror function)
-  (sockaddr-in type)
-  (size-of-sockaddr-in constant)
-  (poll function)
-
-  (with-fdset macro)
-  (fdset symbol)
-  (socket-bind function))
-
-#-os-macosx(defcfun ("__errno_location" errno%) :pointer)
-#+os-macosx(defcfun ("__error" errno%) :pointer)
-(defcfun (#+linux "strerror_r" #-linux "strerror" strerror-r%) :pointer
-  "System error message for error number" (errnum :int) (buffer :pointer) (buflen :int))
-
-(defcfun ("poll" poll%) :int "Synchronous I/O multiplexing. Called by POLL."
-  (fdset :pointer) (rb :int) (timeout :int))
-(defcfun ("close" close-fd) :int
-    "See close(2). The Lisp name is changed so that not to cause a conflict." (fd :int))
-(defcfun ("read" read-2) :int (fd :int) (buf :pointer) (size :int))
-(defcfun ("write" write-2) :int (fd :int) (buf :pointer) (size :int))
-(defcfun "fcntl" :int "See man fcntl(2). Used to set the connection non-blocking."
-  (fd :int) (cmd :int) (value :int))
-(defcfun "accept" :int (fd :int) (addr :pointer) (addrlen :pointer))
-(defcfun "bind" :int (fd :int) (addr :pointer) (addrlen :int))
-(defcfun "setsockopt" :int "See man setsockopt(2). Optionally used to switch Nagle algorithm."
-  (fd :int) (level :int) (optname :int) (optval :pointer) (optlen :int))
-
-(defun strerror (errnum)
-  "Lisp string for particular error. See man strerror(3)."
-  (let ((str (make-array 256 :element-type 'character)))
-    (with-pointer-to-vector-data (buffer str)
-      (foreign-string-to-lisp (strerror-r% errnum buffer 256)))))
-
-(defun errno ()
-  "See man errno(3). "
-  (mem-ref (errno%) :int))
-
 
 (mgl-pax:defsection  @async-server (:title "Polling server overview")
   #+nil  (client type)
@@ -177,7 +132,7 @@ The actions are in general indicated by arrows in the diagram:
 
 - File descriptor of underlying socket (FD),
 - Opaque pointer to the openssl handle (SSL),
-- Input and output BIO for exchanging data with OPENSSL (RBIO, WBIO),
+- Input and output BIO for exchanging data with OPENSSL (WBIO, RBIO),
 - Plain text octets to encrypt and send (ENCRYPT-BUF),
 - Encrypted octets to send to the file descriptor (WRITE-BUF),
 - Callback function when read data are available (IO-ON-READ).
@@ -234,39 +189,12 @@ available. Raise an error on error." vector destination)
 (defsection @socket-setup (:title "Socket setup")
   (checked-syscall function)
   (set-nonblock function))
-(defun checked-syscall (check call &rest params)
-  "Return the result value of the syscall when check passes.
-
-Otherwise signal an error."
-  (let ((res (apply call params)))
-    (unless (funcall check res)
-      (error "~a failed: ~d (~a)" call (errno) (strerror (errno))))
-    res))
-
-(defun set-nonblock (socket)
-  (checked-syscall #'zerop #'fcntl socket f-setfl
-                   (logior o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
-  (unless (plusp (logand o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
-    (error "O_NONBLOCK on the socket ~a did not stick" socket))
-  socket)
-
-(defun socket-bind (socket &optional (host #x0100007f) (port 0))
-  (with-foreign-object (addr '(:struct sockaddr-in))
-    (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
-      (setf sin-family af-inet sin-port port sin-addr host)
-      (checked-syscall #'zerop #'bind socket addr size-of-sockaddr-in)))
-  socket)
 
 (defun setup-port (socket nagle)
   "Set the TCP socket: nonblock and possibly nagle."
   (set-nonblock socket)
   (unless nagle
-    (unless (zerop
-             (with-foreign-object (flag :int)
-               (setf (mem-ref flag :int) 1)
-               (setsockopt socket ipproto-tcp tcp-nodelay
-                           flag (foreign-type-size :int))))
-      (error "Could not set O_NODELAY on the client"))))
+    (set-nodelay socket)))
 
 (define-reader read-from-peer peer-in (client vec vec-size)
   (with-pointer-to-vector-data (buffer vec)
@@ -662,6 +590,7 @@ Raise error otherwise."
              (incf i (length v))
           finally (return res))))
 
+#+old
 (defun process-client-fd (fd-ptr client)
   "Process events available on FD-PTR (a pointer to struct pollfd) with CLIENT.
 
@@ -676,9 +605,6 @@ the client state and DO-AVAILABLE-ACTIONS is called to react to that."
       (unless (eql #'parse-frame-header (client-io-on-read client))
         (warn "Poll error for ~a: ~d" client (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL))))
       (signal 'done))))
-
-(defvar *fdset-size* 10
-  "Size of the fdset - that, is, maximum number of concurrent clients.")
 
 #+nil
 (defvar *empty-fdset-items* nil "List of empty slots in the fdset table.")
@@ -734,70 +660,56 @@ reading of client hello."
     (write-settings-frame (client-application-data client) nil)
     client))
 
-(defun set-fd-slot (fdset socket new-events idx)
-  "Set FD and EVENTS of slot IDX in fdset."
-  (with-foreign-slots ((fd events)
-                       (inc-pointer fdset (* idx size-of-pollfd))
-                       (:struct pollfd))
-    (when socket (setf fd socket events new-events))))
-
-(defun add-socket-to-fdset (fdset socket client fd-idx)
-  "Find free slot in the FDSET and put client there."
-  (set-fd-slot fdset socket  (logior c-pollerr c-pollhup c-pollnval c-pollin) fd-idx )
-  (setf (client-fdset-idx client) fd-idx))
-
-(defun init-fdset (fdset size)
-  (loop for i from 0 to (1- size)
-        do
-           (set-fd-slot fdset -1 0 i)))
-
-(defun handle-client-io (client fdset)
-  (let ((fd-ptr (inc-pointer fdset (* (client-fdset-idx client) size-of-pollfd))))
-    (process-client-fd fd-ptr client)
-    (with-foreign-slots ((events)
-                         fd-ptr
-                         (:struct pollfd))
-      (setf events
-            (if (and (if-state client 'has-data-to-write)
-                     (not (if-state client 'can-write)))
-                (logior events c-pollout)
-                (logand events (logxor -1 c-pollout)))))))
+(defun handle-client-io (client dispatcher)
+  (call-with-poll-info dispatcher (client-fdset-idx client)
+                       (lambda (input-ready output-ready err-or-hup)
+                         (when input-ready  (add-state client 'can-read-port))
+                         (when output-ready (add-state client 'can-write))
+                         (do-available-actions client)
+                         (when err-or-hup
+                           (unless (eql #'parse-frame-header (client-io-on-read client))
+                             (warn "Poll error for ~a: ~d" client err-or-hup))
+                           (signal 'done))
+                         (and (if-state client 'has-data-to-write)
+                              (not (if-state client 'can-write))))))
 
 (defun setup-new-connect-pollfd (fdset listening-socket)
-  (set-fd-slot fdset
-               (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket))
-                (logior c-pollerr c-pollhup c-pollnval c-pollin)
-                0))
+  (add-socket-to-fdset% fdset (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket))
+                       0))
 
 (defvar *nagle* t
   "If nil, disable Nagle algorithm (= enable nodelay)")
 
+(defun add-socket-to-fdset (fdset socket client fd-idx)
+  ;; TODO: rename to ADD-CLIENT-TO-FDSET
+  (add-socket-to-fdset% fdset socket
+   (setf (client-fdset-idx client) fd-idx)))
+
 (defun process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
-  (with-slots (fdset empty-fdset-items clients) dispatcher
-    (cond
-      (empty-fdset-items
-       (let* ((socket (checked-syscall #'plusp #'accept
-                       (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
-              (client-id (pop empty-fdset-items))
-              (client (when client-id (make-client-object socket ctx))))
-         (setup-port socket *nagle*)
-         (add-socket-to-fdset fdset socket client client-id)
-         (push client clients)))
-      (t (warn 'http2-simple-warning :format-control "No place in fdset for the new client. Accepting and immediately closing it.")
-         ;; Let the server catch it and
-         (close-fd (accept
-                    (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) 0))))))
+  (let* ((socket (checked-syscall #'plusp #'accept
+                                  (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
+         (fdset-idx (add-new-fdset-item socket dispatcher)))
+    (when fdset-idx
+      (push (make-client-object socket ctx) (get-clients dispatcher))
+      (setup-port socket *nagle*))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
-  (with-slots (fdset empty-fdset-items clients) dispatcher
-    (with-foreign-slots ((revents) fdset (:struct pollfd))
-      (cond
-        ((plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
-         (error "Error on listening socket"))
-        ((zerop (logand c-pollin revents))) ; no new client, do nothing
-        (t (process-new-client listening-socket ctx dispatcher))))))
+  (call-with-poll-info dispatcher 0
+                       (lambda (in out error-or-end)
+                         (declare (ignore out))
+                         (cond
+                           (error-or-end
+                            (error "Error on listening socket"))
+                           (in (process-new-client listening-socket ctx dispatcher)))))
+  #+old
+  (with-foreign-slots ((revents) fdset (:struct pollfd))
+    (cond
+      ((plusp (logand revents  (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
+       (error "Error on listening socket"))
+      ((zerop (logand c-pollin revents))) ; no new client, do nothing
+      (t (process-new-client listening-socket ctx dispatcher)))))
 
 (defun close-client-connection (client dispatcher)
   (with-slots (clients fdset) dispatcher
@@ -811,12 +723,12 @@ reading of client hello."
     (setf (client-fd client) -1)))
 
 (defun process-client-sockets (nread dispatcher)
-  (with-slots (fdset clients) dispatcher
+  (with-slots (clients) dispatcher
     (unless (zerop nread)
       (dolist (client clients)
           (restart-case
               (handler-case
-                  (handle-client-io client fdset)
+                  (handle-client-io client dispatcher)
                 (done () (invoke-restart 'http2/core:close-connection))
                 #+too-early-and-loses-info
                 (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
@@ -874,31 +786,6 @@ is not from scheduler)"
          (values timeout t))
         (t (values scheduler-time nil))))))
 
-(defun call-with-fdset (dispatcher fn)
-  "Helper for WITH-FDSET."
-  (with-slots (fdset-size fdset empty-fdset-items) dispatcher
-    (with-foreign-object (fdset* '(:struct pollfd) fdset-size)
-      (setf fdset fdset*)
-      (init-fdset fdset fdset-size)
-      (setf empty-fdset-items (alexandria:iota (1- fdset-size) :start 1))
-      (unwind-protect
-           (funcall fn)
-        (setf fdset nil)))))
-
-(defmacro with-fdset ((dispatcher) &body body)
-  "Run BODY with FDSET slot of DISPATCHER set to a set of file descriptors for
-poll (of size FDSET-SIZE, another DISPATCHER slot).
-
-Initialize FDSET. Set EMPTY-FDSET-ITEMS slot of the dispatcher to all slot
-items.
-
-Cleanup FDSET after BODY is run."
-  `(call-with-fdset ,dispatcher
-                    (lambda () ,@body)))
-
-(defun poll (dispatcher timeout)
-  (with-slots (fdset fdset-size) dispatcher
-      (poll% fdset fdset-size timeout)))
 
 (defmacro with-clients ((dispatcher) &body body)
   `(unwind-protect
@@ -939,17 +826,13 @@ poll (miliseconds or -1)"
     ((eql :∞) -1)
     ((real 0) (round (* 1000 human-form)))))
 
-(defclass poll-dispatcher-mixin ()
-  ((fdset-size             :accessor get-fdset-size             :initarg :fdset-size
-                           :documentation "Number of slots for clients to be polled.")
-   (poll-timeout           :accessor get-poll-timeout           :initarg :poll-timeout
+(defclass poll-dispatcher-mixin (fdset-manager)
+  ((poll-timeout           :accessor get-poll-timeout           :initarg :poll-timeout
                            :documentation "See *POLL-TIMEOUT*.")
    (no-client-poll-timeout :accessor get-no-client-poll-timeout :initarg :no-client-poll-timeout
                            :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
    (nagle                  :accessor get-nagle                  :initarg :nagle)
-   (clients                :accessor get-clients                :initarg :clients)
-   (fdset                  :accessor get-fdset                  :initarg :fdset)
-   (empty-fdset-items      :accessor get-empty-fdset-items      :initarg :empty-fdset-items))
+   (clients                :accessor get-clients                :initarg :clients))
   (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
                      :no-client-poll-timeout *no-client-poll-timeout*
                      :nagle *nagle*
@@ -965,7 +848,7 @@ Timeouts can be specified for polling."))
 
 (defmethod print-object ((dispatcher poll-dispatcher-mixin) out)
   (print-unreadable-object (dispatcher out :type t)
-    (format out "~a/~a clients" (length (get-clients dispatcher)) (get-fdset-size dispatcher))))
+    (format out "~a clients" (length (get-clients dispatcher)))))
 
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin base-dispatcher)
   ())

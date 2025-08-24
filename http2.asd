@@ -129,6 +129,7 @@ Run these patterns against servers."
   :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl" "let-over-lambda")
   :pathname "server"
   :components ((:cffi-grovel-file "poll-grovel")
+               (:file "tcpip")
                (:file "poll-openssl")
                (:file "poll-server")))
 

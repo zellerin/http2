@@ -33,9 +33,13 @@
   (:import-from #:anaphora #:acond #:aif #:it)
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
+(mgl-pax:define-package #:http2/tcpip
+  (:use #:cl #:mgl-pax #:cffi))
+
 (mgl-pax:define-package #:http2/server
-  (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
-        #:http2/openssl #:cffi #:dref)
+    (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
+          #:http2/openssl #:dref #:cffi
+          #:http2/tcpip)
   (:nicknames #:http2/server/shared #:http2/server/poll #:http2/server/threaded)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
 HANDLER macro to define content to serve."))
