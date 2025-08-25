@@ -35,3 +35,6 @@
          (sin-family "sin_family" :type :int16)
          (sin-port "sin_port" :type :uint16)
          (sin-addr "sin_addr" :type :uint32))
+
+(include "sys/ioctl.h")
+(constant (fionbio "FIONBIO"))
