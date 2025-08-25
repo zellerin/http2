@@ -123,10 +123,14 @@ We do not want errors of this kind masked too early."
                    (set-next-action client #'ignore-data 1)
                    (set-next-action server #'ignore-data 1)
                    (send-unencrypted-bytes server (make-octet-buffer 1) nil)
+                   (http2/server/poll::ssl-connect (client-ssl client))
                    (send-unencrypted-bytes client (make-octet-buffer 1) nil)
-                   (encrypt-and-send client)
-                   (encrypt-and-send server))
-     :after-poll-fn (constantly nil))))
+                   (encrypt-and-send client)                   )
+     :after-poll-fn (lambda (client server)
+                      (describe client)
+                      (describe server)
+                      (http2/server/poll::do-available-actions client)
+                      (http2/server/poll::do-available-actions server)))))
 
 (defun test-send-in-advance (blob-size)
   "Send BLOB-SIZE octets from one TLS endpoint to another before the TLS connection
