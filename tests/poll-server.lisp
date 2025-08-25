@@ -26,49 +26,45 @@
 ;;;; Sandbox
 (defsection @poll-pair ())
 
-(defcfun socket :int "man socket(2)" (domain :int) (type :int) (protocol :int))
-(defcfun bind :int "man bind(2)" (sockfd :int) (addr :pointer) (addr-len :int))
-(defcfun connect :int "man connect(2)" (sockfd :int) (addr :pointer) (addr-len :int))
-(defcfun getsockname :int "man getsockname(2)"
-  (sockfd :int) (addr :pointer) (addr-len :pointer))
-(defcfun (listen-2 "listen") :int "man listen(2)" (sockfd :int) (backlog :int))
+(defclass client-context ()
+  ())
 
-(defun nonneg-or-eagain (res)
-  "Helper as first parameter for checked-syscall."
-  (or
-   (/= res -1)
-   (= (http2/server/poll::errno) http2/server/poll::EAGAIN)
-   (= (http2/server/poll::errno) http2/server/poll::EINPROGRESS)))
+(defmethod make-http2-tls-context ((context client-context))
+  (http2/openssl::ssl-ctx-new (http2/openssl::tls-method)))
 
-(defun call-with-tcp-pair (fn)
-  "Apply FN on two interconnected non-blocking TCP sockets.
+(defun call-with-clients-pair (fn)
+  (with-tcp-pair (s c)
+    (http2/server/poll::with-ssl-context (context (make-instance 'poll-dispatcher-mixin))
+      (http2/server/poll::with-ssl-context (client-context (make-instance 'client-context))
+        (funcall fn (make-client s context nil) (make-client c client-context nil))))))
 
-Make sure sockets are closed afterwards."
-  (with-foreign-objects ((addr '(:struct sockaddr-in)) (len :int))
-    (flet ((make-socket ()
-             "Make a non-blocking socket bound to localhost:0."
-             (let ((socket (checked-syscall #'plusp #'socket 2 1 0)))
-               ;; FIXME: leaks socket when something below fails
-               (socket-bind (set-nonblock socket)))))
-      (let ((a (make-socket))
-            (b (make-socket)))
-        (unwind-protect
-             (unwind-protect
-                  (checked-syscall #'zerop #'listen-2 a 1)
-               (getsockname a addr len)
-               (checked-syscall #'nonneg-or-eagain #'connect b addr size-of-sockaddr-in)
-               (let ((srv (checked-syscall #'plusp #'accept a addr len)))
-                 (unwind-protect
-                   (funcall fn srv b)
-                   (close-fd srv)))
-               (close-fd a))
-          (close-fd b))))))
+(deftest write-read-peer/test ()
+  "Write fixed data to server and see it on the client"
+  (call-with-clients-pair
+   (lambda (server client)
+     (http2/server/poll::send-to-peer server (make-initialized-octet-buffer #(1 2 3 4)) 0 4)
+     (http2/server/poll::send-to-peer client (make-initialized-octet-buffer #(5 6 7 8)) 0 4)
+     (let ((res  (make-octet-buffer 100)))
+       (is (= 4 (http2/server/poll::read-from-peer client res 100)))
+       (is (equalp (subseq res 0 4) #(1 2 3 4))))
+     (let ((res  (make-octet-buffer 100)))
+       (is (= 4 (http2/server/poll::read-from-peer server res 100)))
+       (is (equalp (subseq res 0 4) #(5 6 7 8)))))))
 
-(defmacro with-tcp-pair ((a b) &body body)
-  "Run BODY with A and B bound to connected sockets.
+(deftest write-tls-read-peer/test ()
+  (call-with-clients-pair
+   (lambda (server client)
 
-Close thos sockets afterwards."
-  `(call-with-tcp-pair (lambda (,a ,b) ,@body)))
+     (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
+     (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
+     (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
+     (http2/server/poll::do-available-actions client)
+
+     (let ((res (make-octet-buffer 100)))
+       (set-nonblock (http2/server/poll::client-fd server))
+       (= 4 (http2/server/poll::read-from-peer server res 100))
+       (equalp (subseq res 0 4) #(1 2 3 4))
+       res))))
 
 (defun print-data (client data)
   (print (list client data))
@@ -82,6 +78,7 @@ Close thos sockets afterwards."
 define CLIENT and SERVER as poll clients, call PREPARE-FN with SERVER and client
 as the parameters, and then read and write messages among them and call the
 AFTER-POLL-FN on them after data exchange."
+  (declare (function prepare-fn after-poll-fn))
   (let* ((key-file (find-private-key-file "localhost"))
          (dispatcher (make-instance dispatcher
                                     :fdset-size 2
