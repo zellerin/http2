@@ -357,21 +357,17 @@ that expects a response."
 
 ;;;; TCP write port
 (define-writer send-to-peer peer-out (client vector from to)
-  (with-pointer-to-vector-data (buffer vector)
-    (let ((res (write-2 (client-fd client)
-                        (inc-pointer buffer from)
-                        (- to from)))
-          (err (errno)))
-      (cond ((and (= res -1)
-                  (= err eagain))
-             (remove-state client 'can-write)
-             0)
-            ((= res -1)
-             ;; e.g., broken pipe
-             (invoke-restart 'http2/core:close-connection)
-             (error "Error during write: ~d (~a)" err (strerror err)))
-            ((plusp res) res)
-            (t (error "This cant happen (#1)"))))))
+  (multiple-value-bind (res err) (write-buffer* (client-fd client) vector from to)
+    (cond ((and (= res -1)
+                (= err eagain))
+           (remove-state client 'can-write)
+           0)
+          ((= res -1)
+           ;; e.g., broken pipe
+           (invoke-restart 'http2/core:close-connection)
+           (error "Error during write: ~d (~a)" err (strerror err)))
+          ((plusp res) res)
+          (t (error "This cant happen (#1)")))))
 
 (defun write-data-to-socket (client)
   "Write buffered encrypted data Ⓔ to the client socket ⑥. Update the write buffer to
@@ -548,6 +544,7 @@ Raise error otherwise."
 ;;  "Queue and possibly write encrypted data to write to the socket."
   (cond
     ((> (length (client-write-buf client)) (+ (client-write-buf-size client) (- to from)))
+     ;; New data fit to the buffer
      (replace (client-write-buf client) new-data
               :start1 (client-write-buf-size client)
               :start2 from
@@ -561,7 +558,9 @@ Raise error otherwise."
               :start2 from)
      (incf from (- (length (client-write-buf client)) from))
      (write-data-to-socket client)
-     (queue-encrypted-bytes  client new-data from to))
+     (queue-encrypted-bytes client new-data from to)
+     ;;
+     (+ (length (client-write-buf client)) (- to from))) ;; FIXME: this should be checked
     (t
      (error "FIXME: extend buffer ~s (used ~d) to accomodate ~d more and do proper stuff"
             (client-write-buf client) (client-write-buf-size client)
