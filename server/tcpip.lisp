@@ -189,19 +189,25 @@ a pending write."
   socket)
 
 (defun set-nonblock (socket)
-  ;; FIXME: On Mac, this fails - 2 is before, I set to 6, but then I read #x400002
+  "Set socket as nonblocking. This is done usually by O_NONBLOCK on fcntl, however,
+this failed silently on OSX.
 
-#+nil
+So this uses ioctl and fionbio."
+
+#-darwin
   (checked-syscall #'zerop #'fcntl socket f-setfl
                    (logior o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
-#+nil  (unless (plusp (logand o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
+#-darwin
+  (unless (plusp (logand o-nonblock (checked-syscall #'plusp #'fcntl socket f-getfl 0)))
     (handler-bind ()
       ;; FIXME: if this fails, we do not close the socket
       (warn "O_NONBLOCK on the socket ~a did not stick" socket)))
   #+darwin
-  (with-foreign-object (flag :long)
-    (setf (mem-ref flag :long) 1)
-    (checked-syscall 'zerop 'ioctl socket fionbio flag (foreign-type-size :long))
+  (;with-foreign-object (flag :int) ; this gave regularily (but not always) EFAULT
+   let ((flag (foreign-alloc :int :initial-contents #(1))))
+    (unwind-protect
+         (checked-syscall 'zerop 'ioctl socket fionbio flag (foreign-type-size :int))
+      (foreign-free flag))
     socket))
 
 (defun set-nodelay (socket)
@@ -240,6 +246,7 @@ Makes sure that all created sockets are closed afterwards."
       (checked-syscall #'zerop #'listen-2 listener 10)
       (with-socket (client (make-socket))
         (with-foreign-objects ((addr '(:struct sockaddr-in)) (len :int))
+          (setf (mem-ref len :int) 4)
           (checked-syscall #'zerop #'getsockname listener addr len)
           (assert (= (mem-ref len :int) size-of-sockaddr-in))
           (checked-syscall #'nonneg-or-eagain #'connect client addr size-of-sockaddr-in))
