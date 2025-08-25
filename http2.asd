@@ -101,6 +101,7 @@ Run these patterns against servers."
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
   :components ((:file "tests")
+               (:file "tcpip")
                (:file "utils")
                (:file "test-samples")
                (:file "errors-lowlevel")
