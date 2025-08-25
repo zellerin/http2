@@ -716,7 +716,7 @@ reading of client hello."
     (unless (null-pointer-p (client-ssl client))
       (ssl-free (client-ssl client)))   ; BIOs are closed automatically
     (setf (client-ssl client) (null-pointer))
-    (push (client-fdset-idx client) (get-empty-fdset-items dispatcher))
+    (push (client-fdset-idx client) (http2/tcpip::get-empty-fdset-items dispatcher))
     (set-fd-slot fdset -1 0 (client-fdset-idx client))
     (close-fd (client-fd client))
     (setf (client-fd client) -1)))
@@ -832,7 +832,7 @@ poll (miliseconds or -1)"
                            :documentation "See *NO-CLIENT-POLL-TIMEOUT*.")
    (nagle                  :accessor get-nagle                  :initarg :nagle)
    (clients                :accessor get-clients                :initarg :clients))
-  (:default-initargs :fdset-size *fdset-size* :poll-timeout *poll-timeout*
+  (:default-initargs :poll-timeout *poll-timeout*
                      :no-client-poll-timeout *no-client-poll-timeout*
                      :nagle *nagle*
                      :clients nil)
