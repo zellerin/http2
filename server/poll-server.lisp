@@ -530,9 +530,11 @@ Raise error otherwise."
 
 (defun maybe-init-ssl (client)
   "If SSL is not initialized yet, initialize it."
-  (if (zerop (ssl-is-init-finished (client-ssl client)))
-    (handle-ssl-errors client (ssl-accept (client-ssl client)))
-    (remove-state client 'ssl-init-needed)))
+  (cond
+    ((zerop (ssl-is-init-finished (client-ssl client)))
+     (handle-ssl-errors client (ssl-accept (client-ssl client))))
+    (t (remove-state client 'ssl-init-needed)
+       (add-state client 'can-read-bio))))
 
 (defun doubled-buffer (buffer)
   "Return a larger buffer with same initial data as the provided one."
