@@ -35,8 +35,10 @@
 (defun call-with-clients-pair (fn)
   (with-tcp-pair (s c)
     (http2/server/poll::with-ssl-context (context (make-instance 'poll-dispatcher-mixin))
-      (http2/server/poll::with-ssl-context (client-context (make-instance 'client-context))
-        (funcall fn (make-client s context nil) (make-client c client-context nil))))))
+      (http2/server/poll::with-ssl-context (client-context (make-instance 'poll-dispatcher-mixin))
+        (set-nonblock s)
+        (set-nonblock c)
+        (funcall fn (make-client s context nil 0) (make-client c client-context nil 1))))))
 
 (deftest write-read-peer/test ()
   "Write fixed data to server and see it on the client"
