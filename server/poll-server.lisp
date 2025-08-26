@@ -630,7 +630,7 @@ the client state and DO-AVAILABLE-ACTIONS is called to react to that."
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
 
-(defun make-client (socket ctx application-data)
+(defun make-client (socket ctx application-data idx)
   "Make a generic instance of a CLIENT usable both for a client and for a server.
 
 The read and write buffers are intitialized to new  "
@@ -639,6 +639,7 @@ The read and write buffers are intitialized to new  "
                                :rbio (bio-new s-mem)
                                :wbio (bio-new s-mem)
                                :ssl (ssl-new ctx)
+                               :fdset-idx idx
                                :octets-needed +client-preface-length+
                                :io-on-read #'parse-client-preface
                                ;; FIXME: use class from the dispatcher
@@ -646,13 +647,13 @@ The read and write buffers are intitialized to new  "
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
     client))
 
-(defun make-client-object (socket ctx)
+(defun make-client-object (socket ctx idx)
   "Create new CLIENT object suitable for TLS server.
 
 Initially, the ENCRYPT-BUFFER contains the settings to send, and next action is
 reading of client hello."
   ;; FIXME: use class from the dispatcher
-  (let* ((client (make-client socket ctx (make-instance 'poll-server-connection))))
+  (let* ((client (make-client socket ctx (make-instance 'poll-server-connection) idx)))
     (setf (get-client (client-application-data client)) client) ;
     (ssl-set-accept-state (client-ssl client)) ; set as server; no return value
     (set-next-action client #'parse-client-preface +client-preface-length+)
@@ -690,7 +691,7 @@ reading of client hello."
                                   (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
          (fdset-idx (add-new-fdset-item socket dispatcher)))
     (when fdset-idx
-      (push (make-client-object socket ctx) (get-clients dispatcher))
+      (push (make-client-object socket ctx fdset-idx) (get-clients dispatcher))
       (setup-port socket *nagle*))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
@@ -788,7 +789,7 @@ is not from scheduler)"
 
 (defmacro with-clients ((dispatcher) &body body)
   `(unwind-protect
-        ,@body
+        (progn ,@body)
      (dolist (client (get-clients ,dispatcher))
        (close-client-connection client dispatcher))))
 
