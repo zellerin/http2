@@ -415,6 +415,9 @@ This is factored out so that it can be traced. There is a
 TLS-SERVER/MEASURE::ACTIONS clip on this function."
   (cond
     ((if-state client 'can-read-port) #'process-data-on-socket)
+    ((and (if-state client 'ssl-init-needed)
+          (not (if-state client 'bio-needs-read)))
+     #'maybe-init-ssl)
     ((if-state client 'can-read-ssl)
      (if (plusp (client-octets-needed client))
          #'on-complete-ssl-data
@@ -426,10 +429,9 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
     ((and (if-state client 'has-data-to-write)
           (if-state client 'can-write))
      #'write-data-to-socket)
-    ((and (if-state client 'ssl-init-needed)
-          (not (if-state client 'bio-needs-read)))
-     #'maybe-init-ssl)
     (t nil)))
+
+; (trace select-next-action :print (states-to-string (client-state (sb-debug:arg 0))) :condition-after (sb-debug:arg 0))
 
 (defun do-available-actions (client)
   "Run available actions as selected by SELECT-NEXT-ACTION till there is none."
