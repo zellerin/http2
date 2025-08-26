@@ -71,8 +71,16 @@ The actions are in general indicated by arrows in the diagram:
 ;;;; Async TLS endpoint state
 (eval-when (:load-toplevel :compile-toplevel)
   (defparameter *states*
-    '(CAN-READ-PORT CAN-READ-SSL CAN-WRITE-SSL CAN-READ-BIO  CAN-WRITE HAS-DATA-TO-WRITE
-        HAS-DATA-TO-ENCRYPT  BIO-NEEDS-READ SSL-INIT-NEEDED PEER-CLOSED-CONNECTION)
+    '(CAN-READ-PORT           ; ①
+      CAN-READ-SSL            ; ③
+      CAN-WRITE-SSL           ; ④
+      CAN-READ-BIO            ; ⑤
+      CAN-WRITE               ; ⑥
+      HAS-DATA-TO-WRITE       ; ⓤ
+      HAS-DATA-TO-ENCRYPT     ; Ⓔ
+      BIO-NEEDS-READ          ; B
+      SSL-INIT-NEEDED         ; S
+      PEER-CLOSED-CONNECTION) ; C
     "List of state bits that can a TLS endpoint have."))
 
 (defun states-to-string (state)
