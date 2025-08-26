@@ -48,7 +48,6 @@ The actions are in general indicated by arrows in the diagram:
 
 ![](flow.svg)"
 
-  (process-client-fd function)
   (do-available-actions function)
   (select-next-action function)
 
@@ -246,7 +245,6 @@ available. Raise an error on error." vector destination)
    "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
 
 Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
-   nil
    (let ((res
           (with-pointer-to-vector-data (buffer vec)
             (ssl-read% (client-ssl client) buffer size))))
@@ -589,25 +587,6 @@ Raise error otherwise."
              (incf i (length v))
           finally (return res))))
 
-#+old
-(defun process-client-fd (fd-ptr client)
-  "Process events available on FD-PTR (a pointer to struct pollfd) with CLIENT.
-
-The new possible action corresponding to ① or ⑥ on the diagram above is added to
-the client state and DO-AVAILABLE-ACTIONS is called to react to that."
-  (with-foreign-slots ((fd events revents) fd-ptr (:struct pollfd))
-    (when (plusp (logand c-pollin revents)) (add-state client 'can-read-port))
-    (when (plusp (logand c-pollout revents)) (add-state client 'can-write))
-    (do-available-actions client)
-    (when (plusp (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL)))
-      ;; this happens, e.g., with h2load -D (time based)
-      (unless (eql #'parse-frame-header (client-io-on-read client))
-        (warn "Poll error for ~a: ~d" client (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL))))
-      (signal 'done))))
-
-#+nil
-(defvar *empty-fdset-items* nil "List of empty slots in the fdset table.")
-
 (defun set-next-action (client action size)
   "Set action for next chunk of received data."
   (setf (client-io-on-read client) action
@@ -712,13 +691,13 @@ reading of client hello."
       (t (process-new-client listening-socket ctx dispatcher)))))
 
 (defun close-client-connection (client dispatcher)
-  (with-slots (clients fdset) dispatcher
+  (with-slots (clients) dispatcher
     (setf clients (remove client clients))
     (unless (null-pointer-p (client-ssl client))
       (ssl-free (client-ssl client)))   ; BIOs are closed automatically
     (setf (client-ssl client) (null-pointer))
     (push (client-fdset-idx client) (http2/tcpip::get-empty-fdset-items dispatcher))
-    (set-fd-slot fdset -1 0 (client-fdset-idx client))
+    (set-fd-slot (get-fdset dispatcher) -1 0 (client-fdset-idx client))
     (close-fd (client-fd client))
     (setf (client-fd client) -1)))
 

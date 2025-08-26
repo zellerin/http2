@@ -90,12 +90,12 @@ AFTER-POLL-FN on them after data exchange."
         (with-tcp-pair (server-socket client-socket)
           (dolist (socket (list client-socket server-socket))
             (set-nonblock socket))
-          (let ((client (make-client client-socket ctx 'client))
-                (server (make-client server-socket ctx 'server)))
+          (let ((client (make-client client-socket ctx 'client 0))
+                (server (make-client server-socket ctx 'server 1)))
             (setf (get-clients dispatcher) (list server client)
                   (client-application-data client) client
                   (client-application-data server) server)
-            (with-slots (fdset) dispatcher
+            (let ((fdset (get-fdset dispatcher)))
               (http2/openssl:ssl-accept (client-ssl server))
               (http2/openssl:ssl-connect (client-ssl client))
               (add-socket-to-fdset fdset server-socket server 0)
