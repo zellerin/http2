@@ -32,13 +32,19 @@
 (defmethod make-http2-tls-context ((context client-context))
   (http2/openssl::ssl-ctx-new (http2/openssl::tls-method)))
 
-(defun call-with-clients-pair (fn)
-  (with-tcp-pair (s c)
-    (http2/server/poll::with-ssl-context (context (make-instance 'poll-dispatcher-mixin))
-      (http2/server/poll::with-ssl-context (client-context (make-instance 'poll-dispatcher-mixin))
-        (set-nonblock s)
-        (set-nonblock c)
-        (funcall fn (make-client s context nil 0) (make-client c client-context nil 1))))))
+(defun call-with-clients-pair (fn &key (dispatcher (make-instance 'poll-dispatcher-mixin :fdset-size 3)))
+  (with-fdset (dispatcher)
+    (with-tcp-pair (s c)
+      (http2/server/poll::with-ssl-context (context
+                                            (make-instance 'poll-dispatcher
+                                                           :certificate-file "/tmp/localhost.crt"
+                                                           :private-key-file "/tmp/localhost.key"))
+        (http2/server/poll::with-ssl-context (client-context (make-instance 'client-context))
+          (set-nonblock s)
+          (set-nonblock c)
+          (funcall fn
+                   (make-client s context nil (add-new-fdset-item s dispatcher))
+                   (make-client c client-context nil (add-new-fdset-item c dispatcher))))))))
 
 (deftest write-read-peer/test ()
   "Write fixed data to server and see it on the client"
@@ -54,19 +60,30 @@
        (is (equalp (subseq res 0 4) #(5 6 7 8)))))))
 
 (deftest write-tls-read-peer/test ()
+  "Initialize and make through the communication simulating TLS connection and a
+single data send.
+
+Check that the other endpoint got the message.
+
+This does not use POLL yet; instead, the appropriate state is added manually."
   (call-with-clients-pair
    (lambda (server client)
-
-     (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
-     (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
-     (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
-     (http2/server/poll::do-available-actions client)
-
-     (let ((res (make-octet-buffer 100)))
-       (set-nonblock (http2/server/poll::client-fd server))
-       (= 4 (http2/server/poll::read-from-peer server res 100))
-       (equalp (subseq res 0 4) #(1 2 3 4))
-       res))))
+     (flet ((@ (endpoint)
+                (http2/server/poll::add-state endpoint 'http2/server/poll::can-read-port)
+              (http2/server/poll::do-available-actions endpoint)))
+       (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
+       (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
+       (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
+       (http2/server/poll::do-available-actions client) ; send client hello, some 302
+       (@ server) ; processes client hello, send server hello
+       (@ client) ; process hello
+       (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4)) nil)
+       (encrypt-and-send client) ; send encrypted data (80+26 octets)
+       (@ server)
+       (@ client)
+       (is (equalp
+            #(1 2 3 4)
+            (http2/server/poll::get-received (signals http2/server/poll::not-enough-data (@ server)))))))))
 
 (defun print-data (client data)
   (print (list client data))
@@ -87,27 +104,23 @@ AFTER-POLL-FN on them after data exchange."
                                     :private-key-file (namestring key-file)
                                     :certificate-file (namestring (find-certificate-file key-file))
                                     :allow-other-keys t)))
-    (with-fdset (dispatcher)
-      (http2/openssl:with-ssl-context (ctx dispatcher)
-        (with-tcp-pair (server-socket client-socket)
-          (dolist (socket (list client-socket server-socket))
-            (set-nonblock socket))
-          (let ((client (make-client client-socket ctx 'client 0))
-                (server (make-client server-socket ctx 'server 1)))
-            (setf (get-clients dispatcher) (list server client)
-                  (client-application-data client) client
-                  (client-application-data server) server)
-            (let ((fdset (get-fdset dispatcher)))
-              (http2/openssl:ssl-accept (client-ssl server))
-              (http2/openssl:ssl-connect (client-ssl client))
-              (add-socket-to-fdset fdset server-socket server 0)
-              (add-socket-to-fdset fdset client-socket client 1)
-              (funcall prepare-fn server client)
-              (loop for nread = (poll dispatcher 100)
-                    while (plusp nread)
-                    do
-                       (process-client-sockets nread dispatcher)
-                       (funcall after-poll-fn server client)))))))))
+    (call-with-clients-pair
+     (lambda (server client)
+       (with-fdset (dispatcher)
+         (http2/openssl:with-ssl-context (ctx dispatcher)
+           (let ()
+             (setf (get-clients dispatcher) (list server client)
+                   (client-application-data client) client
+                   (client-application-data server) server)
+             (let ()
+               (http2/openssl:ssl-accept (client-ssl server))
+               (http2/openssl:ssl-connect (client-ssl client))
+               (funcall prepare-fn server client)
+               (loop for nread = (poll dispatcher 0)
+                     while (plusp nread)
+                     do
+                        (process-client-sockets nread dispatcher)
+                        (funcall after-poll-fn server client))))))))))
 
 (defun ignore-data (client data)
   (declare (ignore client))

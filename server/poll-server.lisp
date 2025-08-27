@@ -869,17 +869,25 @@ from C code."
 
 
 ;;;; HTTP2 TLS async client
+(define-condition not-enough-data (connection-error)
+  ((expected :accessor get-expected :initarg :expected)
+   (received :accessor get-received :initarg :received))
+  (:default-initargs :code 0)
+  (:documentation "Signalled when the SSL layer did not provide enough data to be processed bby the
+upper level. This can be fixed and buffered, but sane clients do not do that."))
+
 (defun on-complete-ssl-data (client)
   "Read number of octets indicated in CLIENT into a vector and then apply client fn on it.
 
  FIXME: process that anyway"
   (let* ((octets (client-octets-needed client))
          (vec (make-shareable-byte-vector octets)))
-      ;; TODO: check first with SSL_pending?
+    ;; TODO: check first with SSL_pending?
     (let ((read (ssl-read client vec octets)))
       (cond
         ((not (plusp read))
          (handle-ssl-errors client read))
         ((/= read octets)
-         (error "Read ~d octets. This is not enough octets, why?~%~s~%" read (subseq vec 0 read)))
+         (error 'not-enough-data :expected octets :received (subseq vec 0 read)
+                :connection (client-application-data client)))
         (t (run-user-callback client vec))))))
