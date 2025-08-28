@@ -34,7 +34,7 @@
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
 (mgl-pax:define-package #:http2/tcpip
-  (:use #:cl #:mgl-pax #:cffi))
+  (:use #:cl #:mgl-pax #:cffi #:http2/utils))
 
 (mgl-pax:define-package #:http2/server
     (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils

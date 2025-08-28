@@ -204,17 +204,10 @@ available. Raise an error on error." vector destination)
     (set-nodelay socket)))
 
 (define-reader read-from-peer peer-in (client vec vec-size)
-  (with-pointer-to-vector-data (buffer vec)
-    (let ((read (read-2 (client-fd client) buffer vec-size)))
-      (unless (= read vec-size)
-        (remove-state client 'CAN-READ-PORT))
-      (cond ((plusp read) read)
-            ((zerop read)  (signal 'done))
-            ((> -1 read) (error "This cannot happen #2"))
-            ((/= (errno) EAGAIN)
-             (warn "Read error (~d): ~d ~a" read (errno) (strerror (errno)))
-             (signal 'done))
-            (t 0)))))
+  (let ((read (read-buffer (client-fd client) vec vec-size)))
+    (unless (= read vec-size)
+      (remove-state client 'CAN-READ-PORT))
+    read))
 
 ;;;; Read BIO (rbio)
 
@@ -576,10 +569,6 @@ Raise error otherwise."
      (error "FIXME: extend buffer ~s (used ~d) to accomodate ~d more and do proper stuff"
             (client-write-buf client) (client-write-buf-size client)
             (- to from)))))
-
-(define-condition done (error)
-  ()
-  (:documentation "The socket on the other side is closed."))
 
 (define-condition ssl-error-condition (error)
   ((code :accessor get-code :initarg :code))

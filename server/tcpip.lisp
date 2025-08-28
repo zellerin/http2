@@ -8,6 +8,8 @@
   (close-fd function)
   (read-2 function)
   (write-buffer* function)
+  (read-buffer function)
+  (done condition)
   (read-socket* function)
   (accept function)
 
@@ -274,10 +276,33 @@ Close thos sockets afterwards."
           (err (errno)))
       (values res err))))
 
+(define-condition done (error)
+  ()
+  (:documentation "The socket on the other side is closed."))
+
+(defun read-buffer (fd vec &optional (vec-size (length vec)))
+  "Read up to VEC-SIZE octets from the FD and store them in the VEC.
+
+Signal DONE where there is nothing on the peer.
+
+Return number of read buffer, This means 0 when nothing was read but data may
+follow later (EAGAIN)."
+  (declare (fixnum fd vec-size)
+           (type octet-vector vec))
+  (with-pointer-to-vector-data (buffer vec)
+    (let ((read (read-2 fd buffer vec-size)))
+      (cond ((plusp read) read)
+            ((zerop read) (signal 'done))
+            ((> -1 read) (error "This cannot happen #2"))
+            ((/= (errno) EAGAIN)
+             (warn "Read error (~d): ~d ~a" read (errno) (strerror (errno)))
+             (signal 'done)
+             (error "This should not happen"))
+            (t 0)))))
+
 (defun read-socket* (socket &optional (max-size 4096))
   "This is for debugging/tests only"
   (let ((vector (http2/utils:make-octet-buffer max-size)))
-    (with-pointer-to-vector-data (buffer vector)
-      (let ((res (checked-syscall 'nonneg-or-eagain 'read-2 socket buffer max-size)))
-        (when (plusp res)
-          (values (subseq vector 0 res)))))))
+    (let ((res (read-buffer socket vector max-size)))
+      (when (plusp res)
+        (values (subseq vector 0 res))))))
