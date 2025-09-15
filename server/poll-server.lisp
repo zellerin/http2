@@ -392,7 +392,8 @@ keep what did not fit."
              (replace (client-write-buf client) (client-write-buf client)
                       :start2 written :end2 (client-write-buf-size client))
              (decf (client-write-buf-size client) written))
-            (t (error "Write failed"))))))
+            (t (error "Write failed")))
+      written)))
 
 (defun encrypt-and-send (client)
   (unless (plusp (client-fd client))
@@ -582,7 +583,9 @@ Raise error otherwise."
 
 (define-condition ssl-error-condition (error)
   ((code :accessor get-code :initarg :code))
-  (:documentation "The socket on the other side is closed."))
+  (:documentation "The socket on the other side is closed.
+
+Check the code in openssl/sslerr.h "))
 
 (defmethod print-object ((object ssl-error-condition) stream)
   (print-unreadable-object (object stream :type t :identity nil)
@@ -713,19 +716,29 @@ reading of client hello."
     (close-fd (client-fd client))
     (setf (client-fd client) -1)))
 
+(define-condition poll-server-close ()
+  ((dispatch :accessor get-dispatch :initarg :dispatch)
+   (client   :accessor get-client   :initarg :client)
+   (reason   :accessor get-reason   :initarg :reason)))
+
 (defun process-client-sockets (nread dispatcher)
   (with-slots (clients) dispatcher
     (unless (zerop nread)
       (dolist (client clients)
-          (restart-case
-              (handler-case
-                  (handle-client-io client dispatcher)
-                (done () (invoke-restart 'http2/core:close-connection))
-                #+too-early-and-loses-info
-                (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
-                (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
-            (http2/core:close-connection ()
-              (close-client-connection client dispatcher)))))))
+        (restart-case
+            (handler-case
+                (handle-client-io client dispatcher)
+              (done () (invoke-restart 'http2/core:close-connection))
+              #+too-early-and-loses-info
+              (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
+              (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
+          (close-connection (&optional err &rest args)
+            :report "Close current connection"
+            (unwind-protect
+                 (when err
+                   (signal 'poll-server-close :client client :dispatch dispatcher
+                                              :reason (apply #'make-instance err args)))
+              (close-client-connection client dispatcher))))))))
 
 (define-condition poll-timeout (error)
   ()

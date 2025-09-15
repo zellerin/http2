@@ -3,7 +3,11 @@
 (defun process-ssl-errors ()
   (loop for err = (err-get-error)
         until (zerop err)
-        unless (position err #(#xa000412 )) ;bad certificate
+        if (or (position err #(#xa000412 #xA00042E
+                               #xA000418
+                               #xA00010B #xa000139))) ;bad certificate, protocol version
+          do (invoke-restart 'http2/core:close-connection
+                             'ssl-error-condition :code err)
           do
              (cerror "Ignore" 'ssl-error-condition :code err)))
 
@@ -32,8 +36,10 @@
        (process-ssl-errors)
        nil)
       ((= err-code ssl-error-syscall)
-       (let ((errno (http2/server/poll::errno)))
-         (warn "SSL syscall error ~d (~a)" errno (http2/server/poll::strerror errno)))
+       (let ((errno (http2/tcpip:errno)))
+         (unless (zerop errno)
+           ;; IIUC end of communication gives errno 0
+           (warn "SSL syscall error ~d (~a)" errno (http2/server/poll::strerror errno))))
        (invoke-restart 'http2/core:close-connection))
       (t (warn "SSL error ~d" err-code)
          (invoke-restart 'http2/core:close-connection)))))
