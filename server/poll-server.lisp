@@ -166,6 +166,34 @@ The actions are in general indicated by arrows in the diagram:
   ;; BIO-NEEDS-READ SSL-INIT-NEEDED
   application-data)
 
+(defmethod describe-object ((object client) stream)
+  (format stream "~&A TLS endpoint for ~a
+   It is associated with file descriptor ~d.
+   It has position ~D in the FDSET.
+   It expects ~d octets that would be processed by ~a with application
+   Buffers:
+      - Encrypt buffer ~:[has ~d octets ~s~;~2*is empty~]
+      - Write buffer ~:[has ~d octets ~s~;~2*is empty~]
+      - TLS is ~:[NOT ~;~]initialized
+      - TLS peek: ~s
+   State:"
+          (client-application-data object)
+          (client-fd object)
+          (client-fdset-idx object) (client-octets-needed object) (client-io-on-read object)
+          (zerop (client-encrypt-buf-size object))
+          (client-encrypt-buf-size object) (subseq (client-encrypt-buf object) 0 (client-encrypt-buf-size object))
+          (zerop (client-write-buf-size object))
+          (client-write-buf-size object) (subseq (client-write-buf object) 0 (client-write-buf-size object))
+          (plusp (ssl-is-init-finished (client-ssl object)))
+          (when (plusp (ssl-is-init-finished (client-ssl object))) (ssl-peek object 100)))
+  (loop
+    with state = (client-state object)
+                       for state-name in *states*
+                       for state-idx from 0
+                       if (plusp (ldb (byte 1 state-idx) state))
+                         do (format stream " ~a" state-name))
+  (terpri stream))
+
 (defmacro define-reader (name source args &body body &aux declaration)
   (when (eq (caar body) 'declare)
     (setq declaration (pop body)))
@@ -252,6 +280,17 @@ Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
      (unless (plusp res) (remove-state client 'can-read-ssl))
      (handle-ssl-errors client res)
      (max 0 res)))
+
+(defun ssl-peek (client max-size)
+   "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
+
+Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
+  (let* ((vec (make-octet-buffer max-size))
+         (res
+           (with-pointer-to-vector-data (buffer vec)
+             (http2/openssl::ssl-peek% (client-ssl client) buffer max-size))))
+    (handle-ssl-errors client res)
+    (values (subseq vec 0 (max 0 res)) res)))
 
 ;;;; Encrypt queue
 (defun add-and-maybe-pass-data (client buffer new-data from to old-size cleaner)

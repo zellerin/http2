@@ -35,6 +35,7 @@
 (defcfun "SSL_new" :pointer (bio-method :pointer))
 (defcfun "SSL_pending" :int (ssl :pointer))
 (defcfun ("SSL_read" ssl-read%) :int (ssl :pointer) (buffer :pointer) (bufsize :int))
+(defcfun ("SSL_peek" ssl-peek%) :int (ssl :pointer) (buffer :pointer) (bufsize :int))
 (defcfun "SSL_set_accept_state" :pointer (ssl :pointer))
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
