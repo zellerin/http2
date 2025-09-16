@@ -1,12 +1,12 @@
 (in-package #:http2/tcpip)
 
 (defsection @tcpip-syscalls (:title "STDIO basic API" :export t)
+  ""
   (fcntl function)
   (set-nonblock function)
   (setsockopt function)
   (set-nodelay function)
-  (close-fd function)
-  (read-2 function)
+  (close-fd function) ;  implicit within call- and similar
   (write-buffer* function)
   (read-buffer function)
   (done condition)
@@ -150,7 +150,7 @@ poll (of size FDSET-SIZE, another DISPATCHER slot).
 Initialize FDSET. Set EMPTY-FDSET-ITEMS slot of the dispatcher to all slot
 items.
 
-Cleanup FDSET after BODY is run."
+Cleanup FDSET - including closing sockets - after BODY is run."
   `(call-with-fdset ,dispatcher
                     (lambda () ,@body)))
 
@@ -167,7 +167,6 @@ a pending write."
                              (logand revents (logior c-POLLERR  c-POLLHUP  c-POLLNVAL))))
                   (logior events c-pollout)
                   (logand events (logxor -1 c-pollout))))))))
-
 
 (defun add-new-fdset-item (socket dispatcher)
   "Add new socket to the fdset, and "
@@ -268,6 +267,11 @@ Close thos sockets afterwards."
    (= (errno) EAGAIN)
    (= (errno) EINPROGRESS)))
 
+(define-condition done (error)
+  ()
+  (:documentation "This condition is signalled when the socket on the other side is closed (for
+reading)."))
+
 (defun write-buffer* (socket vector from to)
   (with-pointer-to-vector-data (buffer vector)
     (let ((res (write-2 socket
@@ -275,10 +279,6 @@ Close thos sockets afterwards."
                         (- to from)))
           (err (errno)))
       (values res err))))
-
-(define-condition done (error)
-  ()
-  (:documentation "The socket on the other side is closed."))
 
 (defun read-buffer (fd vec &optional (vec-size (length vec)))
   "Read up to VEC-SIZE octets from the FD and store them in the VEC.
@@ -301,7 +301,7 @@ follow later (EAGAIN)."
             (t 0)))))
 
 (defun read-socket* (socket &optional (max-size 4096))
-  "This is for debugging/tests only"
+  "This is for debugging/tests only. Return vector read, or nil."
   (let ((vector (http2/utils:make-octet-buffer max-size)))
     (let ((res (read-buffer socket vector max-size)))
       (when (plusp res)

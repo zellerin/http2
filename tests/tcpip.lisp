@@ -8,7 +8,7 @@
                  :in http2/tests::http2/tests))
 
 (deftest errno/test ()
-  (is (equal (progn (fcntl -1 0 0)
+  (is (equal (progn (http2/tcpip::fcntl -1 0 0)
                     (strerror (errno)))
              "Bad file descriptor")))
 
@@ -23,8 +23,8 @@
     (read-socket* b)))
 
 (deftest set-nonblock/test ()
-  "Make a pair of sockets, write to one and read from the other."
+  "Make a pair of non-blocking sockets, and read from one. It should return nil."
   (with-tcp-pair (a b)
     (set-nonblock a)
     (set-nonblock b)
-    (read-socket* b)))
+    (is (null (read-socket* b)))))
