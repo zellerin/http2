@@ -600,7 +600,9 @@ Raise error otherwise."
               :start1 (client-write-buf-size client)
               :start2 from)
      (incf from (- (length (client-write-buf client)) from))
-     (write-data-to-socket client)
+     (setf (client-write-buf-size client) (length (client-write-buf client)))
+     (unless (= (write-data-to-socket client) (length (client-write-buf client)))
+       (error 'http2-simple-error :format-control "Write failed, followup not implemented (FIXME)"))
      (queue-encrypted-bytes client new-data from to)
      ;;
      (+ (length (client-write-buf client)) (- to from))) ;; FIXME: this should be checked
