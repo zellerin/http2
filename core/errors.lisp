@@ -66,9 +66,16 @@
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
   (:documentation "Signaled when GO-AWAY frame is received."))
 
-(define-condition http2-error (error)
+(define-condition http2-condition ()
+  ())
+
+(define-condition http2-error (http2-condition error)
   ()
   (:documentation "All errors raised from HTTP2 package inherit from this error."))
+
+(defmethod describe-object :before ((error http2-condition) out)
+  (write-line (documentation (class-of error) t) out)
+  (terpri out))
 
 (define-condition http2-simple-error (http2-error simple-condition)
   ())
@@ -97,7 +104,9 @@ NETWORK-STREAM."))
   (:default-initargs :code +protocol-error+))
 
 (define-condition client-preface-mismatch (protocol-error)
-  ((received :accessor get-received :initarg :received)))
+  ((received :accessor get-received :initarg :received))
+  (:documentation "HTTPS server expects a specific sequence of octets at the start of the new
+connection. The client sent something different."))
 
 (defmethod print-object ((err client-preface-mismatch) out)
   (with-slots (received) err
@@ -292,7 +301,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (defsection @warnings ())
 
-(define-condition http2-warning (warning)
+(define-condition http2-warning (http2-condition warning)
   ())
 
 (define-condition http2-simple-warning (simple-condition http2-warning) ())
