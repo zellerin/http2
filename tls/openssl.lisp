@@ -7,7 +7,7 @@
 (mgl-pax:defsection @openssl (:title "Openssl interface")
   (with-ssl-context mgl-pax:macro))
 
-(export '(certificated-dispatcher make-http2-tls-context
+(export '(certificated-dispatcher-mixin make-http2-tls-context
           handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry
           certificate-file private-key-file))
 
@@ -102,7 +102,7 @@
   (filename :string)
   (type :int))
 
-(defclass certificated-dispatcher ()
+(defclass certificated-dispatcher-mixin ()
   ((certificate-file :initarg  :certificate-file)
    (private-key-file :initarg  :private-key-file))
   (:documentation
@@ -128,7 +128,6 @@ We should also limit allowed ciphers, but we do not.")
                                         ; FIXME: cl+ssl has (apply #'logior (append disabled-protocols options)
       (ssl-ctx-set-options context ssl-op-all)
       (ssl-ctx-ctrl context ssl-ctrl-set-min-proto-version tls-1.2-version (null-pointer))
-      (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
       #+nil    (ssl-ctx-set-session-cache-mode context session-cache-mode)
       #+nil    (ssl-ctx-set-verify-location context verify-location)
       #+nil    (ssl-ctx-set-verify-depth context verify-depth)
@@ -140,7 +139,13 @@ We should also limit allowed ciphers, but we do not.")
                           (zerop (ssl-ctx-set-cipher-list context cipher-list)))
                  (error "Cannot set cipher list"))
       context))
-  (:method :around ((dispatcher certificated-dispatcher))
+  (:method ((dispatcher http2/server::base-dispatcher))
+    "For servers"
+    (let ((context (call-next-method)))
+      (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
+      context))
+
+  (:method ((dispatcher certificated-dispatcher-mixin))
     (with-slots (certificate-file private-key-file) dispatcher
       (let ((context (call-next-method)))
         (ssl-ctx-use-certificate-chain-file context certificate-file)

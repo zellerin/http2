@@ -204,6 +204,9 @@ connection depending on the dispatch method.")
    :connection-class 'vanilla-server-connection
    :connection-args nil))
 
+(defclass certificated-dispatcher (certificated-dispatcher-mixin base-dispatcher)
+  ())
+
 (defclass single-client-dispatcher (base-dispatcher)
   ()
   (:documentation "Handle the connection while doing nothing else.
