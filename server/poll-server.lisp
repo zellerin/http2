@@ -14,10 +14,11 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
-  (make-client function)
+  (make-client function) ; obsolete
+  (make-tls-endpoint function)
   (with-tls-endpoint macro)
-  (get-clients function)
-  (client-application-data function)
+;  (get-clients function)
+;  (client-application-data function)
   (client-ssl function)
   (poll-dispatcher-mixin class)
   (process-client-sockets function)
@@ -680,7 +681,7 @@ Check the code in openssl/sslerr.h "))
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
 
-(defun make-client (socket ctx application-data idx)
+(defun make-tls-endpoint (socket ctx application-data idx)
   "Make a generic instance of a CLIENT usable both for a client and for a server.
 
 The read and write buffers are intitialized to new  "
@@ -697,21 +698,33 @@ The read and write buffers are intitialized to new  "
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
     client))
 
-(defmacro with-tls-endpoint ((name init) &body body)
-  `(let ((,name ,init))
+(defun make-client (&rest args) (apply #'make-client args))
+(declaim (sb-ext:deprecated :early ("http2" "2.0.3")
+                     (function make-client :replacement make-tls-endpoint)))
+
+(defmacro with-tls-endpoint ((name context &key (fd -1) application-data (fdset-idx -1))
+                             &body body)
+  "Run BODY with NAME lexically bound to INIT, and it should be a TLS endpoint.
+
+When control leaves the body, either normally or abnormally, The SSL of the
+endpoint is freed.
+
+The defaults reflect the fact that the macro should not be used with TLS endpoints used inside a FDSET."
+  `(let ((,name (make-tls-endpoint ,fd ,context ,application-data ,fdset-idx)))
+     (declare (client ,name))
      (unwind-protect
           (progn ,@body)
        (unless (null-pointer-p (client-ssl ,name))
          (ssl-free (client-ssl ,name))
          (setf (client-ssl ,name) (null-pointer))))))
 
-(defun make-client-object (socket ctx idx)
-  "Create new CLIENT object suitable for TLS server.
+(defun make-tls-server-object (socket ctx idx)
+  "Create new TLS ENDPOINT object suitable for TLS server.
 
 Initially, the ENCRYPT-BUFFER contains the settings to send, and next action is
-reading of client hello."
+reading of the client hello."
   ;; FIXME: use class from the dispatcher
-  (let* ((client (make-client socket ctx (make-instance 'poll-server-connection) idx)))
+  (let* ((client (make-tls-endpoint socket ctx (make-instance 'poll-server-connection) idx)))
     (setf (get-client (client-application-data client)) client) ;
     (ssl-set-accept-state (client-ssl client)) ; set as server; no return value
     (set-next-action client #'parse-client-preface +client-preface-length+)
@@ -749,7 +762,7 @@ reading of client hello."
                                   (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
          (fdset-idx (add-new-fdset-item socket dispatcher)))
     (when fdset-idx
-      (push (make-client-object socket ctx fdset-idx) (get-clients dispatcher))
+      (push (make-tls-server-object socket ctx fdset-idx) (get-clients dispatcher))
       (setup-port socket *nagle*))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
