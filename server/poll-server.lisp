@@ -1,12 +1,12 @@
 (in-package #:http2/server/poll)
 
 
-(mgl-pax:defsection  @async-server (:title "Polling server overview")
+(defsection  @async-server (:title "Polling server overview")
   #+nil  (client type)
   (@app-interface mgl-pax:section)
   (@request-handling mgl-pax:section))
 
-(mgl-pax:defsection @app-interface (:title "Interface to the polling server")
+(defsection @app-interface (:title "Interface to the polling server")
   "POLL-DISPATCHER-MIXIN tracks a pool of clients that are connected to a
 socket. Each client has a user registered callback function and required number
 of octets to have available to call the callback. Callbacks call
@@ -14,11 +14,8 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
-  (make-client function) ; obsolete
-  (make-tls-endpoint function)
-  (with-tls-endpoint macro)
-;  (get-clients function)
-;  (client-application-data function)
+                                        ;  (get-clients function)
+                                        ;  (client-application-data function)
   (client-ssl function)
   (poll-dispatcher-mixin class)
   (process-client-sockets function)
@@ -26,35 +23,65 @@ encrypting and writing of data for all the sockets."
   (send-unencrypted-bytes function)
   (encrypt-and-send function)
   (set-next-action function)
-  (get-fdset-size (method nil (poll-dispatcher-mixin)))
-  (get-poll-timeout (method nil (poll-dispatcher-mixin)))
-  (get-no-client-poll-timeout (method nil (poll-dispatcher-mixin)))
+;  (get-fdset-size (method  (poll-dispatcher-mixin)))
+  (get-poll-timeout (method (poll-dispatcher-mixin)))
+  (get-no-client-poll-timeout (method (poll-dispatcher-mixin)))
   #+nil ((ssl-read function)
          (send-unencrypted-bytes function))
   ;; Timeouts
   (*no-client-poll-timeout* variable)
   (*poll-timeout* variable)
   (poll-timeout condition)
-  (compute-poll-timeout-value function))
+  (compute-poll-timeout-value function)
 
-(mgl-pax:defsection @request-handling
+  "Following functions are obsolete."
+  (make-client function) ; obsolete
+
+  )
+
+(defsection @tls-endpoint (:title "TLS endpoint")
+  ""
+  (tls-endpoint structure)
+  (make-tls-endpoint function)
+  (with-tls-endpoint macro)
+)
+
+(defsection @request-handling
     (:title "Client actions loop (implementation)"
      :export nil)
-  "Each client has a STATE that encapsulates what actions are effectively possible.
+  "Each TLS-ENDPOINT has a STATE that encapsulates what actions are effectively
+possible.
+
 SELECT-NEXT-ACTION selects appropriate action. When no new action is available,
 next client is handled and eventually POLL called when all clients were served.
 
-When POLL returns, new action is available for some client (read from a socket or write to it).
-
 The actions are in general indicated by arrows in the diagram:
 
-![](flow.svg)"
+![](poll-server.svg)"
 
+  (@tls-endpoint section)
   (do-available-actions function)
   (select-next-action function)
 
-  (process-data-on-socket function)
+  (@application-loop section)
+  (@port-to-tls section)
+  (@tls-to-port section))
+
+(defsection @application-loop (:title "Application loop")
+  ; Interface (send-unencrypted-bytes function)
+  (on-complete-ssl-data function)
+  (run-user-callback function)
   (encrypt-data function)
+  (encrypt-some function)
+  (encrypt-and-send function))
+
+(defsection @port-to-tls (:title "Port to TLS")
+  (process-data-on-socket function)
+  (read-from-peer function)
+  (decrypt-socket-octets function)
+  (write-octets-to-decrypt function))
+
+(defsection @tls-to-port (:title "TLS to port")
   (move-encrypted-bytes function)
   (write-data-to-socket function))
 
@@ -132,22 +159,26 @@ The actions are in general indicated by arrows in the diagram:
 
 
 
-(defstruct (client  (:constructor make-client%)
-                    (:print-object
-                     (lambda (object out)
-                       (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
-                               (client-octets-needed object) (client-io-on-read object)))))
-  "Data of one client connection. This includes:
+(deftype app-callback ()
+  `(and compiled-function
+        (function (t octet-vector) (values compiled-function buffer-size))))
 
-- File descriptor of underlying socket (FD),
-- Opaque pointer to the openssl handle (SSL),
-- Input and output BIO for exchanging data with OPENSSL (WBIO, RBIO),
-- Plain text octets to encrypt and send (ENCRYPT-BUF),
-- Encrypted octets to send to the file descriptor (WRITE-BUF),
-- Callback function when read data are available (IO-ON-READ).
-- Number of octets required by IO-ON-READ. Negative values have special handling.
-- Client state from the low-level data flow point of view (STATE)
-- Application data (slot to be used by the application)"
+(defstruct (tls-endpoint  (:constructor make-client%)
+                          (:conc-name "CLIENT-")
+                          (:print-object
+                           (lambda (object out)
+                             (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
+                                     (client-octets-needed object) (client-io-on-read object)))))
+  "Data of one TLS endpoint that is connected to a socket that is part of a FDSET. This includes:
+
+- File descriptor of underlying socket (FD).
+- Opaque pointer to the openssl handle (SSL). See SSL-READ and ENCRYPT-SOME.
+- Input and output BIO for exchanging data with OPENSSL (WBIO, RBIO).
+- Buffer of plain text octets to encrypt and send (ENCRYPT-BUF). This buffer reduces TLS records overhead.
+- Buffer of encrypted octets to send to the file descriptor (WRITE-BUF). This buffer reduces network headers overhead and removes delays due to Nagle algorithm.
+- Callback function when read data are available (IO-ON-READ) and Number of octets required by it (OCTETS-NEEDED). Negative values have special handling. See RUN-USER-CALLBACK for details.
+- Client state from the low-level data flow point of view (STATE).
+- Application data (slot to be used by the application). This is usually some application structure, but can be also a symbol in tests. Another input to RUN-USER-CALLBACK."
   (fd -1 :type fixnum)
   (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
   (rbio (null-pointer) :type cffi:foreign-pointer :read-only t)
@@ -156,8 +187,9 @@ The actions are in general indicated by arrows in the diagram:
    :type (and (simple-array (unsigned-byte 8))))
   (write-buf-size 0 :type fixnum)
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
-   :type (simple-array (unsigned-byte 8)))
-  (io-on-read (constantly nil) :type compiled-function)
+   :type (simple-array (unsigned-byte 8))
+   )
+  (io-on-read (constantly nil) :type app-callback)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
   (octets-needed 0 :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
@@ -166,7 +198,7 @@ The actions are in general indicated by arrows in the diagram:
   ;; set of CAN-READ-PORT, CAN-READ-SSL, HAS-DATA-TO-ENCRYPT, CAN-WRITE-SSL,
   ;; CAN-READ-BIO, HAS-DATA-TO-WRITE, CAN-WRITE
   ;; BIO-NEEDS-READ SSL-INIT-NEEDED
-  application-data)
+  (application-data))
 
 (defvar *tls-content-types*
   '(20 :change-cipher-spec 21 :alert 22 :handshake 23 :application 24 :heartbeat))
@@ -188,7 +220,7 @@ The actions are in general indicated by arrows in the diagram:
             do (incf start size)
             finally (unless (= start end) (warn "PARSE-TLS: partial message ~d/~d"  start end)))))
 
-(defmethod describe-object ((object client) stream)
+(defmethod describe-object ((object tls-endpoint) stream)
   (let ((*print-length* 30))
     (format stream "~&A TLS endpoint for ~a
    It is associated with file descriptor ~d.
@@ -462,7 +494,9 @@ keep what did not fit."
 
 ;;;; Action selector
 (defun run-user-callback (client vec)
-  "Run user defined callback and user return values to set next action."
+  "Run user defined callback.
+
+The callback is called with two parameters, client application data (opaque) and vector of OCTETS-NEEDED octets. It should return two values, new callback and new expected size."
   (multiple-value-call #'set-next-action client
     (funcall (client-io-on-read client) (client-application-data client) vec)))
 
@@ -682,7 +716,7 @@ Check the code in openssl/sslerr.h "))
   (encrypt-and-send (get-client connection)))
 
 (defun make-tls-endpoint (socket ctx application-data idx)
-  "Make a generic instance of a CLIENT usable both for a client and for a server.
+  "Make a generic instance of a TLS-ENDPOINT usable both for a client and for a server.
 
 The read and write buffers are intitialized to new  "
   (let* ((s-mem (bio-s-mem))
@@ -711,7 +745,7 @@ endpoint is freed.
 
 The defaults reflect the fact that the macro should not be used with TLS endpoints used inside a FDSET."
   `(let ((,name (make-tls-endpoint ,fd ,context ,application-data ,fdset-idx)))
-     (declare (client ,name))
+     (declare (type tls-endpoint ,name))
      (unwind-protect
           (progn ,@body)
        (unless (null-pointer-p (client-ssl ,name))
