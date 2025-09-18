@@ -193,3 +193,83 @@ Return number of received octets (that should be same as number of octets sent)"
 (deftest send-in-advance ()
   (dolist (size '(10 100 200)) ;; note: fails for 2000
     (is (equal size (test-send-in-advance size)))))
+
+(flet ((pass-data (from to)
+         (when (plusp  (http2/server/poll::client-write-buf-size from))
+           (http2/server/poll::write-octets-to-decrypt to (http2/server/poll::client-write-buf from)
+                                                       0 (http2/server/poll::client-write-buf-size from))
+           (setf (http2/server/poll::client-write-buf-size from) 0)))
+       (move-encrypted (endpoint)
+         (http2/server/poll::move-encrypted-bytes endpoint)))
+
+
+  (defun client-connect (client server)
+    (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
+    (move-encrypted client)
+    client)
+
+  (defun server-accept (client server)
+    (pass-data client server)
+    (http2/server/poll::handle-ssl-errors server (http2/server/poll::ssl-accept (client-ssl server)))
+    (move-encrypted server)
+    server)
+
+  (defun --> (data size)
+    (lambda (client server)
+      (pass-data server client)
+      (http2/server/poll::encrypt-some client data 0 size)
+      (move-encrypted client)
+      client))
+
+  (defun move-all (client server)
+    (pass-data server client)
+    (pass-data client server))
+
+  (defun <-- (data size)
+    (lambda (client server)
+      (pass-data client server)
+      (http2/server/poll::encrypt-some server data 0 size)
+      (move-encrypted server)
+      server)))
+
+(defun tls-low-level-demo (actions &optional (final #'describe))
+  (let ((http2/server/poll::*encrypted-buf-size* 3000)) ;; all TLS messages need to fit the write buffer
+    (http2/server/poll::with-ssl-context (server-ctx (make-instance 'easy-certificate-dispatcher))
+      (http2/server/poll::with-ssl-context (client-ctx t)
+        (with-tls-endpoint (server (make-client -1 server-ctx 'server -1))
+          (with-tls-endpoint (client (make-client -1 client-ctx 'client -1))
+            (let (last)
+              (dolist (action actions)
+                (setf last (funcall action client server)))
+              (funcall final last))))))))
+
+"Fun with TLS:
+
+```cl-transcript
+(tls-low-level-demo `(client-connect
+                      server-accept
+                     ,(--> (make-octet-buffer 10) 10)
+                     ,(<-- (make-octet-buffer 10) 10)))
+.. A TLS endpoint for SERVER
+..    It is associated with file descriptor -1.
+..    It has position -1 in the FDSET.
+..    It expects 24 octets that would be processed by #<FUNCTION HTTP2/CORE:PARSE-CLIENT-PREFACE> with application
+..    Buffers:
+..       - Encrypt buffer is empty
+..       - Write buffer has 542 octets #(23 3 3 0 250 222 236 204 2 95 91
+..                                       127 9 67 192 141 216 116 199 193
+..                                       64 84 80 184 161 29 70 135 78 36
+..                                       ...)
+..            ((:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 255)
+..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 255)
+..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 32))
+..       - TLS is initialized
+..       - TLS peek: #(0 0 0 0 0 0 0 0 0 0)
+..
+..    State: CAN-WRITE-SSL CAN-WRITE HAS-DATA-TO-WRITE BIO-NEEDS-READ SSL-INIT-NEEDED
+..
+
+```
+
+
+"
