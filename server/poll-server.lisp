@@ -15,6 +15,7 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
   (make-client function)
+  (with-tls-endpoint macro)
   (get-clients function)
   (client-application-data function)
   (client-ssl function)
@@ -308,12 +309,13 @@ Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
    "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
 
 Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
-  (let* ((vec (make-octet-buffer max-size))
-         (res
-           (with-pointer-to-vector-data (buffer vec)
-             (http2/openssl::ssl-peek% (client-ssl client) buffer max-size))))
-    (handle-ssl-errors client res)
-    (values (subseq vec 0 (max 0 res)) res)))
+  (unless (null-pointer-p (client-ssl client))
+    (let* ((vec (make-octet-buffer max-size))
+           (res
+             (with-pointer-to-vector-data (buffer vec)
+               (http2/openssl::ssl-peek% (client-ssl client) buffer max-size))))
+      (handle-ssl-errors client res)
+      (values (subseq vec 0 (max 0 res)) res))))
 
 ;;;; Encrypt queue
 (defun add-and-maybe-pass-data (client buffer new-data from to old-size cleaner)
@@ -694,6 +696,14 @@ The read and write buffers are intitialized to new  "
                                :application-data application-data)))
     (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
     client))
+
+(defmacro with-tls-endpoint ((name init) &body body)
+  `(let ((,name ,init))
+     (unwind-protect
+          (progn ,@body)
+       (unless (null-pointer-p (client-ssl ,name))
+         (ssl-free (client-ssl ,name))
+         (setf (client-ssl ,name) (null-pointer))))))
 
 (defun make-client-object (socket ctx idx)
   "Create new CLIENT object suitable for TLS server.
