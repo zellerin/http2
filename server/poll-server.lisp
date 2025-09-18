@@ -166,32 +166,55 @@ The actions are in general indicated by arrows in the diagram:
   ;; BIO-NEEDS-READ SSL-INIT-NEEDED
   application-data)
 
+(defvar *tls-content-types*
+  '(20 :change-cipher-spec 21 :alert 22 :handshake 23 :application 24 :heartbeat))
+
+(defvar *tls-message-types*
+  '(0 :hello-request 1 :client-hello 2 :server-hello 4 :new-session-ticket))
+
+(defun parse-tls-record (octets start end)
+  "Parse a TLS record"
+  (handler-case
+      (loop for size = (+ 5 (aref/wide octets (+ start 3) 2))
+          while (< start end)
+          collect
+          (list* :content-type (getf *tls-content-types* (aref octets start) (aref octets start))
+                 :version (cons (aref octets (1+ start)) (aref octets (+ start 2)))
+                 :length size
+                 (when (= (aref octets start) 22)
+                   `(:type ,(getf *tls-message-types* (aref octets (+ start 5)) (aref octets (+ start 5))))))
+            do (incf start size)
+            finally (unless (= start end) (warn "PARSE-TLS: partial message ~d/~d"  start end)))))
+
 (defmethod describe-object ((object client) stream)
-  (format stream "~&A TLS endpoint for ~a
+  (let ((*print-length* 30))
+    (format stream "~&A TLS endpoint for ~a
    It is associated with file descriptor ~d.
    It has position ~D in the FDSET.
    It expects ~d octets that would be processed by ~a with application
-   Buffers:
+   Buffers:~@<
       - Encrypt buffer ~:[has ~d octets ~s~;~2*is empty~]
-      - Write buffer ~:[has ~d octets ~s~;~2*is empty~]
+      - Write buffer ~:[has ~d octets ~s~_~s~;~3*is empty~]
       - TLS is ~:[NOT ~;~]initialized
       - TLS peek: ~s
+   ~:>
    State:"
-          (client-application-data object)
-          (client-fd object)
-          (client-fdset-idx object) (client-octets-needed object) (client-io-on-read object)
-          (zerop (client-encrypt-buf-size object))
-          (client-encrypt-buf-size object) (subseq (client-encrypt-buf object) 0 (client-encrypt-buf-size object))
-          (zerop (client-write-buf-size object))
-          (client-write-buf-size object) (subseq (client-write-buf object) 0 (client-write-buf-size object))
-          (plusp (ssl-is-init-finished (client-ssl object)))
-          (when (plusp (ssl-is-init-finished (client-ssl object))) (ssl-peek object 100)))
+            (client-application-data object)
+            (client-fd object)
+            (client-fdset-idx object) (client-octets-needed object) (client-io-on-read object)
+            (zerop (client-encrypt-buf-size object))
+            (client-encrypt-buf-size object) (subseq (client-encrypt-buf object) 0 (client-encrypt-buf-size object))
+            (zerop (client-write-buf-size object))
+            (client-write-buf-size object) (subseq (client-write-buf object) 0 (client-write-buf-size object))
+            (parse-tls-record (client-write-buf object) 0  (client-write-buf-size object))
+            (plusp (ssl-is-init-finished (client-ssl object)))
+            (when (plusp (ssl-is-init-finished (client-ssl object))) (ssl-peek object 100))))
   (loop
     with state = (client-state object)
-                       for state-name in *states*
-                       for state-idx from 0
-                       if (plusp (ldb (byte 1 state-idx) state))
-                         do (format stream " ~a" state-name))
+    for state-name in *states*
+    for state-idx from 0
+    if (plusp (ldb (byte 1 state-idx) state))
+      do (format stream " ~a" state-name))
   (terpri stream))
 
 (defmacro define-reader (name source args &body body &aux declaration)
@@ -314,8 +337,8 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
     (let ((sent (funcall cleaner client buffer 0 max-size)))
       (unless (= sent max-size)
         (error "(unimplemented) Could not process data, sent ~a from max ~a, writer ~a" sent max-size cleaner)
-#+nil        (replace buffer buffer :start2 sent)
-#+nil        (return-from add-and-maybe-pass-data (values (- max-size sent) gap))))
+        #+nil        (replace buffer buffer :start2 sent)
+        #+nil        (return-from add-and-maybe-pass-data (values (- max-size sent) gap))))
     ;; now the buffer is emptied and we processed some data
     (incf from gap)
     (decf new-data-size gap)
@@ -585,31 +608,32 @@ Raise error otherwise."
 
 (define-writer queue-encrypted-bytes write-buffer (client new-data from to)
 ;;  "Queue and possibly write encrypted data to write to the socket."
-  (cond
-    ((> (length (client-write-buf client)) (+ (client-write-buf-size client) (- to from)))
-     ;; New data fit to the buffer
-     (replace (client-write-buf client) new-data
-              :start1 (client-write-buf-size client)
-              :start2 from
-              :end2 to)
-     (incf (client-write-buf-size client) (- to from))
-     (- to from))
-    ((if-state client 'can-write)
-     ;; There is too much data, but we can write to socket
-     (replace (client-write-buf client) new-data
-              :start1 (client-write-buf-size client)
-              :start2 from)
-     (incf from (- (length (client-write-buf client)) from))
-     (setf (client-write-buf-size client) (length (client-write-buf client)))
-     (unless (= (write-data-to-socket client) (length (client-write-buf client)))
-       (error 'http2-simple-error :format-control "Write failed, followup not implemented (FIXME)"))
-     (queue-encrypted-bytes client new-data from to)
-     ;;
-     (+ (length (client-write-buf client)) (- to from))) ;; FIXME: this should be checked
-    (t
-     (error "FIXME: extend buffer ~s (used ~d) to accomodate ~d more and do proper stuff"
-            (client-write-buf client) (client-write-buf-size client)
-            (- to from)))))
+  (let ((max-buffer-size (length (client-write-buf client))))
+    (cond
+      ((> max-buffer-size (+ (client-write-buf-size client) (- to from)))
+       ;; New data fit to the buffer
+       (replace (client-write-buf client) new-data
+                :start1 (client-write-buf-size client)
+                :start2 from
+                :end2 to)
+       (incf (client-write-buf-size client) (- to from))
+       (- to from))
+      ((if-state client 'can-write)
+       ;; There is too much data, but we can write to socket
+       (replace (client-write-buf client) new-data
+                :start1 (client-write-buf-size client)
+                :start2 from)
+       (incf from (- max-buffer-size from))
+       (setf (client-write-buf-size client) max-buffer-size)
+       (unless (= (write-data-to-socket client) max-buffer-size)
+         (error 'http2-simple-error :format-control "Full write failed, followup not implemented (FIXME)"))
+       (queue-encrypted-bytes client new-data from to)
+       ;;
+       (+ max-buffer-size (- to from))) ;; FIXME: this should be checked
+      (t
+       (error "FIXME: extend buffer ~s (used ~d) to accomodate ~d more and do proper stuff"
+              (client-write-buf client) (client-write-buf-size client)
+              (- to from))))))
 
 (define-condition ssl-error-condition (error)
   ((code :accessor get-code :initarg :code))
@@ -916,13 +940,14 @@ from C code."
   ((expected :accessor get-expected :initarg :expected)
    (received :accessor get-received :initarg :received))
   (:default-initargs :code 0)
-  (:documentation "Signalled when the SSL layer did not provide enough data to be processed bby the
-upper level. This can be fixed and buffered, but sane clients do not do that."))
+  (:documentation "Signalled when the SSL layer did not provide enough data to be processed by the
+upper level. This can be fixed and buffered, but sane peers do not bring this situation on us."))
 
 (defun on-complete-ssl-data (client)
   "Read number of octets indicated in CLIENT into a vector and then apply client fn on it.
 
- FIXME: process that anyway"
+The code assumes that single client request message is not split across several
+TLS frames. If it does, well, connection error."
   (let* ((octets (client-octets-needed client))
          (vec (make-shareable-byte-vector octets)))
     ;; TODO: check first with SSL_pending?
