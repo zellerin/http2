@@ -26,16 +26,6 @@
 ;;;; Sandbox
 (defsection @poll-pair ())
 
-(defclass client-context ()
-  ()
-  (:documentation "TLS context to be used by the client.
-
- When used, TLS context is created by SSL-CTX-NEW, so it does not have any
- ALPN, minimal versions etc. "))
-
-(defmethod make-http2-tls-context ((context client-context))
-  (http2/openssl::ssl-ctx-new (http2/openssl::tls-method)))
-
 ;; TODO: move to openssl.lisp
 (defclass easy-certificate-dispatcher (http2/openssl::certificated-dispatcher)
   ()
