@@ -40,6 +40,17 @@
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
 
+
+(defsection @openssl-context (:title "TLS context")
+  "TLS context is created with MAKE-HTTP2-TLS-CONTEXT, and its use should be
+wrapped in WITH-SSL-CONTEXT."
+  (with-ssl-context mgl-pax:macro)
+  (make-tls-context generic-function)
+  "The details of the context are modified by the context mixins."
+  (h2-server-context-mixin class)
+  (certificated-context-mixin class)
+  (easy-certificated-context-mixin class))
+
 (defcfun "SSL_CTX_check_private_key" :int (ctx :pointer))
 (defcfun "SSL_CTX_ctrl" :int (ctx :pointer) (cmd :int) (value :long) (args :pointer))
 (defcfun "SSL_CTX_free" :int (ctx :pointer))
@@ -56,6 +67,19 @@
 (defcfun "TLS_method" :pointer)
 
 
+
+(defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
+  :int
+  (ctx :pointer)
+  (filename :string))
+
+(defcfun ("SSL_CTX_use_PrivateKey_file" ssl-ctx-use-private-key-file)
+  :int
+  (ctx :pointer)
+  (filename :string)
+  (type :int))
+
+#+unused
 (defcfun ("SSL_select_next_proto" ssl-select-next-proto)
     :int
   (out (:pointer (:pointer :char)))
@@ -90,22 +114,12 @@
         finally
            ;; h2 not found, alert
            (return ssl-tlsext-err-alert-fatal))) ; no agreement
-
-(defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
-  :int
-  (ctx :pointer)
-  (filename :string))
 
-(defcfun ("SSL_CTX_use_PrivateKey_file" ssl-ctx-use-private-key-file)
-  :int
-  (ctx :pointer)
-  (filename :string)
-  (type :int))
+(defclass h2-server-context-mixin ()
+  ()
+  (:documentation "This mixin ensures that the server will provide H2 alpn during TLS negotiation."))
 
-(defclass h2-server-dispatcher-mixin ()
-  ())
-
-(defclass certificated-dispatcher-mixin (h2-server-dispatcher-mixin)
+(defclass certificated-context-mixin ()
   ((certificate-file :initarg  :certificate-file)
    (private-key-file :initarg  :private-key-file))
   (:documentation
@@ -116,11 +130,12 @@ for TLS context creation."))
 (defconstant +ssl-filetype-asn1+ 2)
 (defconstant +ssl-filetype-default+ 3)
 
-(defgeneric make-http2-tls-context (dispatcher)
-  (:documentation "Make TLS context suitable for http2.
+(defgeneric make-tls-context (dispatcher)
+  (:documentation "Make TLS context suitable for http2, depending on DISPATCHER.
 
-Practically, it means:
-- ALPN callback that selects h2 if present,
+The specialations include
+:
+- ALPN callback that selects h2 (h2-server-context-mixin)
 - Do not request client certificates
 - Do not allow ssl compression and renegotiation.
 We should also limit allowed ciphers, but we do not.")
@@ -142,13 +157,13 @@ We should also limit allowed ciphers, but we do not.")
                           (zerop (ssl-ctx-set-cipher-list context cipher-list)))
                  (error "Cannot set cipher list"))
       context))
-  (:method ((dispatcher h2-server-dispatcher-mixin))
+  (:method ((dispatcher h2-server-context-mixin))
     "For servers"
     (let ((context (call-next-method)))
       (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
       context))
 
-  (:method ((dispatcher certificated-dispatcher-mixin))
+  (:method ((dispatcher certificated-context-mixin))
     (with-slots (certificate-file private-key-file) dispatcher
       (let ((context (call-next-method)))
         (ssl-ctx-use-certificate-chain-file context certificate-file)
@@ -159,10 +174,72 @@ We should also limit allowed ciphers, but we do not.")
         ;; and warn if not.
         context))))
 
+(defun make-http2-tls-context (dispatcher)
+  "Do not use that. Changed name, as not http2 specific (use proper mixins for it)."
+  (make-tls-context dispatcher))
+
+(declaim (sb-ext:deprecated :early ("http2" "2.0.3")
+                            (function make-http2-tls-context :replacement make-tls-context)))
+
 (defmacro with-ssl-context ((ctx dispatcher) &body body)
-  "Run body with SSL context created by MAKE-SSL-CONTEXT in CTX."
+  "Run body with SSL context created by MAKE-TLS-CONTEXT in CTX."
   (check-type ctx symbol)
-  `(let ((,ctx (make-http2-tls-context ,dispatcher)))
+  `(let ((,ctx (make-tls-context ,dispatcher)))
      (unwind-protect
           (progn ,@body)
        (ssl-ctx-free ,ctx))))
+
+(defclass easy-certificated-context-mixin (certificated-context-mixin)
+  ()
+  (:default-initargs :hostname "localhost")
+  (:documentation "Uses HOSTNAME (defaulting to localhost) to locate or create the key pair."))
+
+(defun find-private-key-file (hostname)
+  "Find the private key for HOSTNAME or create it.
+
+Look for
+- /etc/letsencrypt/live/<hostname>privkey.pem (this is where let's encrypt stores them)
+- file named <hostname>.key in /tmp (ad-hoc generated files)
+
+If it does not exist, generate the key and self signed cert in /tmp/"
+  (let* ((key-name (make-pathname :name hostname :defaults "/tmp/foo.key"))
+         (cert-name (make-pathname :type "crt" :defaults key-name))
+         (lets-encrypt-name
+           (make-pathname :directory `(:absolute "etc" "letsencrypt" "live" ,hostname)
+                          :name "privkey"
+                          :type "pem")))
+    (cond ((probe-file key-name))
+          ((probe-file lets-encrypt-name) lets-encrypt-name) ; explicit needed, symlinks
+          (t
+           (warn "No private key found by heuristics, creating new pair in /tmp")
+           (maybe-create-certificate key-name cert-name :base "/tmp")))))
+
+(defun find-certificate-file (keypath)
+  "Find a certificate file for private key stored in KEYPATH.
+
+Try file of same name ending with .crt, or, if the name of private key was privkey.pem, try fullchain.pem (this is what let's encrypt uses)."
+  (or
+   (probe-file (make-pathname :type "crt" :defaults keypath))
+   (and (equal (pathname-name keypath) "privkey")
+        (probe-file (make-pathname :name "fullchain" :defaults keypath)))
+   (error "Cannot find cert file")))
+
+(defun maybe-create-certificate (key certificate &key system (base
+                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
+  "Generate key and a self-signed certificate to it for localhost using openssl
+cli."
+  (unless (and (probe-file key)
+               (probe-file certificate))
+    (let ((key-file (ensure-directories-exist (merge-pathnames key base)))
+          (cert-file (ensure-directories-exist (merge-pathnames certificate base))))
+      (uiop:run-program
+       `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring key-file)
+                   "-outform" "PEM" "-out" ,(namestring cert-file)))
+      (terpri)
+      (values key-file cert-file))))
+
+(defmethod initialize-instance :after ((object easy-certificated-context-mixin) &key hostname)
+  (when hostname
+    (with-slots (private-key-file certificate-file) object
+      (setf private-key-file (namestring (find-private-key-file hostname))
+            certificate-file (namestring (find-certificate-file http2/openssl::private-key-file))))))

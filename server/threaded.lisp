@@ -5,7 +5,7 @@
   (:documentation
    "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
 
-(defclass tls-threaded-dispatcher (tls-dispatcher-mixin threaded-dispatcher)
+(defclass tls-threaded-dispatcher (tls-dispatcher-mixin h2-server-context-mixin threaded-dispatcher)
   ())
 
 (defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)

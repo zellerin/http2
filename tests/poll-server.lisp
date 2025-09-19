@@ -26,42 +26,55 @@
 ;;;; Sandbox
 (defsection @poll-pair ())
 
-;; TODO: move to openssl.lisp
-(defclass easy-certificate-dispatcher (http2/openssl::certificated-dispatcher)
-  ()
-  (:default-initargs :hostname "localhost"))
-
-(defmethod initialize-instance :after ((object easy-certificate-dispatcher) &key hostname)
-  (when hostname
-    (with-slots (http2/openssl::private-key-file http2/openssl::certificate-file) object
-      (setf http2/openssl::private-key-file (namestring (find-private-key-file hostname))
-            http2/openssl::certificate-file (namestring (find-certificate-file http2/openssl::private-key-file))))))
-
 (defun call-with-clients-pair (fn &key (dispatcher (make-instance 'poll-dispatcher-mixin :fdset-size 3))
                                     (server-context 'easy-certificate-dispatcher)
-                                    (client-context dispatcher))
+                                    (client-context t))
   "Call FN with two parameters, client and server, that are TLS endpoint objects
-with
-interconnected file descriptor.
+with interconnected file descriptor.
 
 DISPATCHER describes how the FDSET is created and handled (see WITH-FDSET).
 
 SERVER-CONTEXT and CLIENT-CONTEXT define how the TLS context are created, see
 MAKE-HTTP2-TLS-CONTEXT."
-  (when (symbolp server-context) (setf server-context (make-instance server-context)))
-  (when (symbolp client-context) (setf client-context (make-instance client-context)))
-  (with-fdset (dispatcher)
-    (with-tcp-pair (s c)
-      (http2/server/poll::with-ssl-context (server-ctx server-context)
-        (http2/server/poll::with-ssl-context (client-ctx client-context)
-          (set-nonblock s)
-          (set-nonblock c)
-          (let ((server (make-client s server-ctx nil (add-new-fdset-item s dispatcher)))
-                (client (make-client c client-ctx nil (add-new-fdset-item c dispatcher))))
-            (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
-            (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
-            (encrypt-and-send client)
-            (funcall fn server client)))))))
+  (let ((http2/server/poll::*encrypted-buf-size* 3000))
+    (when (symbolp server-context) (setf server-context (make-instance server-context)))
+    (when (and (not (eql client-context t)) (symbolp client-context)) (setf client-context (make-instance client-context)))
+    (with-fdset (dispatcher)
+      (with-tcp-pair (s c)
+        (http2/server/poll::with-ssl-context (server-ctx server-context)
+          (http2/server/poll::with-ssl-context (client-ctx client-context)
+            (set-nonblock s)
+            (set-nonblock c)
+            (let ((server (make-tls-endpoint s server-ctx 'server (add-new-fdset-item s dispatcher)))
+                  (client (make-tls-endpoint c client-ctx 'client (add-new-fdset-item c dispatcher))))
+              ;; Initialize client: connect it and send client hello
+              (setf (get-clients dispatcher) (list server client))
+              (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
+              (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
+              (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
+              (http2/server/poll::do-available-actions client)
+              (encrypt-and-send client)
+              (sleep 0.1) ; Naggle
+              (http2/server/poll::add-state server 'http2/server/poll::can-read-port)
+              (http2/server/poll::do-available-actions server)
+              (encrypt-and-send server) ; send encrypted data (80+26 octets)
+              (sleep 0.1) ; Naggle
+              (http2/server/poll::add-state client 'http2/server/poll::can-read-port)
+              (http2/server/poll::do-available-actions client)
+              (http2/server/poll::remove-state client 'http2/server/poll::can-read-bio)
+              (http2/server/poll::do-available-actions client)
+;              (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4)) nil)
+;              (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4)) nil)
+;              (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4)) nil)
+              (encrypt-and-send client) ; send encrypted data (80+26 octets)
+              (http2/server/poll::do-available-actions client)
+
+              (sleep 0.1) ; Naggle
+              (http2/server/poll::add-state server 'http2/server/poll::can-read-port)
+              (http2/server/poll::do-available-actions server)
+              (encrypt-and-send server) ; send encrypted data (80+26 octets)
+
+              (funcall fn server client))))))))
 
 (deftest write-read-peer/test-no-tls ()
   "Write fixed data to server and see it on the client."
