@@ -10,7 +10,7 @@
                 #:define-glossary-term))
 
 (mgl-pax:define-package #:http2/openssl
-  (:use #:cl #:cffi))
+  (:use #:cl #:cffi #:mgl-pax #:dref))
 
 (mgl-pax:define-package :http2/core
   (:use :cl :http2/hpack :http2/utils)
