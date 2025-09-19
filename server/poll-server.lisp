@@ -163,12 +163,12 @@ The actions are in general indicated by arrows in the diagram:
   `(and compiled-function
         (function (t octet-vector) (values compiled-function buffer-size))))
 
-(defstruct (tls-endpoint  (:constructor make-client%)
-                          (:conc-name "CLIENT-")
-                          (:print-object
-                           (lambda (object out)
-                             (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
-                                     (client-octets-needed object) (client-io-on-read object)))))
+(defstruct (tls-endpoint (:constructor make-client%)
+                         (:conc-name "CLIENT-")
+                         (:print-object
+                          (lambda (object out)
+                            (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
+                                    (client-octets-needed object) (client-io-on-read object)))))
   "Data of one TLS endpoint that is connected to a socket that is part of a FDSET. This includes:
 
 - File descriptor of underlying socket (FD).
@@ -220,8 +220,10 @@ The actions are in general indicated by arrows in the diagram:
             do (incf start size)
             finally (unless (= start end) (warn "PARSE-TLS: partial message ~d/~d"  start end)))))
 
+(defvar *describe-object-buffer-limit* nil)
+
 (defmethod describe-object ((object tls-endpoint) stream)
-  (let ((*print-length* 30))
+  (let ((*print-length* (or *print-length* 30)))
     (format stream "~&A TLS endpoint for ~a
    It is associated with file descriptor ~d.
    It has position ~D in the FDSET.
@@ -239,7 +241,7 @@ The actions are in general indicated by arrows in the diagram:
             (zerop (client-encrypt-buf-size object))
             (client-encrypt-buf-size object) (subseq (client-encrypt-buf object) 0 (client-encrypt-buf-size object))
             (zerop (client-write-buf-size object))
-            (client-write-buf-size object) (subseq (client-write-buf object) 0 (client-write-buf-size object))
+            (client-write-buf-size object) (subseq (client-write-buf object) 0 *describe-object-buffer-limit*)
             (parse-tls-record (client-write-buf object) 0  (client-write-buf-size object))
             (plusp (ssl-is-init-finished (client-ssl object)))
             (when (plusp (ssl-is-init-finished (client-ssl object))) (ssl-peek object 100))))
@@ -718,7 +720,7 @@ Check the code in openssl/sslerr.h "))
 (defun make-tls-endpoint (socket ctx application-data idx)
   "Make a generic instance of a TLS-ENDPOINT usable both for a client and for a server.
 
-The read and write buffers are intitialized to new  "
+The read and write buffers are intitialized to new "
   (let* ((s-mem (bio-s-mem))
          (client (make-client% :fd socket
                                :rbio (bio-new s-mem)

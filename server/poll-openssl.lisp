@@ -56,6 +56,11 @@
                  ((= status ssl-error-zero-return)
                   (warn "Peer send close notify alert. One possible cause - it does not like our certificate")
                   (signal 'http2/server/poll::done))
+                 ((= status ssl-error-syscall)
+                  (let ((errno (http2/tcpip:errno)))
+                    (unless (zerop errno)
+                      ;; IIUC end of communication gives errno 0
+                      (warn "SSL syscall error ~d (~a)" errno (http2/server/poll::strerror errno))))                  )
                  (t (error "SSL write failed, status ~d" status))))))))
 
 (defun bio-should-retry (wbio)

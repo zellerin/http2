@@ -102,7 +102,10 @@
   (filename :string)
   (type :int))
 
-(defclass certificated-dispatcher-mixin ()
+(defclass h2-server-dispatcher-mixin ()
+  ())
+
+(defclass certificated-dispatcher-mixin (h2-server-dispatcher-mixin)
   ((certificate-file :initarg  :certificate-file)
    (private-key-file :initarg  :private-key-file))
   (:documentation
@@ -139,7 +142,7 @@ We should also limit allowed ciphers, but we do not.")
                           (zerop (ssl-ctx-set-cipher-list context cipher-list)))
                  (error "Cannot set cipher list"))
       context))
-  (:method ((dispatcher http2/server::base-dispatcher))
+  (:method ((dispatcher h2-server-dispatcher-mixin))
     "For servers"
     (let ((context (call-next-method)))
       (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
