@@ -14,7 +14,7 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
-                                        ;  (get-clients function)
+  (get-clients function)
                                         ;  (client-application-data function)
   (client-ssl function)
   (poll-dispatcher-mixin class)
@@ -41,7 +41,7 @@ encrypting and writing of data for all the sockets."
 
 (defsection @tls-endpoint (:title "TLS endpoint")
   ""
-  (tls-endpoint structure)
+  (tls-endpoint struct)
   (make-tls-endpoint function)
   (with-tls-endpoint macro)
 )
@@ -164,6 +164,7 @@ The actions are in general indicated by arrows in the diagram:
         (function (t octet-vector) (values compiled-function buffer-size))))
 
 (defstruct (tls-endpoint (:constructor make-client%)
+                         (:include tls-core)
                          (:conc-name "CLIENT-")
                          (:print-object
                           (lambda (object out)
@@ -180,9 +181,6 @@ The actions are in general indicated by arrows in the diagram:
 - Client state from the low-level data flow point of view (STATE).
 - Application data (slot to be used by the application). This is usually some application structure, but can be also a symbol in tests. Another input to RUN-USER-CALLBACK."
   (fd -1 :type fixnum)
-  (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
-  (rbio (null-pointer) :type cffi:foreign-pointer :read-only t)
-  (wbio (null-pointer) :type cffi:foreign-pointer :read-only t)
   (write-buf (make-array *encrypted-buf-size* :element-type '(unsigned-byte 8))
    :type (and (simple-array (unsigned-byte 8))))
   (write-buf-size 0 :type fixnum)
@@ -614,11 +612,9 @@ If the operation was successfully completed, do nothing.
 If it is a harmless one (want read or want write), try to process the data.
 
 Raise error otherwise."
-  (let ((ssl (client-ssl client))
-        (wbio (client-rbio client)))
-    (let ((new-state (handle-ssl-errors* ssl wbio ret)))
-      (when new-state
-        (add-state client new-state)))))
+  (let ((new-state (handle-ssl-errors* client ret)))
+    (when new-state
+      (add-state client new-state))))
 
 (defun ssl-err-reason-error-string (code)
   (foreign-string-to-lisp (err-reason-error-string code)))
@@ -721,17 +717,13 @@ Check the code in openssl/sslerr.h "))
   "Make a generic instance of a TLS-ENDPOINT usable both for a client and for a server.
 
 The read and write buffers are intitialized to new "
-  (let* ((s-mem (bio-s-mem))
-         (client (make-client% :fd socket
-                               :rbio (bio-new s-mem)
-                               :wbio (bio-new s-mem)
-                               :ssl (ssl-new ctx)
+  (let* ((client (make-client% :fd socket
                                :fdset-idx idx
                                :octets-needed +client-preface-length+
                                :io-on-read #'parse-client-preface
                                ;; FIXME: use class from the dispatcher
                                :application-data application-data)))
-    (ssl-set-bio (client-ssl client) (client-rbio client) (client-wbio client))
+    (init-tls-core client ctx)
     client))
 
 (defun make-client (&rest args) (apply #'make-client args))
@@ -750,9 +742,7 @@ The defaults reflect the fact that the macro should not be used with TLS endpoin
      (declare (type tls-endpoint ,name))
      (unwind-protect
           (progn ,@body)
-       (unless (null-pointer-p (client-ssl ,name))
-         (ssl-free (client-ssl ,name))
-         (setf (client-ssl ,name) (null-pointer))))))
+       (close-openssl ,name))))
 
 (defun make-tls-server-object (socket ctx idx)
   "Create new TLS ENDPOINT object suitable for TLS server.
@@ -819,11 +809,9 @@ reading of the client hello."
       (t (process-new-client listening-socket ctx dispatcher)))))
 
 (defun close-client-connection (client dispatcher)
+  (close-openssl client)
   (with-slots (clients) dispatcher
     (setf clients (remove client clients))
-    (unless (null-pointer-p (client-ssl client))
-      (ssl-free (client-ssl client)))   ; BIOs are closed automatically
-    (setf (client-ssl client) (null-pointer))
     (push (client-fdset-idx client) (http2/tcpip::get-empty-fdset-items dispatcher))
     (set-fd-slot (get-fdset dispatcher) -1 0 (client-fdset-idx client))
     (close-fd (client-fd client))
@@ -967,7 +955,7 @@ Timeouts can be specified for polling."))
   (print-unreadable-object (dispatcher out :type t)
     (format out "~a clients" (length (get-clients dispatcher)))))
 
-(defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin base-dispatcher)
+(defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin)
   ())
 
 (defmethod get-no-client-poll-timeout :after ((dispatcher poll-dispatcher))

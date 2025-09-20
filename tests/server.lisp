@@ -1,4 +1,4 @@
-(cl:defpackage #:http2/tests/server
+(mgl-pax:define-package #:http2/tests/server
   (:use #:cl #:fiasco #:http2/server #:http2/utils
         #:mgl-pax #:cffi #:http2/tcpip))
 

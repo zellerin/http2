@@ -4,17 +4,27 @@
   #-os-macosx (:unix "libssl.so")
   (t (:default "libssl.3")))
 
-(mgl-pax:defsection @openssl (:title "Openssl interface")
-  (with-ssl-context mgl-pax:macro))
+(defsection @openssl (:title "Openssl interface")
+  "Wraps openssl calls."
+  (@openssl-endpoint section)
+  (@openssl-context section))
 
-(export '(certificated-dispatcher-mixin make-http2-tls-context
-          handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry
+(export '(handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry
           certificate-file private-key-file))
 
 (export '(bio-needs-read peer-closed-connection has-data-to-encrypt can-write-ssl
-          can-read-bio bio-s-mem bio-new ssl-new ssl-set-accept-state ssl-set-bio ssl-free
+          can-read-bio
+          ; bio-s-mem bio-new ssl-new
+          ssl-set-accept-state
           bio-write ssl-read% ssl-error-condition err-reason-error-string
           bio-read% ssl-is-init-finished ssl-accept ssl-connect))
+
+(defsection @openssl-endpoint (:title "TLS endpoint")
+  (tls-core struct)
+  (init-tls-core function)
+  (make-tls-core function)
+
+  (close-openssl function))
 
 (use-foreign-library openssl)
 
@@ -39,6 +49,29 @@
 (defcfun "SSL_set_accept_state" :pointer (ssl :pointer))
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
+
+(defstruct (tls-core (:constructor make-tls-core%))
+  #+nil                         (:print-object
+                                 (lambda (object out)
+                                   (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
+                                           (client-octets-needed object) (client-io-on-read object))))
+  "Data of one TLS endpoint. This includes:
+
+- Opaque pointer to the openssl handle (SSL). See SSL-READ and ENCRYPT-SOME.
+- Input and output BIO for exchanging data with OPENSSL (WBIO, RBIO)."
+  (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
+  (rbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t)
+  (wbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t))
+
+(defun init-tls-core (client context)
+  (let ((ssl (ssl-new context)))
+    (ssl-set-bio ssl (tls-core-rbio client) (tls-core-wbio client))
+    (setf (tls-core-ssl client) ssl)))
+
+(defun make-tls-core (context)
+  (let ((ep (make-tls-core%)))
+    (init-tls-core ep context)
+    ep))
 
 
 (defsection @openssl-context (:title "TLS context")
@@ -78,6 +111,13 @@ wrapped in WITH-SSL-CONTEXT."
   (ctx :pointer)
   (filename :string)
   (type :int))
+
+
+(defun close-openssl (client)
+  (unless (null-pointer-p (tls-core-ssl client))
+    (ssl-free (tls-core-ssl client)))   ; BIOs are closed automatically
+  (setf (tls-core-ssl client) (null-pointer)))
+
 
 #+unused
 (defcfun ("SSL_select_next_proto" ssl-select-next-proto)

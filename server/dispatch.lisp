@@ -434,7 +434,7 @@ Some predefined combinations are below."
 There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors."
 
 ;;;; TLS dispatcher
-(defclass tls-dispatcher-mixin (easy-certificate-dispatcher)
+(defclass tls-dispatcher-mixin (certificate-h2-dispatcher)
   ()
   (:documentation
    "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,

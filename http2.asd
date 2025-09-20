@@ -113,10 +113,17 @@ Run these patterns against servers."
                (:file "frames/headers")
                (:file "frames/data")))
 
+(defsystem "http2/tcpip"
+  :depends-on ("cffi" "mgl-pax" "anaphora")
+  :defsystem-depends-on ("cffi-grovel")
+  :components ((:file "package")
+               (:cffi-grovel-file "server/poll-grovel")
+               (:file "server/tcpip")))
+
 (defsystem "http2/openssl"
   :version "0.1"
   :defsystem-depends-on ("cffi-grovel")
-  :depends-on ("cffi" "mgl-pax" "anaphora" "cl+ssl")
+  :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip")
   :pathname "tls"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
@@ -129,9 +136,7 @@ Run these patterns against servers."
   :serial t
   :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl" "let-over-lambda")
   :pathname "server"
-  :components ((:cffi-grovel-file "poll-grovel")
-               (:file "tcpip")
-               (:file "poll-openssl")
+  :components ((:file "poll-openssl")
                (:file "poll-server")))
 
 (asdf:defsystem "http2/server"
@@ -140,10 +145,7 @@ Run these patterns against servers."
   :version "2.0.2"
   :serial t
   :depends-on ("http2/server/threaded" "http2/server/poll")
-  :pathname "server"
-  :components ((:cffi-grovel-file "poll-grovel")
-               (:file "poll-openssl")
-               (:file "poll-server")))
+  :pathname "server")
 
 (asdf:defsystem "http2/server/demo"
   :description "Demo content for the server."
