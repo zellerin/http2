@@ -277,3 +277,72 @@ This is intended primarily for SBCL. It would use basic tracing on other platfor
                           `(:print-after
                             (flet ((& (nr) (sb-debug:arg nr)))
                               (format nil "(<~d) ~? " ,level ,format-after (list ,@args-after))))))))))
+
+(defsection @cerpaths ()
+  (h2-server-context-mixin class)
+  (certificated-context-mixin class)
+  (easy-certificated-context-mixin class)
+  (certificate-file slot)
+  (private-key-file slot))
+
+(defclass certificated-context-mixin ()
+  ((certificate-file :initarg  :certificate-file)
+   (private-key-file :initarg  :private-key-file))
+  (:documentation
+   "Dispatcher with two slots, CERTIFICATE-FILE and PRIVATE-KEY-FILE, that are used
+for TLS context creation."))
+
+(defclass easy-certificated-context-mixin (certificated-context-mixin)
+  ()
+  (:default-initargs :hostname "localhost")
+  (:documentation "Uses HOSTNAME (defaulting to localhost) to locate or create the key pair."))
+
+(defun find-private-key-file (hostname)
+  "Find the private key for HOSTNAME or create it.
+
+Look for
+- /etc/letsencrypt/live/<hostname>privkey.pem (this is where let's encrypt stores them)
+- file named <hostname>.key in /tmp (ad-hoc generated files)
+
+If it does not exist, generate the key and self signed cert in /tmp/"
+  (let* ((key-name (make-pathname :name hostname :defaults "/tmp/foo.key"))
+         (cert-name (make-pathname :type "crt" :defaults key-name))
+         (lets-encrypt-name
+           (make-pathname :directory `(:absolute "etc" "letsencrypt" "live" ,hostname)
+                          :name "privkey"
+                          :type "pem")))
+    (cond ((probe-file key-name))
+          ((probe-file lets-encrypt-name) lets-encrypt-name) ; explicit needed, symlinks
+          (t
+           (warn "No private key found by heuristics, creating new pair in /tmp")
+           (maybe-create-certificate key-name cert-name :base "/tmp")))))
+
+(defun find-certificate-file (keypath)
+  "Find a certificate file for private key stored in KEYPATH.
+
+Try file of same name ending with .crt, or, if the name of private key was privkey.pem, try fullchain.pem (this is what let's encrypt uses)."
+  (or
+   (probe-file (make-pathname :type "crt" :defaults keypath))
+   (and (equal (pathname-name keypath) "privkey")
+        (probe-file (make-pathname :name "fullchain" :defaults keypath)))
+   (error "Cannot find cert file")))
+
+(defun maybe-create-certificate (key certificate &key system (base
+                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
+  "Generate key and a self-signed certificate to it for localhost using openssl
+cli."
+  (unless (and (probe-file key)
+               (probe-file certificate))
+    (let ((key-file (ensure-directories-exist (merge-pathnames key base)))
+          (cert-file (ensure-directories-exist (merge-pathnames certificate base))))
+      (uiop:run-program
+       `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring key-file)
+                   "-outform" "PEM" "-out" ,(namestring cert-file)))
+      (terpri)
+      (values key-file cert-file))))
+
+(defmethod initialize-instance :after ((object easy-certificated-context-mixin) &key hostname)
+  (when hostname
+    (with-slots (private-key-file certificate-file) object
+      (setf private-key-file (namestring (find-private-key-file hostname))
+            certificate-file (namestring (find-certificate-file private-key-file))))))

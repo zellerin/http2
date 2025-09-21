@@ -334,8 +334,6 @@ found responses on any request."
 (defun start (port &rest args &key
                                 (host *vanilla-host*)
                                 (dispatcher *vanilla-server-dispatcher*)
-                                (certificate-file 'find-certificate-file)
-                                (private-key-file 'find-private-key-file)
               &allow-other-keys)
   "Start a default HTTP/2 https server on PORT on background.
 
@@ -360,16 +358,10 @@ should be presently best detached dispatcher.
 FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
 respective parameters try to locate the files."
   (declare (optimize debug safety (speed 0)))
-  (when (symbolp private-key-file)
-    (setf private-key-file (namestring (funcall private-key-file host))))
-  (when (symbolp certificate-file)
-    (setf certificate-file (namestring (funcall certificate-file private-key-file))))
   (multiple-value-bind (server socket)
       (apply #'create-server port dispatcher
-                     :certificate-file certificate-file
-                     :private-key-file private-key-file
-                     :host host
-                     args)
+             :host host
+             args)
     (push server *servers*)
     (values server
             (url-from-socket socket host t))))

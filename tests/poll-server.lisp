@@ -26,8 +26,8 @@
 ;;;; Sandbox
 (defsection @poll-pair ())
 
-(defun call-with-clients-pair (fn &key (dispatcher (make-instance 'poll-dispatcher-mixin :fdset-size 3))
-                                    (server-context 'easy-certificate-dispatcher)
+(defun call-with-clients-pair (fn &key (dispatcher (make-instance 'poll-dispatcher :fdset-size 3))
+                                    (server-context 'poll-dispatcher)
                                     (client-context t))
   "Call FN with two parameters, client and server, that are TLS endpoint objects
 with interconnected file descriptor.
@@ -135,10 +135,10 @@ This does not use POLL yet; instead, the appropriate state is added manually."
   (print (list client data))
   (values #'print-data 10))
 
-(defclass certificated-poll-dispatcher (http2/openssl::certificated-dispatcher poll-dispatcher-mixin)
+(defclass certificated-poll-dispatcher (http2/server::certificate-h2-dispatcher poll-dispatcher-mixin)
   ())
 
-(defun poll-server-test (&key prepare-fn after-poll-fn (dispatcher (make-instance 'certificated-poll-dispatcher)))
+(defun poll-server-test (&key prepare-fn after-poll-fn (dispatcher (make-instance 'poll-dispatcher)))
   "Make a server-client TCP pair (nonblocking), let them establish the TLS connection (accept-connect),
 define CLIENT and SERVER as poll clients, call PREPARE-FN with SERVER and client
 as the parameters, and then read and write messages among them and call the
@@ -151,7 +151,8 @@ AFTER-POLL-FN on them after data exchange."
            while (plusp nread)
            do
               (process-client-sockets nread dispatcher)
-              (funcall after-poll-fn server client)))))
+              (funcall after-poll-fn server client)))
+   :dispatcher dispatcher))
 
 (defun ignore-data (client data)
   (declare (ignore client))
@@ -176,26 +177,30 @@ is set up. This should be queued and used at the very start of the communication
 
 Return number of received octets (that should be same as number of octets sent)"
   (let ((received 0))
-    (labels ((receive (client data)
-               (incf received (length data))
-               (let ((reply (make-octet-buffer 1)))
-                 (declare (dynamic-extent reply))
-                 (send-unencrypted-bytes client reply nil))
-               (encrypt-and-send client)
-               (values #'receive 10)))
-      (poll-server-test
-       :prepare-fn (lambda (client server)
+    (poll-server-test
+     :prepare-fn (lambda (client server)
+                   (labels ((receive (c data)
+                              (incf received (length data))
+                              (let ((reply (make-octet-buffer 1)))
+                                (declare (dynamic-extent reply))
+                                (send-unencrypted-bytes client reply nil))
+                              (encrypt-and-send client)
+                              (values #'receive 10)))
                      (set-next-action client #'receive 10)
                      (set-next-action server #'ignore-data 1)
                      (send-unencrypted-bytes server (make-octet-buffer blob-size) nil)
                      (encrypt-and-send client)
-                     (encrypt-and-send server))
-       :after-poll-fn (constantly nil)))
+                     (encrypt-and-send server)))
+     :after-poll-fn (constantly nil))
     received))
 
 (deftest send-in-advance ()
-  (dolist (size '(10 100 200)) ;; note: fails for 2000
+  (dolist (size '(10 100 200 1000)) ;; note: fails for 2000
     (is (equal size (test-send-in-advance size)))))
+
+(defsection @ssltests (:title "SSL interface tests")
+  (tls-low-level-demo function)
+  (client-connect function))
 
 (flet ((pass-data (from to)
          (when (plusp  (http2/server/poll::client-write-buf-size from))
@@ -236,33 +241,28 @@ Return number of received octets (that should be same as number of octets sent)"
       server)))
 
 (defun tls-low-level-demo (actions &optional (final #'describe))
-  (let ((http2/server/poll::*encrypted-buf-size* 3000)) ;; all TLS messages need to fit the write buffer
-    (http2/server/poll::with-ssl-context (server-ctx (make-instance 'easy-certificate-dispatcher))
-      (http2/server/poll::with-ssl-context (client-ctx t)
-        (with-tls-endpoint (server (make-client -1 server-ctx 'server -1))
-          (with-tls-endpoint (client (make-client -1 client-ctx 'client -1))
-            (let (last)
-              (dolist (action actions)
-                (setf last (funcall action client server)))
-              (funcall final last))))))))
+  "Test low-level communication between TLS endpoints.
 
-"Fun with TLS:
+ACTIONS is a list of functions to call on TLS endpoints. Some functions designed
+to be included there are (--> ...), (<-- ...), client-connect and server-accept,
+but any function of two arguments, CLIENT and SERVER, can be used.
+
+FINAL is called with the result of last action as the only parameter.
+
+Example:
 
 ```cl-transcript
 (tls-low-level-demo `(client-connect
                       server-accept
                      ,(--> (make-octet-buffer 10) 10)
                      ,(<-- (make-octet-buffer 10) 10)))
-.. A TLS endpoint for SERVER
+.. A TLS endpoint for NIL
 ..    It is associated with file descriptor -1.
 ..    It has position -1 in the FDSET.
 ..    It expects 24 octets that would be processed by #<FUNCTION HTTP2/CORE:PARSE-CLIENT-PREFACE> with application
 ..    Buffers:
 ..       - Encrypt buffer is empty
-..       - Write buffer has 542 octets #(23 3 3 0 250 222 236 204 2 95 91
-..                                       127 9 67 192 141 216 116 199 193
-..                                       64 84 80 184 161 29 70 135 78 36
-..                                       ...)
+..       - Write buffer has 542 octets #(23 3 3 0 250)
 ..            ((:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 255)
 ..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 255)
 ..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 32))
@@ -271,8 +271,14 @@ Return number of received octets (that should be same as number of octets sent)"
 ..
 ..    State: CAN-WRITE-SSL CAN-WRITE HAS-DATA-TO-WRITE BIO-NEEDS-READ SSL-INIT-NEEDED
 ..
-
-```
-
-
-"
+```"
+  (let ((http2/server/poll::*encrypted-buf-size* 3000)
+        (http2/server/poll::*describe-object-buffer-limit* 5)) ;; all TLS messages need to fit the write buffer
+    (http2/server/poll::with-ssl-context (server-ctx (make-instance 'certificated-dispatcher))
+      (http2/server/poll::with-ssl-context (client-ctx t)
+        (with-tls-endpoint (server server-ctx)
+          (with-tls-endpoint (client client-ctx)
+            (let (last)
+              (dolist (action actions)
+                (setf last (funcall action client server)))
+              (funcall final last))))))))

@@ -11,7 +11,7 @@
   (tls-threaded-dispatcher class))
 
 (defsection @server/threaded (:title "Threaded server")
-  (make-http2-tls-context function)
+  (make-tls-context function)
   (create-https-server function)
   (@server-classes section)
   (@server-actions section))

@@ -24,7 +24,6 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (unsupported-server-setup condition)
   (server-socket-stream generic-function)
   (start-server-on-socket generic-function)
-  (find-private-key-file function)
   (find-certificate-file function)
   (certificated-dispatcher class)
   (maybe-create-certificate function))
@@ -74,6 +73,7 @@ Additional keyword parameters are allowed; they are defined and consumed by
 the dispatcher."
   (when (symbolp dispatcher)
     (setf dispatcher (apply #'make-instance dispatcher :allow-other-keys t keys)))
+;  (with-slots (private-key-file certificate-file) dispatcher)
   (restart-case
       (let ((listening-socket (usocket:socket-listen host port
                                                      :reuse-address t

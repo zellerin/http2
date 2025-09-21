@@ -5,7 +5,7 @@
   (:documentation
    "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
 
-(defclass tls-threaded-dispatcher (tls-dispatcher-mixin h2-server-context-mixin threaded-dispatcher)
+(defclass tls-threaded-dispatcher (tls-dispatcher-mixin threaded-dispatcher)
   ())
 
 (defclass detached-tls-threaded-dispatcher (detached-server-mixin tls-threaded-dispatcher)
@@ -63,7 +63,7 @@ events)."))
 "For a TLS server wrap the global context."
 (defmethod http2/server::start-server-on-socket ((server tls-threaded-dispatcher) socket)
   (cl+ssl:ensure-initialized)
-  (cl+ssl:with-global-context ((make-http2-tls-context server) :auto-free-p t)
+  (cl+ssl:with-global-context ((make-tls-context server) :auto-free-p t)
     (call-next-method)))
 
 (define-condition not-http2-stream (serious-condition)
