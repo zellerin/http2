@@ -114,7 +114,8 @@ Run these patterns against servers."
                (:file "frames/data")))
 
 (defsystem "http2/tcpip"
-  :depends-on ("cffi" "mgl-pax" "anaphora")
+  ;; note: it has to depend on cl+ssl
+  :depends-on ("cffi" "mgl-pax" "anaphora" "cl+ssl")
   :defsystem-depends-on ("cffi-grovel")
   :components ((:file "package")
                (:cffi-grovel-file "server/poll-grovel")
@@ -123,11 +124,12 @@ Run these patterns against servers."
 (defsystem "http2/openssl"
   :version "0.1"
   :defsystem-depends-on ("cffi-grovel")
-  :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip")
+  :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip" "http2/core")
   :pathname "tls"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
-  :components ((:file "../package") (:cffi-grovel-file "openssl-grovel")
+  :components ((:file "../package")
+               (:cffi-grovel-file "openssl-grovel")
                (:file "openssl")))
 
 (asdf:defsystem "http2/server/poll"
