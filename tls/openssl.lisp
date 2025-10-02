@@ -78,21 +78,33 @@
             (when (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object))) "" #+nil (ssl-peek object 100)))))
 
 (defun init-tls-endpoint-core (client context)
+  "Initialize freshly created TLS-CORE.
+
+That is, create a SSL context and bind it with RBIO and WBIO.
+
+This is factored out so that it can be used in structures that inherit TLS-CORE."
   (let ((ssl (ssl-new context)))
     (ssl-set-bio ssl (tls-endpoint-core-rbio client) (tls-endpoint-core-wbio client))
     (setf (tls-endpoint-core-ssl client) ssl)))
 
 (defun make-tls-endpoint-core (context)
+  "New TLS-ENDPOINT-CORE that has context derived from CONTEXT."
   (let ((ep (make-tls-endpoint-core%)))
     (init-tls-endpoint-core ep context)
     ep))
 
 (defmacro with-tls-endpoint-core ((name context) &body body)
+  "Run BODY with NAME bound to a fresh TLS-ENDPOINT-CORE instance. Close it on exit."
   `(let ((,name (make-tls-endpoint-core ,context)))
-     (declare (type tls-endpoint ,name))
+     (declare (type tls-endpoint-core ,name))
      (unwind-protect
           (progn ,@body)
-       (close-openssl ,name))))
+       (close-openssl ,name)
+       (setf (tls-endpoint-core-ssl ,name) (null-pointer)
+             ;; we set these as read-only, so do not touch
+             ;; (tls-endpoint-core-rbio ,name) (null-pointer)
+             ;; (tls-endpoint-core-wbio ,name) (null-pointer)
+             ))))
 
 (defun close-openssl (client)
   (unless (null-pointer-p (tls-endpoint-core-ssl client))
