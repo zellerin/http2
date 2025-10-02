@@ -164,7 +164,7 @@ The actions are in general indicated by arrows in the diagram:
         (function (t octet-vector) (values compiled-function buffer-size))))
 
 (defstruct (tls-endpoint (:constructor make-client%)
-                         (:include tls-core)
+                         (:include tls-endpoint-core)
                          (:conc-name "CLIENT-")
                          (:print-object
                           (lambda (object out)
@@ -723,7 +723,7 @@ The read and write buffers are intitialized to new "
                                :io-on-read #'parse-client-preface
                                ;; FIXME: use class from the dispatcher
                                :application-data application-data)))
-    (init-tls-core client ctx)
+    (init-tls-endpoint-core client ctx)
     client))
 
 (defun make-client (&rest args) (apply #'make-client args))

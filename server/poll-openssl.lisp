@@ -13,8 +13,8 @@
 
 (defun handle-ssl-errors* (client ret)
   "Check RET value of a openssl call. Either raise a condition, or return a state to add to the client, if any, or nil"
-  (let* ((ssl (tls-core-ssl client))
-         (wbio (tls-core-rbio client))
+  (let* ((ssl (tls-endpoint-core-ssl client))
+         (wbio (tls-endpoint-core-rbio client))
          (err-code (ssl-get-error ssl ret)))
     (cond
       ;; after ssl read

@@ -19,9 +19,9 @@
           bio-read% ssl-is-init-finished ssl-accept ssl-connect))
 
 (defsection @openssl-endpoint (:title "TLS endpoint")
-  (tls-core struct)
-  (init-tls-core function)
-  (make-tls-core function)
+  (tls-endpoint-core struct)
+  (init-tls-endpoint-core function)
+  (make-tls-endpoint-core function)
 
   (close-openssl function))
 
@@ -49,7 +49,7 @@
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
 
-(defstruct (tls-core (:constructor make-tls-core%))
+(defstruct (tls-endpoint-core (:constructor make-tls-endpoint-core%))
   #+nil                         (:print-object
                                  (lambda (object out)
                                    (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
@@ -62,20 +62,27 @@
   (rbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t)
   (wbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t))
 
-(defun init-tls-core (client context)
+(defun init-tls-endpoint-core (client context)
   (let ((ssl (ssl-new context)))
-    (ssl-set-bio ssl (tls-core-rbio client) (tls-core-wbio client))
-    (setf (tls-core-ssl client) ssl)))
+    (ssl-set-bio ssl (tls-endpoint-core-rbio client) (tls-endpoint-core-wbio client))
+    (setf (tls-endpoint-core-ssl client) ssl)))
 
-(defun make-tls-core (context)
-  (let ((ep (make-tls-core%)))
-    (init-tls-core ep context)
+(defun make-tls-endpoint-core (context)
+  (let ((ep (make-tls-endpoint-core%)))
+    (init-tls-endpoint-core ep context)
     ep))
 
+(defmacro with-tls-endpoint-core ((name context) &body body)
+  `(let ((,name (make-tls-endpoint-core ,context)))
+     (declare (type tls-endpoint ,name))
+     (unwind-protect
+          (progn ,@body)
+       (close-openssl ,name))))
+
 (defun close-openssl (client)
-  (unless (null-pointer-p (tls-core-ssl client))
-    (ssl-free (tls-core-ssl client)))   ; BIOs are closed automatically
-  (setf (tls-core-ssl client) (null-pointer)))
+  (unless (null-pointer-p (tls-endpoint-core-ssl client))
+    (ssl-free (tls-endpoint-core-ssl client)))   ; BIOs are closed automatically
+  (setf (tls-endpoint-core-ssl client) (null-pointer)))
 
 
 (defsection @openssl-context (:title "TLS context")
