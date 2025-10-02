@@ -49,11 +49,13 @@
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
 
-(defstruct (tls-endpoint-core (:constructor make-tls-endpoint-core%))
-  #+nil                         (:print-object
+(defstruct (tls-endpoint-core (:constructor make-tls-endpoint-core%)
+                              (:print-object
                                  (lambda (object out)
-                                   (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
-                                           (client-octets-needed object) (client-io-on-read object))))
+                                   (format out
+                                           (if (null-pointer-p (tls-endpoint-core-ssl object))
+                                               "#<uninitialized or freed tls-core>"
+                                               "#<tls-core>")))))
   "Data of one TLS endpoint. This includes:
 
 - Opaque pointer to the openssl handle (SSL). See SSL-READ and ENCRYPT-SOME.
@@ -61,6 +63,19 @@
   (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
   (rbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t)
   (wbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t))
+
+(defmethod describe-object ((object tls-endpoint-core) stream)
+  (let ((*print-length* (or *print-length* 30)))
+    (format stream "~&A TLS endpoint core.
+   It is ~:[~;NOT ~]assigned to a SSL.
+   Buffers:~@<
+      - TLS is ~:[NOT ~;~]initialized
+      - TLS peek: ~s
+   ~:>
+   State:"
+            (null-pointer-p (tls-endpoint-core-ssl object))
+            (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object)))
+            (when (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object))) "" #+nil (ssl-peek object 100)))))
 
 (defun init-tls-endpoint-core (client context)
   (let ((ssl (ssl-new context)))
