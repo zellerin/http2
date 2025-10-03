@@ -19,9 +19,10 @@
           bio-read% ssl-is-init-finished ssl-accept ssl-connect))
 
 (defsection @openssl-endpoint (:title "TLS endpoint")
-  (tls-endpoint-core struct)
+  (tls-endpoint-core type)
   (init-tls-endpoint-core function)
   (make-tls-endpoint-core function)
+  (with-tls-endpoint-core macro)
 
   (close-openssl function))
 
@@ -71,8 +72,7 @@
    Buffers:~@<
       - TLS is ~:[NOT ~;~]initialized
       - TLS peek: ~s
-   ~:>
-   State:"
+   ~:>"
             (null-pointer-p (tls-endpoint-core-ssl object))
             (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object)))
             (when (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object))) "" #+nil (ssl-peek object 100)))))
@@ -94,23 +94,28 @@ This is factored out so that it can be used in structures that inherit TLS-CORE.
     ep))
 
 (defmacro with-tls-endpoint-core ((name context) &body body)
-  "Run BODY with NAME bound to a fresh TLS-ENDPOINT-CORE instance. Close it on exit."
+  "Run BODY with NAME bound to a fresh TLS-ENDPOINT-CORE instance. Close it on exit.
+
+```cl-transcribe
+(with-ssl-context (ctx nil) (with-tls-endpoint-core (foo ctx) (print foo)))
+..
+.. #<tls-core>
+==> #<uninitialized or freed tls-core>
+```"
   `(let ((,name (make-tls-endpoint-core ,context)))
      (declare (type tls-endpoint-core ,name))
      (unwind-protect
           (progn ,@body)
-       (close-openssl ,name)
-       (setf (tls-endpoint-core-ssl ,name) (null-pointer)
-             ;; we set these as read-only, so do not touch
-             ;; (tls-endpoint-core-rbio ,name) (null-pointer)
-             ;; (tls-endpoint-core-wbio ,name) (null-pointer)
-             ))))
+       (close-openssl ,name))))
 
 (defun close-openssl (client)
+  "Close the endpoint core CLIENT at drop the references."
   (unless (null-pointer-p (tls-endpoint-core-ssl client))
     (ssl-free (tls-endpoint-core-ssl client)))   ; BIOs are closed automatically
-  (setf (tls-endpoint-core-ssl client) (null-pointer)))
-
+  (setf (tls-endpoint-core-ssl client) (null-pointer))
+  ;; we set these as read-only, so do not touch
+  #+nil (tls-endpoint-core-rbio ,name) (null-pointer)
+  #+nil (tls-endpoint-core-wbio ,name) (null-pointer))
 
 (defsection @openssl-context (:title "TLS context")
   "TLS context is created with MAKE-HTTP2-TLS-CONTEXT, and its use should be
@@ -195,7 +200,7 @@ wrapped in WITH-SSL-CONTEXT."
 (defgeneric make-tls-context (dispatcher)
   (:documentation "Make TLS context suitable for http2, depending on DISPATCHER.
 
-The specialations include
+The specializations include
 :
 - ALPN callback that selects h2 (h2-server-context-mixin)
 - Do not request client certificates
@@ -211,6 +216,7 @@ We should also limit allowed ciphers, but we do not.")
       #+nil    (ssl-ctx-set-session-cache-mode context session-cache-mode)
       #+nil    (ssl-ctx-set-verify-location context verify-location)
       #+nil    (ssl-ctx-set-verify-depth context verify-depth)
+      ;; TODO: This should be separate mixin for verification
       #+nil    (ssl-ctx-set-verify context verify-mode (if verify-callback
                                                            (cffi:get-callback verify-callback)
                                                            (cffi:null-pointer)))

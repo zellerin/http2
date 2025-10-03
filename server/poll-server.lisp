@@ -730,6 +730,7 @@ The read and write buffers are intitialized to new "
 (declaim (sb-ext:deprecated :early ("http2" "2.0.3")
                      (function make-client :replacement make-tls-endpoint)))
 
+;; FIXME: is it obsolete due to WITH-TLS-ENDPOINT-CORE?
 (defmacro with-tls-endpoint ((name context &key (fd -1) application-data (fdset-idx -1))
                              &body body)
   "Run BODY with NAME lexically bound to INIT, and it should be a TLS endpoint.

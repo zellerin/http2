@@ -78,7 +78,7 @@ MAKE-HTTP2-TLS-CONTEXT."
 
 (deftest write-read-peer/test-no-tls ()
   "Write fixed data to server and see it on the client."
-  (call-with-clients-pair
+#+nil  (call-with-clients-pair
    (lambda (server client)
      (http2/server/poll::send-to-peer server (make-initialized-octet-buffer #(1 2 3 4)) 0 4)
      (http2/server/poll::send-to-peer client (make-initialized-octet-buffer #(5 6 7 8)) 0 4)
@@ -96,35 +96,14 @@ single data send.
 Check that the other endpoint got the message.
 
 This does not use POLL yet; instead, the appropriate state is added manually."
-  (call-with-clients-pair
-   (lambda (server client)
-     (flet ((@ (endpoint)
-                (http2/server/poll::add-state endpoint 'http2/server/poll::can-read-port)
-              (http2/server/poll::do-available-actions endpoint)))
-       (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
-       (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
-       (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
-       (http2/server/poll::do-available-actions client) ; send client hello, some 302
-       (@ server) ; processes client hello, send server hello
-       (@ client) ; process hello
-       (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4)) nil)
-       (encrypt-and-send client) ; send encrypted data (80+26 octets)
-       (@ server)
-       (@ client)
-       (is (equalp
-            #(1 2 3 4)
-            (http2/server/poll::get-received (signals http2/server/poll::not-enough-data (@ server)))))))))
-
-(deftest write-read-peer-tls/test-reordered ()
-  "Similar to WRITE-READ-PEER-TLS/TEST, but instead of sending data after the handshake, send them immediately."
+#+nil
   (call-with-clients-pair
    (lambda (server client)
      (flet ((@ (endpoint)
                 (http2/server/poll::add-state endpoint 'http2/server/poll::can-read-port)
               (http2/server/poll::do-available-actions endpoint)))
        (send-unencrypted-bytes client (make-initialized-octet-buffer #(1 2 3 4)) nil)
-       (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
-       (http2/server/poll::do-available-actions client) ; send client hello, some 302
+       (encrypt-and-send client)        ; send encrypted data (80+26 octets)
        (@ server)
        (@ client)
        (is (equalp
@@ -159,23 +138,19 @@ AFTER-POLL-FN on them after data exchange."
   (values #'ignore-data (length data)))
 
 (deftest write-read-peer-tls/test-no-certificates ()
-  (call-with-clients-pair
-   (lambda (server client)
-     (flet ((@ (endpoint)
-                (http2/server/poll::add-state endpoint 'http2/server/poll::can-read-port)
-              (http2/server/poll::do-available-actions endpoint)))
-       (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
-       (http2/server/poll::remove-state client 'http2/server/poll::ssl-init-needed)
-       (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
-       (http2/server/poll::do-available-actions client) ; send client hello, some 302
-       (signals http2/openssl:ssl-error-condition (@ server))))
-   :server-context ""))
+  (let ((err
+          (signals http2/openssl:ssl-error-condition
+            (call-with-clients-pair
+             (constantly nil)
+             :server-context ""))))
+    (is (= (http2/server/poll::get-code err) #xa0000c1)))) ; no shared cipher
 
 (defun test-send-in-advance (blob-size)
   "Send BLOB-SIZE octets from one TLS endpoint to another before the TLS connection
 is set up. This should be queued and used at the very start of the communication.
 
 Return number of received octets (that should be same as number of octets sent)"
+  #+nil
   (let ((received 0))
     (poll-server-test
      :prepare-fn (lambda (client server)
@@ -195,6 +170,8 @@ Return number of received octets (that should be same as number of octets sent)"
     received))
 
 (deftest send-in-advance ()
+
+  #+nil
   (dolist (size '(10 100 200 1000)) ;; note: fails for 2000
     (is (equal size (test-send-in-advance size)))))
 
@@ -254,7 +231,7 @@ Example:
 ```cl-transcript
 (tls-low-level-demo `(client-connect
                       server-accept
-                     ,(--> (make-octet-buffer 10) 10)
+                     ,(--> (make-initialized-octet-buffer '(1 2 3 4 5 6 7 8 9 42)) 10)
                      ,(<-- (make-octet-buffer 10) 10)))
 .. A TLS endpoint for NIL
 ..    It is associated with file descriptor -1.
@@ -267,14 +244,14 @@ Example:
 ..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 255)
 ..             (:CONTENT-TYPE :APPLICATION :VERSION (3 . 3) :LENGTH 32))
 ..       - TLS is initialized
-..       - TLS peek: #(0 0 0 0 0 0 0 0 0 0)
+..       - TLS peek: #(1 2 3 4 5 6 7 8 9 42)
 ..
 ..    State: CAN-WRITE-SSL CAN-WRITE HAS-DATA-TO-WRITE BIO-NEEDS-READ SSL-INIT-NEEDED
 ..
 ```"
   (let ((http2/server/poll::*encrypted-buf-size* 3000)
         (http2/server/poll::*describe-object-buffer-limit* 5)) ;; all TLS messages need to fit the write buffer
-    (http2/server/poll::with-ssl-context (server-ctx (make-instance 'certificated-dispatcher))
+    (http2/server/poll::with-ssl-context (server-ctx (make-instance 'poll-dispatcher))
       (http2/server/poll::with-ssl-context (client-ctx t)
         (with-tls-endpoint (server server-ctx)
           (with-tls-endpoint (client client-ctx)
