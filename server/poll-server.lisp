@@ -61,7 +61,6 @@ The actions are in general indicated by arrows in the diagram:
 
   (@tls-endpoint section)
   (do-available-actions function)
-  (select-next-action function)
 
   (@application-loop section)
   (@port-to-tls section)
@@ -97,6 +96,14 @@ The actions are in general indicated by arrows in the diagram:
 (defvar *default-buffer-size* 1500) ; close to socket size
 
 
+(defsection @poll-tls-states (:title "TLS endpoint states")
+  "The actions available for a specific endpoint are kept in STATE.
+
+Each state bit corresponds to one function that can be called."
+  (state type)
+  (select-next-action function)
+  (states-to-string function))
+
 ;;;; Async TLS endpoint state
 (eval-when (:load-toplevel :compile-toplevel)
   (defparameter *states*
@@ -122,6 +129,7 @@ The actions are in general indicated by arrows in the diagram:
               (if (plusp (ldb (byte 1 state-idx) state)) label #\Space)))))
 
 (deftype state ()
+  "Description of actions available to the endpoint."
   `(unsigned-byte ,(length *states*)))
 
 (defmacro state-idx (state)
@@ -501,7 +509,7 @@ The callback is called with two parameters, client application data (opaque) and
     (funcall (client-io-on-read client) (client-application-data client) vec)))
 
 (defun select-next-action (client)
-  "One of possible next actions consistent with then the state of the client, or
+  "One of possible next actions consistent with the state of the client, or
 nil if no action is available.
 
 This is factored out so that it can be traced. There is a
