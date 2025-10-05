@@ -189,7 +189,8 @@ Return number of received octets (that should be same as number of octets sent)"
 
 
   (defun client-connect (client server)
-    (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
+    (declare (ignore server))
+    (http2/server/poll::ssl-connect (http2/openssl::tls-endpoint-core-ssl client))
     (move-encrypted client)
     client)
 

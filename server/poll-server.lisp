@@ -107,16 +107,16 @@ Each state bit corresponds to one function that can be called."
 ;;;; Async TLS endpoint state
 (eval-when (:load-toplevel :compile-toplevel)
   (defparameter *states*
-    '(CAN-READ-PORT           ; ①
-      CAN-READ-SSL            ; ③
-      CAN-WRITE-SSL           ; ④
-      CAN-READ-BIO            ; ⑤
-      CAN-WRITE               ; ⑥
-      HAS-DATA-TO-WRITE       ; ⓤ
-      HAS-DATA-TO-ENCRYPT     ; Ⓔ
-      BIO-NEEDS-READ          ; B
-      SSL-INIT-NEEDED         ; S
-      PEER-CLOSED-CONNECTION) ; C
+    '(CAN-READ-PORT                     ; ①
+      CAN-READ-SSL                      ; ③
+      CAN-WRITE-SSL                     ; ④
+      CAN-READ-BIO                      ; ⑤
+      CAN-WRITE                         ; ⑥
+      HAS-DATA-TO-WRITE                 ; ⓤ
+      HAS-DATA-TO-ENCRYPT               ; Ⓔ
+      NEG-BIO-NEEDS-READ                ; B
+      SSL-INIT-NEEDED                   ; S
+      PEER-OPEN)           ; O
     "List of state bits that can a TLS endpoint have."))
 
 (defun states-to-string (state)
@@ -124,7 +124,7 @@ Each state bit corresponds to one function that can be called."
   (with-output-to-string (*standard-output*)
     (loop ;for state in *states*
           for state-idx from 0
-          for label across "①③④⑤⑥ⓤⒺBSC"
+          for label across "①③④⑤⑥ⓤⒺBSO"
           do (princ
               (if (plusp (ldb (byte 1 state-idx) state)) label #\Space)))))
 
@@ -161,7 +161,7 @@ Each state bit corresponds to one function that can be called."
 (defvar *initial-state*
   (loop with state = 0
         for item in
-                  '(CAN-WRITE CAN-WRITE-SSL bio-needs-read ssl-init-needed)
+        '(CAN-WRITE CAN-WRITE-SSL ssl-init-needed peer-open)
         do (setf (ldb (byte 1 (state-idx item)) state) 1)
         finally (return state)))
 
@@ -203,7 +203,7 @@ Each state bit corresponds to one function that can be called."
   (state *initial-state* :type state)
   ;; set of CAN-READ-PORT, CAN-READ-SSL, HAS-DATA-TO-ENCRYPT, CAN-WRITE-SSL,
   ;; CAN-READ-BIO, HAS-DATA-TO-WRITE, CAN-WRITE
-  ;; BIO-NEEDS-READ SSL-INIT-NEEDED
+  ;; NEG-BIO-NEEDS-READ SSL-INIT-NEEDED
   (application-data))
 
 (defvar *tls-content-types*
@@ -329,10 +329,9 @@ available. Raise an error on error." vector destination)
     (remove-state client 'can-read-port))
   (add-state client 'CAN-READ-SSL)
   (add-state client 'can-write-ssl)
-  (when (if-state client 'bio-needs-read)
-    (add-state client 'CAN-READ-BIO)
-    (remove-state client
-                  'BIO-NEEDS-READ)))
+  (unless (if-state client 'neg-bio-needs-read)
+    (add-state client 'neg-BIO-NEEDS-READ)
+    (add-state client 'CAN-READ-BIO)))
 
 ;;;; Read SSL
 (defun ssl-read (client vec size)
@@ -517,7 +516,7 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
   (cond
     ((if-state client 'can-read-port) #'process-data-on-socket)
     ((and (if-state client 'ssl-init-needed)
-          (not (if-state client 'bio-needs-read)))
+          (if-state client 'neg-bio-needs-read))
      #'maybe-init-ssl)
     ((if-state client 'can-read-ssl)
      (if (plusp (client-octets-needed client))
@@ -622,7 +621,8 @@ If it is a harmless one (want read or want write), try to process the data.
 Raise error otherwise."
   (let ((new-state (handle-ssl-errors* client ret)))
     (when new-state
-      (add-state client new-state))))
+      new-state
+      (remove-state client new-state))))
 
 (defun ssl-err-reason-error-string (code)
   (foreign-string-to-lisp (err-reason-error-string code)))
@@ -734,11 +734,12 @@ The read and write buffers are intitialized to new "
     (init-tls-endpoint-core client ctx)
     client))
 
-(defun make-client (&rest args) (apply #'make-client args))
+(defun make-client (&rest args) (apply #'make-tls-endpoint args))
 (declaim (sb-ext:deprecated :early ("http2" "2.0.3")
                      (function make-client :replacement make-tls-endpoint)))
 
 ;; FIXME: is it obsolete due to WITH-TLS-ENDPOINT-CORE?
+#+unused
 (defmacro with-tls-endpoint ((name context &key (fd -1) application-data (fdset-idx -1))
                              &body body)
   "Run BODY with NAME lexically bound to INIT, and it should be a TLS endpoint.

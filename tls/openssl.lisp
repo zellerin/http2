@@ -11,7 +11,7 @@
 
 (export '(handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry))
 
-(export '(bio-needs-read peer-closed-connection has-data-to-encrypt can-write-ssl
+(export '(neg-bio-needs-read peer-open has-data-to-encrypt can-write-ssl
           can-read-bio
           ; bio-s-mem bio-new ssl-new
           ssl-set-accept-state

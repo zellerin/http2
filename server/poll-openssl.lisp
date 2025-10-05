@@ -29,11 +29,11 @@
        ;; is this needed?
        (when (zerop (bio-test-flags wbio bio-flags-should-retry))
          (error "Retry flag should be set."))
-       'bio-needs-read)
+       'neg-bio-needs-read)
       ((= err-code ssl-error-none) nil)
       ((= err-code ssl-error-zero-return)
        ;; Peer closed TLS connection
-       'peer-closed-connection)
+       'peer-open)
       ((= err-code ssl-error-ssl)
        (process-ssl-errors)
        nil)
