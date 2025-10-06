@@ -33,7 +33,7 @@
       ((= err-code ssl-error-none) nil)
       ((= err-code ssl-error-zero-return)
        ;; Peer closed TLS connection
-       'peer-open)
+       (signal 'http2/server/poll::done))
       ((= err-code ssl-error-ssl)
        (process-ssl-errors)
        nil)

@@ -100,7 +100,32 @@ The actions are in general indicated by arrows in the diagram:
   "The actions available for a specific endpoint are kept in STATE.
 
 Each state bit corresponds to one function that can be called."
+  "CAN-READ-PORT is set when there are data available on the input port. This can
+be set by HANDLE-CLIENT-IO after poll, and is cleared by READ-FROM-PEER when there are
+no longer data available. It allows PROCESS-DATA-ON-SOCKET to be called."
+  "CAN-READ-SSL is set when there are data available on SSL to read by the
+application. It is set by PROCESS-DATA-ON-SOCKET, as it indicates that some data
+to decrypt were written, and is cleared by SSL-READ. It triggers
+ON-COMPLETE-SSL-DATA or RUN-USER-CALLBACK."
+  "CAN-WRITE-SSL is set when data can be written to SSL. It is set by
+PROCESS-DATA-ON-SOCKET and cleared by ENCRYPT-SOME. Triggers ENCRYPT-DATA."
+  "CAN-READ-BIO is set when there are probably some data to read from the BIO. It
+is set by ENCRYPT-SOME and PROCESS-DATA-ON-SOCKET and MAYBE-INIT-SSL. It is
+cleared by READ-ENCRYPTED-FROM-OPENSSL.  It triggets MOVE-ENCRYPTED-BYTES."
+  "CAN-WRITE is set when writing to the output socket is possible (which usually
+is). It is set by HANDLE-CLIENT-IO and . It is cleared by SEND-TO-PEER and
+WRITE-DATA-TO-SOCKET. It triggers WRITE-DATA-TO-SOCKET."
+  "HAS-DATA-TO-WRITE is set when the write buffer for output socket is
+non-empty (or, not implemented, has enough data to make sending economical). It
+is set by READ-ENCRYPTED-FROM-OPENSSL and MOVE-ENCRYPTED-BYTES. It is cleared by
+WRITE-DATA-TO-SOCKET and triggers MOVE-ENCRYPTED-BYTES."
+  "HAS-DATA-TO-ENCRYPT is set by ENCRYPT-SOME and SEND-UNENCRYPTED-BYTES and
+removed by ENCRYPT-DATA, which it triggers."
+  "NEG-BIO-NEEDS-READ is set by PROCESS-DATA-ON-SOCKET and triggers
+MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
+  "SSL-INIT-NEEDED is maybe not needed?"
   (state type)
+
   (select-next-action function)
   (states-to-string function))
 
@@ -116,7 +141,7 @@ Each state bit corresponds to one function that can be called."
       HAS-DATA-TO-ENCRYPT               ; Ⓔ
       NEG-BIO-NEEDS-READ                ; B
       SSL-INIT-NEEDED                   ; S
-      PEER-OPEN)           ; O
+      )
     "List of state bits that can a TLS endpoint have."))
 
 (defun states-to-string (state)
@@ -161,10 +186,9 @@ Each state bit corresponds to one function that can be called."
 (defvar *initial-state*
   (loop with state = 0
         for item in
-        '(CAN-WRITE CAN-WRITE-SSL ssl-init-needed peer-open)
+        '(CAN-WRITE CAN-WRITE-SSL ssl-init-needed)
         do (setf (ldb (byte 1 (state-idx item)) state) 1)
         finally (return state)))
-
 
 
 (deftype app-callback ()
@@ -323,10 +347,7 @@ available. Raise an error on error." vector destination)
 
 (defun process-data-on-socket (client)
   "Read data from client socket ① and pass them to the tls buffer ② to decrypt."
-  (unless
-      (pull-once-push-bytes client #'read-from-peer
-                              #'decrypt-socket-octets)
-    (remove-state client 'can-read-port))
+  (pull-once-push-bytes client #'read-from-peer #'decrypt-socket-octets)
   (add-state client 'CAN-READ-SSL)
   (add-state client 'can-write-ssl)
   (unless (if-state client 'neg-bio-needs-read)
@@ -341,14 +362,14 @@ Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
    (let ((res
           (with-pointer-to-vector-data (buffer vec)
             (ssl-read% (client-ssl client) buffer size))))
-     (unless (plusp res) (remove-state client 'can-read-ssl))
+     (unless (= res size) (remove-state client 'can-read-ssl))
      (handle-ssl-errors client res)
      (max 0 res)))
 
 (defun ssl-peek (client max-size)
    "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
 
-Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
+Return 0 when no data are available."
   (unless (null-pointer-p (client-ssl client))
     (let* ((vec (make-octet-buffer max-size))
            (res
@@ -521,6 +542,8 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
     ((if-state client 'can-read-ssl)
      (if (plusp (client-octets-needed client))
          #'on-complete-ssl-data
+         ;; FIXME: this is clearly wrong. The original idea was to run what we
+         ;; have on negative octets needed.
          #'run-user-callback))
     ((and (if-state client 'has-data-to-encrypt)
           (if-state client 'can-write-ssl))
@@ -738,8 +761,6 @@ The read and write buffers are intitialized to new "
 (declaim (sb-ext:deprecated :early ("http2" "2.0.3")
                      (function make-client :replacement make-tls-endpoint)))
 
-;; FIXME: is it obsolete due to WITH-TLS-ENDPOINT-CORE?
-#+unused
 (defmacro with-tls-endpoint ((name context &key (fd -1) application-data (fdset-idx -1))
                              &body body)
   "Run BODY with NAME lexically bound to INIT, and it should be a TLS endpoint.
