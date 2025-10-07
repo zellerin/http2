@@ -860,7 +860,7 @@ reading of the client hello."
         (restart-case
             (handler-case
                 (handle-client-io client dispatcher)
-              (done () (invoke-restart 'http2/core:close-connection))
+              (communication-error () (invoke-restart 'http2/core:close-connection))
               #+too-early-and-loses-info
               (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
               (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client

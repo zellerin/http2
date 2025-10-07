@@ -9,6 +9,7 @@
   (close-fd function) ;  implicit within call- and similar
   (write-buffer* function)
   (read-buffer function)
+  (communication-error condition)
   (done condition)
   (read-socket* function)
   (accept function)
@@ -267,7 +268,10 @@ Close thos sockets afterwards."
    (= (errno) EAGAIN)
    (= (errno) EINPROGRESS)))
 
-(define-condition done (error)
+(define-condition communication-error (serious-condition)
+  ((medium :accessor get-medium :initarg :medium)))
+
+(define-condition done (communication-error)
   ()
   (:documentation "This condition is signalled when the socket on the other side is closed (for
 reading)."))
