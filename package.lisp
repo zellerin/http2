@@ -9,9 +9,11 @@
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term))
 
+(mgl-pax:define-package #:http2/tcpip
+  (:use #:cl #:mgl-pax #:cffi #:http2/utils))
+
 (mgl-pax:define-package #:http2/openssl
-  (:use #:cl #:cffi #:mgl-pax #:dref #:http2/utils)
-  (:import-from #:http2/tcpip #:communication-error))
+    (:use #:cl #:cffi #:mgl-pax #:dref #:http2/utils))
 
 (mgl-pax:define-package :http2/core
   (:use :cl :http2/hpack :http2/utils)
@@ -33,9 +35,6 @@
           #:http2/utils #:mgl-pax #:dref)
   (:import-from #:anaphora #:acond #:aif #:it)
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
-
-(mgl-pax:define-package #:http2/tcpip
-  (:use #:cl #:mgl-pax #:cffi #:http2/utils))
 
 (mgl-pax:define-package #:http2/server
     (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils

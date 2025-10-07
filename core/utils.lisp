@@ -346,3 +346,18 @@ cli."
     (with-slots (private-key-file certificate-file) object
       (setf private-key-file (namestring (find-private-key-file hostname))
             certificate-file (namestring (find-certificate-file private-key-file))))))
+
+(defsection @errs ()
+  "There is quite a few error conditions there, but some packages need common
+ancestors to descend from. "
+  (communication-error condition)
+  (done condition))
+
+(define-condition communication-error (serious-condition)
+  ((medium :accessor get-medium :initarg :medium))
+  (:documentation "Something happens that prevents communication from going on, unless handled."))
+
+(define-condition done (communication-error)
+  ()
+  (:documentation "This condition is signalled when the socket on the other side is closed (for
+reading)."))

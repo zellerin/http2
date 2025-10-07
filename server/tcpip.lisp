@@ -9,8 +9,6 @@
   (close-fd function) ;  implicit within call- and similar
   (write-buffer* function)
   (read-buffer function)
-  (communication-error condition)
-  (done condition)
   (read-socket* function)
   (accept function)
 
@@ -268,13 +266,8 @@ Close thos sockets afterwards."
    (= (errno) EAGAIN)
    (= (errno) EINPROGRESS)))
 
-(define-condition communication-error (serious-condition)
-  ((medium :accessor get-medium :initarg :medium)))
-
-(define-condition done (communication-error)
-  ()
-  (:documentation "This condition is signalled when the socket on the other side is closed (for
-reading)."))
+(define-condition read-error (communication-error)
+  ((errno :accessor get-errno :initarg :errno)))
 
 (defun write-buffer* (socket vector from to)
   (with-pointer-to-vector-data (buffer vector)
@@ -296,12 +289,10 @@ follow later (EAGAIN)."
   (with-pointer-to-vector-data (buffer vec)
     (let ((read (read-2 fd buffer vec-size)))
       (cond ((plusp read) read)
-            ((zerop read) (signal 'done))
+            ((zerop read) (error 'done :medium fd))
             ((> -1 read) (error "This cannot happen #2"))
             ((/= (errno) EAGAIN)
-             (warn "Read error (~d): ~d ~a" read (errno) (strerror (errno)))
-             (signal 'done)
-             (error "This should not happen"))
+             (error 'read-error :medium fd :errno (errno)))
             (t 0)))))
 
 (defun read-socket* (socket &optional (max-size 4096))
