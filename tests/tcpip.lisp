@@ -28,3 +28,6 @@
     (set-nonblock a)
     (set-nonblock b)
     (is (null (read-socket* b)))))
+
+(deftest checked-syscall/error ()
+  (let ((err (signals http2/tcpip::syscall-error (socket-bind -1))))))

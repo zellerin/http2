@@ -1,4 +1,4 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2025 by Tomáš Zellerin
 
 (in-package :http2/utils)
 
@@ -351,7 +351,9 @@ cli."
   "There is quite a few error conditions there, but some packages need common
 ancestors to descend from. "
   (communication-error condition)
-  (done condition))
+  (done condition)
+  (get-medium generic-function)
+  (get-medium (method (communication-error))))
 
 (define-condition communication-error (serious-condition)
   ((medium :accessor get-medium :initarg :medium))

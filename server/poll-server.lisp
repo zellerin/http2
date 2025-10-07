@@ -434,12 +434,15 @@ NEW-DATA are completely used up (can be dynamic-extent)."
 
 ;;;; Write to SSL
 (define-writer encrypt-some output-ssl (client vector from to)
-  (with-pointer-to-vector-data (buffer vector)
-    (multiple-value-bind (res add remove)
-        (encrypt-some* (client-ssl client) (inc-pointer buffer from) (- to from))
-      (when add (add-state client add))
-      (when remove (remove-state client remove))
-      res)))
+  (handler-case
+      (let ((res
+              (encrypt-some* client vector from to)))
+        (when (plusp res)
+          (add-state client 'can-read-bio))
+        res)
+    (ssl-blocked ()
+      (add-state client 'has-data-to-encrypt)
+      (remove-state client 'can-write-ssl))))
 
 (defun encrypt-data (client)
   "Encrypt data in client's ENCRYPT-BUF.
@@ -642,13 +645,8 @@ If the operation was successfully completed, do nothing.
 If it is a harmless one (want read or want write), try to process the data.
 
 Raise error otherwise."
-  (let ((new-state (handle-ssl-errors* client ret)))
-    (when new-state
-      new-state
-      (remove-state client new-state))))
-
-(defun ssl-err-reason-error-string (code)
-  (foreign-string-to-lisp (err-reason-error-string code)))
+  (handler-case (handle-ssl-errors* client ret)
+    (ssl-wants-read () (remove-state client 'neg-bio-needs-read))))
 
 (defun maybe-init-ssl (client)
   "If SSL is not initialized yet, initialize it."
@@ -701,16 +699,7 @@ Raise error otherwise."
               (client-write-buf client) (client-write-buf-size client)
               (- to from))))))
 
-(define-condition ssl-error-condition (error)
-  ((code :accessor get-code :initarg :code))
-  (:documentation "The socket on the other side is closed.
 
-Check the code in openssl/sslerr.h "))
-
-(defmethod print-object ((object ssl-error-condition) stream)
-  (print-unreadable-object (object stream :type t :identity nil)
-    (format stream "~x: ~a" (get-code object)
-            (ssl-err-reason-error-string (get-code object)))))
 
 (defun concatenate* (vectors)
   (let* ((len (reduce #'+ vectors :key #'length))

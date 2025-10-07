@@ -19,6 +19,7 @@
   (errno function)
   (strerror function)
   (checked-syscall function)
+  (syscall-error condition)
   (nonneg-or-eagain function)
   (eagain constant)
                                         ;  (sockaddr-in type)
@@ -52,13 +53,33 @@ DISPATCHER should be something with slots ...
   (af-inet constant)
   (sock-stream constant))
 
+(define-condition syscall-error (communication-error)
+  ((call  :accessor get-call  :initarg :call)
+   (errno :accessor get-errno :initarg :errno))
+  (:documentation
+   "Syscall failed. The printed form looks like
+```
+(socket-bind -1 0)
+.. debugger invoked on SYSCALL-ERROR:
+..   #<SYSCALL-ERROR 9 (Bad file descriptor) on -1 during #<FUNCTION BIND>>
+```"))
+
+(define-condition this-cant-happen (communication-error)
+  ((where :accessor get-where :initarg :where)))
+
+(defmethod print-object ((err communication-error) out)
+  (print-unreadable-object (err out :type t)
+    (with-slots (errno call) err
+      (format out "~d (~a) on ~a during ~s" errno (strerror errno)
+              (http2/utils:get-medium err) call))))
+
 (defun checked-syscall (check call &rest params)
   "Return the result value of the syscall when check passes.
 
 Otherwise signal an error."
   (let ((res (apply call params)))
     (unless (funcall check res)
-      (error "~a failed: ~d (~a)" call (errno) (strerror (errno))))
+      (error 'syscall-error :medium (car params) :errno (errno) :call call))
     res))
 
 #-os-macosx(defcfun ("__errno_location" errno%) :pointer)
@@ -210,13 +231,16 @@ So this uses ioctl and fionbio."
       (foreign-free flag))
     socket))
 
+(define-condition tcpdelay-setup-failed (communication-error)
+  ())
+
 (defun set-nodelay (socket)
   (unless (zerop
            (with-foreign-object (flag :int)
              (setf (mem-ref flag :int) 1)
              (setsockopt socket ipproto-tcp tcp-nodelay
                          flag (foreign-type-size :int))))
-    (error "Could not set TCP_NODELAY on the client")))
+    (error 'tcpdelay-setup-failed :medium socket)))
 
 (defmacro with-socket ((socket-name socket) &body body)
   "Run BODY with SOCKET-NAME bound to SOCKET (evaluated). Close the relevant socket
@@ -266,8 +290,14 @@ Close thos sockets afterwards."
    (= (errno) EAGAIN)
    (= (errno) EINPROGRESS)))
 
-(define-condition read-error (communication-error)
-  ((errno :accessor get-errno :initarg :errno)))
+(define-condition read-error (syscall-error)
+  ()
+  (:documentation "Syscall error during read-buffer. Should print nicely, e.g.,
+```
+(http2/tcpip:read-socket* -1)
+.. debugger invoked on HTTP2/TCPIP::READ-ERROR:
+..   #<READ-ERROR 9 (Bad file descriptor) on -1 during READ>
+```"))
 
 (defun write-buffer* (socket vector from to)
   (with-pointer-to-vector-data (buffer vector)
@@ -280,7 +310,7 @@ Close thos sockets afterwards."
 (defun read-buffer (fd vec &optional (vec-size (length vec)))
   "Read up to VEC-SIZE octets from the FD and store them in the VEC.
 
-Signal DONE where there is nothing on the peer.
+Signal DONE or READ-ERROR where there is nothing on the peer.
 
 Return number of read buffer, This means 0 when nothing was read but data may
 follow later (EAGAIN)."
@@ -290,9 +320,9 @@ follow later (EAGAIN)."
     (let ((read (read-2 fd buffer vec-size)))
       (cond ((plusp read) read)
             ((zerop read) (error 'done :medium fd))
-            ((> -1 read) (error "This cannot happen #2"))
+            ((> -1 read) (error 'this-cant-happen :medium fd :where 'read-buffer))
             ((/= (errno) EAGAIN)
-             (error 'read-error :medium fd :errno (errno)))
+             (error 'read-error :medium fd :errno (errno) :call 'read))
             (t 0)))))
 
 (defun read-socket* (socket &optional (max-size 4096))
