@@ -183,7 +183,7 @@ MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
 (defun remove-state (client state)
   (set-state* client (state-idx state) 0))
 
-(defvar *initial-state*
+(defparameter *initial-state*
   (loop with state = 0
         for item in
         '(CAN-WRITE CAN-WRITE-SSL ssl-init-needed)
