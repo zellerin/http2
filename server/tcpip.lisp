@@ -67,7 +67,7 @@ DISPATCHER should be something with slots ...
 (define-condition this-cant-happen (communication-error)
   ((where :accessor get-where :initarg :where)))
 
-(defmethod print-object ((err communication-error) out)
+(defmethod print-object ((err syscall-error) out)
   (print-unreadable-object (err out :type t)
     (with-slots (errno call) err
       (format out "~d (~a) on ~a during ~s" errno (strerror errno)

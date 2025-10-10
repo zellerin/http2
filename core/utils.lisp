@@ -363,3 +363,7 @@ ancestors to descend from. "
   ()
   (:documentation "This condition is signalled when the socket on the other side is closed (for
 reading)."))
+
+(defmethod print-object ((err communication-error) out)
+  (print-unreadable-object (err out :type t)
+    (format out "on ~a" (http2/utils:get-medium err))))
