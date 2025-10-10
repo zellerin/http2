@@ -143,7 +143,7 @@ AFTER-POLL-FN on them after data exchange."
             (call-with-clients-pair
              (constantly nil)
              :server-context ""))))
-    (is (= (http2/openssl::get-code err) #xa0000c1)))) ; no shared cipher
+    (is (member  #xa0000c1 (http2/openssl::get-codes err))))) ; no shared cipher
 
 (defun test-send-in-advance (blob-size)
   "Send BLOB-SIZE octets from one TLS endpoint to another before the TLS connection
