@@ -358,12 +358,13 @@ available. Raise an error on error." vector destination)
 (defun ssl-read (client vec size)
    "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
 
-Return 0 when no data are available. Possibly remove CAN-READ-SSL flag."
+Return 0 when no data are available. Possibly remove CAN-READ-SSL and/or
+NEG-BIO-NEEDS-READ flags."
    (let ((res
           (with-pointer-to-vector-data (buffer vec)
             (ssl-read% (client-ssl client) buffer size))))
-     (unless (= res size) (remove-state client 'can-read-ssl))
      (handle-ssl-errors client res)
+     (unless (= res size) (remove-state client 'can-read-ssl))
      (max 0 res)))
 
 (defun ssl-peek (client max-size)
@@ -849,19 +850,21 @@ reading of the client hello."
         (restart-case
             (handler-case
                 (handle-client-io client dispatcher)
-              (communication-error () (invoke-restart 'http2/core:close-connection))
-              #+too-early-and-loses-info
-              (ssl-error-condition () (invoke-restart 'http2/core:close-connection))
-              (connection-error () (invoke-restart 'http2/core:close-connection))) ; e.g., http/1.1 client
+              (communication-error (err) (invoke-restart 'http2/core:close-connection err))
+              (ssl-error-condition (err)
+                (invoke-restart 'http2/core:close-connection err))
+              (connection-error (err) (invoke-restart 'http2/core:close-connection err))) ; e.g., http/1.1 client
           (close-connection (&optional err &rest args)
             :report "Close current connection"
+            (print err *error-output*)
+            (force-output *error-output*)
             (unwind-protect
                  (when err
                    (signal 'poll-server-close :client client :dispatch dispatcher
-                                              :reason (apply #'make-instance err args)))
+                                              :reason err))
               (close-client-connection client dispatcher))))))))
 
-(define-condition poll-timeout (error)
+(define-condition poll-timeout (communication-error)
   ()
   (:documentation
    "Poll was called with a timeout and returned before any file descriptor became
@@ -933,14 +936,14 @@ available), and run scheduled actions."
       (with-ssl-context (ctx dispatcher)
         (with-clients (dispatcher)
           (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
-          (locally (declare (optimize speed (debug 1) (safety 1))
+          (locally (declare #+nil(optimize speed (debug 1) (safety 1))
                             (ftype (function (t t) fixnum) poll))
             (loop
               (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
                 (let*
                     ((nread (poll dispatcher timeout)))
                   (run-mature-tasks *scheduler*)
-                  (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout))
+                  (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout :medium "Server poll"))
                   (process-client-sockets nread dispatcher)
                   (maybe-process-new-client listening-socket ctx dispatcher))))))))))
 
@@ -1020,8 +1023,7 @@ TLS frames. If it does, well, connection error."
     ;; TODO: check first with SSL_pending?
     (let ((read (ssl-read client vec octets)))
       (cond
-        ((not (plusp read))
-         (handle-ssl-errors client read))
+        ((not (plusp read)))
         ((/= read octets)
          (error 'not-enough-data :expected octets :received (subseq vec 0 read)
                 :connection (client-application-data client)))
