@@ -377,7 +377,8 @@ respective parameters try to locate the files."
     ((null server)
      (warn "No running server to stop"))
     (t
-     (stop-server server)
+     (restart-case (stop-server server)
+       (OK () ))
      (setf *servers* (remove server *servers*))))
   server)
 
