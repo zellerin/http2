@@ -119,8 +119,6 @@ WRITE-DATA-TO-SOCKET. It triggers WRITE-DATA-TO-SOCKET."
 non-empty (or, not implemented, has enough data to make sending economical). It
 is set by READ-ENCRYPTED-FROM-OPENSSL and MOVE-ENCRYPTED-BYTES. It is cleared by
 WRITE-DATA-TO-SOCKET and triggers MOVE-ENCRYPTED-BYTES."
-  "HAS-DATA-TO-ENCRYPT is set by ENCRYPT-SOME and SEND-UNENCRYPTED-BYTES and
-removed by ENCRYPT-DATA, which it triggers."
   "NEG-BIO-NEEDS-READ is set by PROCESS-DATA-ON-SOCKET and triggers
 MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
   "SSL-INIT-NEEDED is maybe not needed?"
@@ -138,7 +136,6 @@ MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
       CAN-READ-BIO                      ; ⑤
       CAN-WRITE                         ; ⑥
       HAS-DATA-TO-WRITE                 ; ⓤ
-      HAS-DATA-TO-ENCRYPT               ; Ⓔ
       NEG-BIO-NEEDS-READ                ; B
       SSL-INIT-NEEDED                   ; S
       )
@@ -224,7 +221,7 @@ MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
   (encrypt-buf-size 0 :type fixnum)
   (start-time (get-internal-real-time) :type fixnum)
   (state *initial-state* :type state)
-  ;; set of CAN-READ-PORT, CAN-READ-SSL, HAS-DATA-TO-ENCRYPT, CAN-WRITE-SSL,
+  ;; set of CAN-READ-PORT, CAN-READ-SSL, CAN-WRITE-SSL,
   ;; CAN-READ-BIO, HAS-DATA-TO-WRITE, CAN-WRITE
   ;; NEG-BIO-NEEDS-READ SSL-INIT-NEEDED
   (application-data))
@@ -429,8 +426,7 @@ NEW-DATA are completely used up (can be dynamic-extent)."
                                (client-encrypt-buf-size client)
                                #'encrypt-some)
     (setf (client-encrypt-buf-size client) new-size)
-    (assert (= processed (length new-data))))
-  (add-state client 'has-data-to-encrypt))
+    (assert (= processed (length new-data)))))
 
 ;;;; Write to SSL
 (define-writer encrypt-some output-ssl (client vector from to)
@@ -441,7 +437,6 @@ NEW-DATA are completely used up (can be dynamic-extent)."
           (add-state client 'can-read-bio))
         res)
     (ssl-blocked ()
-      (add-state client 'has-data-to-encrypt)
       (remove-state client 'can-write-ssl))))
 
 (defun encrypt-data (client)
@@ -453,8 +448,7 @@ Otherwise, use a temporary vector to write data "
   (push-bytes client
               (lambda (client written)
                 (declare (ignore written))
-                (setf (client-encrypt-buf-size client) 0)
-                (remove-state client 'has-data-to-encrypt))
+                (setf (client-encrypt-buf-size client) 0))
               (lambda (client vector from to) (encrypt-some client vector from to))
               (client-encrypt-buf client) 0 (client-encrypt-buf-size client)))
 
@@ -491,8 +485,7 @@ that expects a response."
            0)
           ((= res -1)
            ;; e.g., broken pipe
-           (invoke-restart 'http2/core:close-connection)
-           (error "Error during write: ~d (~a)" err (strerror err)))
+           (error 'syscall-error :errno (errno) :medium client ))
           ((plusp res) res)
           (t (error "This cant happen (#1)")))))
 
@@ -517,9 +510,8 @@ keep what did not fit."
       written)))
 
 (defun encrypt-and-send (client)
-  (unless (plusp (client-fd client))
-    (error 'end-of-file :stream client))
-  (encrypt-data client)
+  (unless (plusp (client-fd client)) (error 'end-of-file :stream client))
+  (when (plusp (client-encrypt-buf-size client)) (encrypt-data client))
   (move-encrypted-bytes client)
   (write-data-to-socket client))
 
@@ -548,7 +540,7 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
          ;; FIXME: this is clearly wrong. The original idea was to run what we
          ;; have on negative octets needed.
          #'run-user-callback))
-    ((and (if-state client 'has-data-to-encrypt)
+    ((and (plusp (client-encrypt-buf-size client))
           (if-state client 'can-write-ssl))
      #'encrypt-data)
     ((if-state client 'can-read-bio) #'move-encrypted-bytes)
@@ -828,7 +820,8 @@ reading of the client hello."
       ((zerop (logand c-pollin revents))) ; no new client, do nothing
       (t (process-new-client listening-socket ctx dispatcher)))))
 
-(defun close-client-connection (client dispatcher)
+(defun close-client-connection (client dispatcher reason)
+  (declare (ignore reason))
   (close-openssl client)
   (with-slots (clients) dispatcher
     (setf clients (remove client clients))
@@ -850,10 +843,9 @@ reading of the client hello."
             (handler-case
                 (handle-client-io client dispatcher)
               (communication-error (err) (invoke-restart 'http2/core:close-connection err))
-              (ssl-error-condition (err)
-                (invoke-restart 'http2/core:close-connection err))
+;              (ssl-error-condition (err) (invoke-restart 'http2/core:close-connection err))
               (connection-error (err) (invoke-restart 'http2/core:close-connection err))) ; e.g., http/1.1 client
-          (close-connection (&optional err &rest args)
+          (close-connection (&optional err)
             :report "Close current connection"
             (print err *error-output*)
             (force-output *error-output*)
@@ -861,7 +853,7 @@ reading of the client hello."
                  (when err
                    (signal 'poll-server-close :client client :dispatch dispatcher
                                               :reason err))
-              (close-client-connection client dispatcher))))))))
+              (close-client-connection client dispatcher err))))))))
 
 (define-condition poll-timeout (communication-error)
   ()
@@ -918,7 +910,7 @@ is not from scheduler)"
   `(unwind-protect
         (progn ,@body)
      (dolist (client (get-clients ,dispatcher))
-       (close-client-connection client dispatcher))))
+       (close-client-connection client dispatcher "End of loop"))))
 
 (defun serve-tls (listening-socket dispatcher)
   "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
@@ -935,7 +927,7 @@ available), and run scheduled actions."
       (with-ssl-context (ctx dispatcher)
         (with-clients (dispatcher)
           (setup-new-connect-pollfd (get-fdset dispatcher) listening-socket)
-          (locally (declare #+nil(optimize speed (debug 1) (safety 1))
+          (locally (declare (optimize speed (debug 1) (safety 1))
                             (ftype (function (t t) fixnum) poll))
             (loop
               (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
@@ -997,7 +989,9 @@ them).
 This in the end does not use usocket, async nor cl+ssl - it is a direct rewrite
 from C code."
 
-  (let ((*nagle* (get-nagle dispatcher)))
+  (let ((*nagle* (get-nagle dispatcher))
+        (*scheduler* (make-instance 'scheduler)))
+
     (serve-tls socket dispatcher))
   ;; there is an outer loop in create-server that we want to skip
   (invoke-restart 'kill-server))
