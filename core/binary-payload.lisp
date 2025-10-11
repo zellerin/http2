@@ -21,7 +21,7 @@ specializers for UTF8-PARSER-MIXIN, "
     (:title "Emulate Lisp stream over frames")
 
   "TODO: sort docs below"
-  (compile-payload-from-stream mgl-pax:macro)
+  (compile-payload-from-stream dref:macro)
   (write-binary-payload function)
   (make-transport-output-stream function)
   (multi-part-data-stream class)

@@ -1,0 +1,80 @@
+digraph tlspoll {
+    colorscheme="accent4"
+    node [width="1.5in"]
+    style=filled fillcolor=3
+    node [class=buffer, shape=cylinder]
+    edge [fontsize="8pt"]
+    tcpin [label="TCP port"]
+    rbio
+    wssl [label="ssl"]
+    wbio
+
+    appcode [label="Application code",class="",style=dotted,shape=oval]
+    tcpout [label="TCP port"]
+    encq1 [label="Encrypt queue"]
+    writeq [label="Write queue"]
+
+    node [shape=none]
+    subgraph cluster_tcpin {
+        tcpin
+        rfp [label="read-from-peer"]
+    }
+
+    subgraph cluster_sslwrap {
+        style=filled fillcolor=2
+        subgraph cluster_openssl
+        {style="filled" fillcolor="1" shape="none"
+            rbio
+            wssl
+            wbio
+        }
+        wotd [label="write-octets-to-decrypt"]
+        dso [label="decrypt-socket-octets"]
+        sslr [label="ssl-read"]
+        es [label="encrypt-some"]
+        es2 [label="encrypt-some*"]
+        es -> es2
+        es2-> wssl [label="CAN-WRITE-SSL ④"]
+        refs [label="read-encrypted-from-openssl"]
+        wbio -> refs [label="CAN-READ-BIO ⑤"]
+    }
+
+    subgraph cluster_eb {
+        sub [label="send-unencrypted-bytes"]
+        encq1
+    }
+
+    subgraph cluster_writeq {
+        qeb [label="queue-encrypted-bytes"]
+        qeb -> writeq
+    }
+    subgraph cluster_app {
+        ruc [label= "run-user-callback"]
+        appcode -> ruc [dir="back"]
+    }
+
+    subgraph cluster_tcpout {
+        wdts [label="write-data-to-socket"]
+        wdts -> tcpout [label="CAN-WRITE ⑥"]
+    }
+
+    subgraph cluster_encq1{
+        encq1
+    }
+
+    // base flow
+    rbio -> wssl -> wbio [constrasint=false]
+
+    refs -> qeb [label="move-encrypted-bytes", fontsize=""]
+
+    ruc -> sslr [label="on-complete-ssl-data",dir=back,fontsize="", constraint=false]
+    tcpin -> rfp [label="CAN-READ-PORT ①"]
+    rfp -> dso [label="process-data-on-socket",fontsize=""]
+    dso -> wotd -> rbio
+    wssl -> sslr [label="CAN-READ-SSL ③"]
+    encq1 -> sub -> appcode [dir="back"]
+    encq1 -> es [label="encrypt-data",label="HAS-DATA-TO\n-ENCRYPT Ⓔ", constraint="false"]
+    encq1 -> es2 [style="invis"]
+    qeb -> wdts [style=dotted, label="overflow"]
+    writeq -> wdts [label="HAS-DATA-TO-WRITE ⓤ"]
+}

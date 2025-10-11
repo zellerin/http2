@@ -32,13 +32,24 @@
    semantics in the other context."))
 
 (defun get-error-name (code)
-  "Get HTTP/2 error name from the error code."
+  ;; This is used only by the error printer
+  "Get HTTP/2 error name from the error code.
+
+```cl-transcript
+(http2/core::get-error-name 1)
+=> HTTP2/CORE::+PROTOCOL-ERROR+
+
+(http2/core::get-error-name 33)
+=> HTTP2/CORE::UNDEFINED-ERROR-CODE-21
+```"
   (if (<= 0 code #xd)
       (aref *error-codes* code)
-      (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2)))
+      (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2/core))))
 
 (defsection @errors
     (:title "Errors handlers")
+  (http2-simple-error condition)
+  (http2-simple-warning condition)
   (connection-error condition)
   (connection-error function)
   (http-stream-error condition)
@@ -55,17 +66,19 @@
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
   (:documentation "Signaled when GO-AWAY frame is received."))
 
-(define-condition http2-error (error)
+(define-condition http2-condition ()
+  ())
+
+(define-condition http2-error (http2-condition error)
   ()
   (:documentation "All errors raised from HTTP2 package inherit from this error."))
 
-(define-condition client-preface-mismatch (http2-error)
-  ((received :accessor get-received :initarg :received)))
+(defmethod describe-object :before ((error http2-condition) out)
+  (write-line (documentation (class-of error) t) out)
+  (terpri out))
 
-(defmethod print-object ((err client-preface-mismatch) out)
-  (with-slots (received) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a ~a" received  (map 'string 'code-char received)))))
+(define-condition http2-simple-error (http2-error simple-condition)
+  ())
 
 (defmethod print-object ((err go-away) out)
   (with-slots (error-code debug-data last-stream-id) err
@@ -89,6 +102,16 @@ NETWORK-STREAM."))
 (define-condition protocol-error (connection-error)
   ()
   (:default-initargs :code +protocol-error+))
+
+(define-condition client-preface-mismatch (protocol-error)
+  ((received :accessor get-received :initarg :received))
+  (:documentation "HTTPS server expects a specific sequence of octets at the start of the new
+connection. The client sent something different."))
+
+(defmethod print-object ((err client-preface-mismatch) out)
+  (with-slots (received) err
+    (print-unreadable-object (err out :type t)
+      (format out "~a ~a" received  (map 'string 'code-char received)))))
 
 (define-condition too-big-frame (connection-error)
   ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)
@@ -278,8 +301,10 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (defsection @warnings ())
 
-(define-condition http2-warning (warning)
+(define-condition http2-warning (http2-condition warning)
   ())
+
+(define-condition http2-simple-warning (simple-condition http2-warning) ())
 
 (define-condition implement-by-user (http2-warning simple-condition)
   ()

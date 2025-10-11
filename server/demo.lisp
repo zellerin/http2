@@ -267,13 +267,15 @@ extended and return."
                  (progn
                    ;; stream might be closed already
                    ;; in such case just dont schedule more
-                   (funcall fn connection stream)
-                   (schedule-task http2/server::*scheduler* period
-                                  #'send-event-and-plan-next
-                                  stream))
-               (end-of-file () nil))))
+                   (unless (eql (http2/core::get-state stream) 'http2/core::closed)
+                     (funcall fn connection stream)
+                     (schedule-task http2/server::*scheduler* period
+                                    #'send-event-and-plan-next
+                                    stream)))
+               (end-of-file () nil)
+               (http2/utils::communication-error () nil))))
     (schedule-task http2/server::*scheduler* delay
-                          #'send-event-and-plan-next 'stream)))
+                   #'send-event-and-plan-next 'stream)))
 
 (define-exact-handler "/event-stream"
     (lambda (connection stream)

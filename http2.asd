@@ -47,7 +47,7 @@
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.2"
+  :version "2.0.3"
   :serial t
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
@@ -78,10 +78,10 @@
 
 
 (defsystem "http2"
-  :version "2.0.2"
+  :version "2.0.3"
   :depends-on ("http2/client" "http2/server" "http2/server/poll")
   :components ((:file "overview"))
-  :description "Otherwise empty system that depends on - and thus loads when loaded - both HTTP/2 client and HTTP/2 server.
+  :description "HTTP/2 library, including a sample client and server.
 
 The system also supports TEST-OP to run the test suite."
   :properties ((:readme-section (@overview)))
@@ -101,48 +101,58 @@ Run these patterns against servers."
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
   :components ((:file "tests")
+               (:file "tcpip")
                (:file "utils")
                (:file "test-samples")
                (:file "errors-lowlevel")
                (:file "high-level")
                (:file "tests-hpack")
-               (:file "server")))
+               (:file "server")
+               (:file "poll-server")
+               (:file "frames")
+               (:file "frames/headers")
+               (:file "frames/data")))
+
+(defsystem "http2/tcpip"
+  ;; note: it has to depend on cl+ssl
+  :depends-on ("cffi" "mgl-pax" "anaphora" "cl+ssl")
+  :defsystem-depends-on ("cffi-grovel")
+  :components ((:file "package")
+               (:cffi-grovel-file "server/poll-grovel")
+               (:file "server/tcpip")))
 
 (defsystem "http2/openssl"
   :version "0.1"
   :defsystem-depends-on ("cffi-grovel")
-  :depends-on ("cffi" "mgl-pax" "anaphora" "cl+ssl")
+  :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip" "http2/core")
   :pathname "tls"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
-  :components ((:file "../package") (:cffi-grovel-file "openssl-grovel")
+  :components ((:file "../package")
+               (:cffi-grovel-file "openssl-grovel")
                (:file "openssl")))
 
 (asdf:defsystem "http2/server/poll"
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :serial t
-  :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl")
+  :depends-on ("mgl-pax" "puri" "http2/server/shared" "http2/openssl" "let-over-lambda")
   :pathname "server"
-  :components ((:cffi-grovel-file "poll-grovel")
-               (:file "poll-openssl")
+  :components ((:file "poll-openssl")
                (:file "poll-server")))
 
 (asdf:defsystem "http2/server"
   :description "Asyncronous polling implementations of HTTP2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.2"
+  :version "2.0.3"
   :serial t
   :depends-on ("http2/server/threaded" "http2/server/poll")
-  :pathname "server"
-  :components ((:cffi-grovel-file "poll-grovel")
-               (:file "poll-openssl")
-               (:file "poll-server")))
+  :pathname "server")
 
 (asdf:defsystem "http2/server/demo"
   :description "Demo content for the server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.2"
+  :version "2.0.3"
   :serial t
   :depends-on ("http2/server" "cl-who" "parenscript" "let-over-lambda")
   :pathname "server"

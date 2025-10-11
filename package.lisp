@@ -9,8 +9,11 @@
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term))
 
+(mgl-pax:define-package #:http2/tcpip
+  (:use #:cl #:mgl-pax #:cffi #:http2/utils))
+
 (mgl-pax:define-package #:http2/openssl
-  (:use #:cl #:cffi))
+    (:use #:cl #:cffi #:mgl-pax #:dref #:http2/utils))
 
 (mgl-pax:define-package :http2/core
   (:use :cl :http2/hpack :http2/utils)
@@ -34,8 +37,9 @@
   (:documentation "HTTP/2 client functions, in particular, RETRIEVE-URL."))
 
 (mgl-pax:define-package #:http2/server
-  (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
-        #:http2/openssl #:cffi #:dref)
+    (:use #:cl #:http2/core #:mgl-pax #:http2/stream-overlay #:http2/utils
+          #:http2/openssl #:dref #:cffi
+          #:http2/tcpip)
   (:nicknames #:http2/server/shared #:http2/server/poll #:http2/server/threaded)
   (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
 HANDLER macro to define content to serve."))
@@ -57,3 +61,9 @@ HANDLER macro to define content to serve."))
 
 (mgl-pax:define-package #:http2
     (:use #:cl #:mgl-pax #:http2/server #:http2/client))
+
+(in-package #:http2/utils)
+
+(define-condition communication-error (serious-condition)
+  ((medium :accessor get-medium :initarg :medium))
+  (:documentation "Something happens that prevents communication from going on, unless handled."))

@@ -2,7 +2,7 @@
 ;;;; Interface
 
 
-(mgl-pax:defsection @streams
+(defsection @streams
     (:title "Streams and connections")
   (get-streams generic-function)
   (get-connection generic-function)

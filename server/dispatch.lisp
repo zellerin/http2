@@ -22,8 +22,8 @@ This defines a handler on \"/hello-world\" path that sends reasonable headers, w
 In general, the handlers are set using DEFINE-PREFIX-HANDLER or
 DEFINE-EXACT-HANDLER, and are functions typically created by HANDLER macro,
 or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
-  (define-prefix-handler mgl-pax:macro)
-  (define-exact-handler mgl-pax:macro)
+  (define-prefix-handler macro)
+  (define-exact-handler macro)
   (handler type)
   (handler macro)
   (constant-handler macro)
@@ -57,10 +57,10 @@ variable.
 
 "
   (get-path generic-function)
-  (get-headers (method nil (HTTP2/core::header-collecting-mixin)))
-  (get-method (method nil (server-stream)))
-  (get-scheme (method nil (server-stream)))
-  (get-authority (method nil (server-stream)))
+  (get-headers (method (HTTP2/core::header-collecting-mixin)))
+  (get-method (method (server-stream)))
+  (get-scheme (method (server-stream)))
+  (get-authority (method (server-stream)))
   (@request-body section))
 
 (defsection @request-body
@@ -87,7 +87,7 @@ FALLBACK-ALL-IS-ASCII (or improve IS-UTF8-P, or add some other decoding function
 
 If you do not want to see text at all, change class to \\NOT include
 UTF8-PARSER-MIXIN or any other conversion mixin."
-  (get-body (method nil (body-collecting-mixin)))
+  (get-body (method (body-collecting-mixin)))
   (http-stream-to-string function)
   (http2/client::fallback-all-is-ascii class))
 
@@ -334,8 +334,6 @@ found responses on any request."
 (defun start (port &rest args &key
                                 (host *vanilla-host*)
                                 (dispatcher *vanilla-server-dispatcher*)
-                                (certificate-file 'find-certificate-file)
-                                (private-key-file 'find-private-key-file)
               &allow-other-keys)
   "Start a default HTTP/2 https server on PORT on background.
 
@@ -360,16 +358,10 @@ should be presently best detached dispatcher.
 FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
 respective parameters try to locate the files."
   (declare (optimize debug safety (speed 0)))
-  (when (symbolp private-key-file)
-    (setf private-key-file (namestring (funcall private-key-file host))))
-  (when (symbolp certificate-file)
-    (setf certificate-file (namestring (funcall certificate-file private-key-file))))
   (multiple-value-bind (server socket)
       (apply #'create-server port dispatcher
-                     :certificate-file certificate-file
-                     :private-key-file private-key-file
-                     :host host
-                     args)
+             :host host
+             args)
     (push server *servers*)
     (values server
             (url-from-socket socket host t))))
@@ -385,7 +377,8 @@ respective parameters try to locate the files."
     ((null server)
      (warn "No running server to stop"))
     (t
-     (stop-server server)
+     (restart-case (stop-server server)
+       (OK () ))
      (setf *servers* (remove server *servers*))))
   server)
 
@@ -434,7 +427,7 @@ Some predefined combinations are below."
 There are also non-TLS variants of the -TLS- dispatchers to simplify finding errors."
 
 ;;;; TLS dispatcher
-(defclass tls-dispatcher-mixin (certificated-dispatcher)
+(defclass tls-dispatcher-mixin (certificate-h2-dispatcher)
   ()
   (:documentation
    "Specializes SERVER-SOCKET-STREAM to add TLS layer to the created sockets,

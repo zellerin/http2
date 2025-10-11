@@ -4,14 +4,27 @@
   #-os-macosx (:unix "libssl.so")
   (t (:default "libssl.3")))
 
-(export '(certificated-dispatcher make-http2-tls-context
-          handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry
-          certificate-file private-key-file))
+(defsection @openssl (:title "Openssl interface")
+  "Wraps openssl calls."
+  (@openssl-endpoint section)
+  (@openssl-context section))
 
-(export '(bio-needs-read peer-closed-connection has-data-to-encrypt can-write-ssl
-          can-read-bio bio-s-mem bio-new ssl-new ssl-set-accept-state ssl-set-bio ssl-free
+(export '(handle-ssl-errors* with-ssl-context encrypt-some* bio-should-retry))
+
+(export '(neg-bio-needs-read peer-open has-data-to-encrypt can-write-ssl
+          can-read-bio
+          ; bio-s-mem bio-new ssl-new
+          ssl-set-accept-state
           bio-write ssl-read% ssl-error-condition err-reason-error-string
-          bio-read% ssl-is-init-finished ssl-accept))
+          bio-read% ssl-is-init-finished ssl-accept ssl-connect))
+
+(defsection @openssl-endpoint (:title "TLS endpoint")
+  (tls-endpoint-core type)
+  (init-tls-endpoint-core function)
+  (make-tls-endpoint-core function)
+  (with-tls-endpoint-core macro)
+
+  (close-openssl function))
 
 (use-foreign-library openssl)
 
@@ -25,15 +38,91 @@
 (defcfun "ERR_get_error" :int)
 
 (defcfun "SSL_accept" :int (ssl :pointer))
+(defcfun "SSL_connect" :int (ssl :pointer))
 (defcfun "SSL_get_error" :int (ssl :pointer) (ret :int))
 (defcfun "SSL_free" :int (ssl :pointer))
 (defcfun "SSL_is_init_finished" :int (ssl :pointer))
 (defcfun "SSL_new" :pointer (bio-method :pointer))
 (defcfun "SSL_pending" :int (ssl :pointer))
 (defcfun ("SSL_read" ssl-read%) :int (ssl :pointer) (buffer :pointer) (bufsize :int))
+(defcfun ("SSL_peek" ssl-peek%) :int (ssl :pointer) (buffer :pointer) (bufsize :int))
 (defcfun "SSL_set_accept_state" :pointer (ssl :pointer))
 (defcfun "SSL_set_bio" :void (ssl :pointer) (rbio :pointer) (wbio :pointer))
 (defcfun "SSL_write" :int (ssl :pointer) (buffer :pointer) (bufsize :int))
+
+(defstruct (tls-endpoint-core (:constructor make-tls-endpoint-core%)
+                              (:print-object
+                                 (lambda (object out)
+                                   (format out
+                                           (if (null-pointer-p (tls-endpoint-core-ssl object))
+                                               "#<uninitialized or freed tls-core>"
+                                               "#<tls-core>")))))
+  "Data of one TLS endpoint. This includes:
+
+- Opaque pointer to the openssl handle (SSL). See SSL-READ and ENCRYPT-SOME.
+- Input and output BIO for exchanging data with OPENSSL (WBIO, RBIO)."
+  (ssl (null-pointer) :type cffi:foreign-pointer :read-only nil) ; mostly RO, but invalidated afterwards
+  (rbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t)
+  (wbio (bio-new (bio-s-mem)) :type cffi:foreign-pointer :read-only t))
+
+(defmethod describe-object ((object tls-endpoint-core) stream)
+  (let ((*print-length* (or *print-length* 30)))
+    (format stream "~&A TLS endpoint core.
+   It is ~:[~;NOT ~]assigned to a SSL.
+   Buffers:~@<
+      - TLS is ~:[NOT ~;~]initialized
+      - TLS peek: ~s
+   ~:>"
+            (null-pointer-p (tls-endpoint-core-ssl object))
+            (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object)))
+            (when (plusp (ssl-is-init-finished (tls-endpoint-core-ssl object))) "" #+nil (ssl-peek object 100)))))
+
+(defun init-tls-endpoint-core (client context)
+  "Initialize freshly created TLS-CORE.
+
+That is, create a SSL context and bind it with RBIO and WBIO.
+
+This is factored out so that it can be used in structures that inherit TLS-CORE."
+  (let ((ssl (ssl-new context)))
+    (ssl-set-bio ssl (tls-endpoint-core-rbio client) (tls-endpoint-core-wbio client))
+    (setf (tls-endpoint-core-ssl client) ssl)))
+
+(defun make-tls-endpoint-core (context)
+  "New TLS-ENDPOINT-CORE that has context derived from CONTEXT."
+  (let ((ep (make-tls-endpoint-core%)))
+    (init-tls-endpoint-core ep context)
+    ep))
+
+(defmacro with-tls-endpoint-core ((name context) &body body)
+  "Run BODY with NAME bound to a fresh TLS-ENDPOINT-CORE instance. Close it on exit.
+
+```cl-transcribe
+(with-ssl-context (ctx nil) (with-tls-endpoint-core (foo ctx) (print foo)))
+..
+.. #<tls-core>
+==> #<uninitialized or freed tls-core>
+```"
+  `(let ((,name (make-tls-endpoint-core ,context)))
+     (declare (type tls-endpoint-core ,name))
+     (unwind-protect
+          (progn ,@body)
+       (close-openssl ,name))))
+
+(defun close-openssl (client)
+  "Close the endpoint core CLIENT at drop the references."
+  (unless (null-pointer-p (tls-endpoint-core-ssl client))
+    (ssl-free (tls-endpoint-core-ssl client)))   ; BIOs are closed automatically
+  (setf (tls-endpoint-core-ssl client) (null-pointer))
+  ;; we set these as read-only, so do not touch
+  #+nil (tls-endpoint-core-rbio ,name) (null-pointer)
+  #+nil (tls-endpoint-core-wbio ,name) (null-pointer))
+
+(defsection @openssl-context (:title "TLS context")
+  "TLS context is created with MAKE-HTTP2-TLS-CONTEXT, and its use should be
+wrapped in WITH-SSL-CONTEXT."
+  (with-ssl-context mgl-pax:macro)
+  (make-tls-context generic-function)
+  "The details of the context are modified by the context mixins.")
 
 (defcfun "SSL_CTX_check_private_key" :int (ctx :pointer))
 (defcfun "SSL_CTX_ctrl" :int (ctx :pointer) (cmd :int) (value :long) (args :pointer))
@@ -45,10 +134,26 @@
 (defcfun ("SSL_CTX_set_alpn_select_cb" ssl-ctx-set-alpn-select-cb) :void
   (ctx :pointer)
   (alpn-select-cb :pointer))
+(defcfun "SSL_CTX_set_cipher_list" :int (ctx :pointer) (str :string))
+(defcfun "SSL_CTX_set_ciphersuites" :int (ctx :pointer) (str :string))
 
 (defcfun "TLS_method" :pointer)
 
 
+
+(defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
+  :int
+  (ctx :pointer)
+  (filename :string))
+
+(defcfun ("SSL_CTX_use_PrivateKey_file" ssl-ctx-use-private-key-file)
+  :int
+  (ctx :pointer)
+  (filename :string)
+  (type :int))
+
+
+#+unused
 (defcfun ("SSL_select_next_proto" ssl-select-next-proto)
     :int
   (out (:pointer (:pointer :char)))
@@ -70,11 +175,6 @@
   ;; use that one in ffi world.
   "Set ALPN to h2 if it was offered, otherwise to the first offered."
   (declare (ignore args ssl))
-  #+nil
-  (cffi:with-foreign-string ((server serverlen) (make-alpn-proto-string '("h2")))
-    (ssl-select-next-proto out outlen server (print (1- serverlen)) in inlen)
-    0)
-
   (loop for idx = 0 then (+ (cffi:mem-ref in :char idx) idx)
         while (< idx inlen)
         when (and (= (cffi:mem-ref in :char idx) 2)
@@ -86,40 +186,23 @@
               (cffi:mem-ref out :pointer) (cffi:inc-pointer in (1+ idx)))
              (return 0)
         finally
-           ;; h2 not found, but maybe server can handle
-           ;; set the proto to first offered
-           (setf
-            (cffi:mem-ref outlen :char) (cffi:mem-ref in :char 0)
-            (cffi:mem-ref out :pointer) (cffi:inc-pointer in 1))
-           (return 0)))
-
-(defcfun ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
-  :int
-  (ctx :pointer)
-  (filename :string))
+           ;; h2 not found, alert
+           (return ssl-tlsext-err-alert-fatal))) ; no agreement
 
-(defcfun ("SSL_CTX_use_PrivateKey_file" ssl-ctx-use-private-key-file)
-  :int
-  (ctx :pointer)
-  (filename :string)
-  (type :int))
-
-(defclass certificated-dispatcher ()
-  ((certificate-file :initarg  :certificate-file)
-   (private-key-file :initarg  :private-key-file))
-  (:documentation
-   "Dispatcher with two slots, CERTIFICATE-FILE and PRIVATE-KEY-FILE, that are used
-for TLS context creation."))
+(defclass h2-server-context-mixin ()
+  ()
+  (:documentation "This mixin ensures that the server will provide H2 alpn during TLS negotiation."))
 
 (defconstant +ssl-filetype-pem+ 1)
 (defconstant +ssl-filetype-asn1+ 2)
 (defconstant +ssl-filetype-default+ 3)
 
-(defgeneric make-http2-tls-context (dispatcher)
-  (:documentation "Make TLS context suitable for http2.
+(defgeneric make-tls-context (dispatcher)
+  (:documentation "Make TLS context suitable for http2, depending on DISPATCHER.
 
-Practically, it means:
-- ALPN callback that selects h2 if present,
+The specializations include
+:
+- ALPN callback that selects h2 (h2-server-context-mixin)
 - Do not request client certificates
 - Do not allow ssl compression and renegotiation.
 We should also limit allowed ciphers, but we do not.")
@@ -130,10 +213,10 @@ We should also limit allowed ciphers, but we do not.")
                                         ; FIXME: cl+ssl has (apply #'logior (append disabled-protocols options)
       (ssl-ctx-set-options context ssl-op-all)
       (ssl-ctx-ctrl context ssl-ctrl-set-min-proto-version tls-1.2-version (null-pointer))
-      (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
       #+nil    (ssl-ctx-set-session-cache-mode context session-cache-mode)
       #+nil    (ssl-ctx-set-verify-location context verify-location)
       #+nil    (ssl-ctx-set-verify-depth context verify-depth)
+      ;; TODO: This should be separate mixin for verification
       #+nil    (ssl-ctx-set-verify context verify-mode (if verify-callback
                                                            (cffi:get-callback verify-callback)
                                                            (cffi:null-pointer)))
@@ -142,7 +225,13 @@ We should also limit allowed ciphers, but we do not.")
                           (zerop (ssl-ctx-set-cipher-list context cipher-list)))
                  (error "Cannot set cipher list"))
       context))
-  (:method :around ((dispatcher certificated-dispatcher))
+  (:method ((dispatcher h2-server-context-mixin))
+    "For servers"
+    (let ((context (call-next-method)))
+      (ssl-ctx-set-alpn-select-cb  context (get-callback 'select-h2-callback))
+      context))
+
+  (:method ((dispatcher certificated-context-mixin))
     (with-slots (certificate-file private-key-file) dispatcher
       (let ((context (call-next-method)))
         (ssl-ctx-use-certificate-chain-file context certificate-file)
@@ -153,10 +242,17 @@ We should also limit allowed ciphers, but we do not.")
         ;; and warn if not.
         context))))
 
+(defun make-http2-tls-context (dispatcher)
+  "Do not use that. Changed name, as not http2 specific (use proper mixins for it)."
+  (make-tls-context dispatcher))
+
+(declaim (sb-ext:deprecated :early ("http2" "2.0.3")
+                            (function make-http2-tls-context :replacement make-tls-context)))
+
 (defmacro with-ssl-context ((ctx dispatcher) &body body)
-  "Run body with SSL context created by MAKE-SSL-CONTEXT in CTX."
+  "Run body with SSL context created by MAKE-TLS-CONTEXT in CTX."
   (check-type ctx symbol)
-  `(let ((,ctx (make-http2-tls-context ,dispatcher)))
+  `(let ((,ctx (make-tls-context ,dispatcher)))
      (unwind-protect
           (progn ,@body)
        (ssl-ctx-free ,ctx))))

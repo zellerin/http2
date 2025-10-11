@@ -24,8 +24,8 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (unsupported-server-setup condition)
   (server-socket-stream generic-function)
   (start-server-on-socket generic-function)
-  (find-private-key-file function)
   (find-certificate-file function)
+  (certificated-dispatcher class)
   (maybe-create-certificate function))
 
 (defclass detached-server-mixin ()
@@ -56,36 +56,6 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   "Default value of the server dispatcher. One of DETACHED-TLS-THREADED-DISPATCHER
 ot POLL-DISPATCHER")
 
-(defun find-private-key-file (hostname)
-  "Find the private key for HOSTNAME or create it.
-
-Look for
-- /etc/letsencrypt/live/<hostname>privkey.pem (this is where let's encrypt stores them)
-- file named <hostname>.key in /tmp (ad-hoc generated files)
-
-If it does not exist, generate the key and self signed cert in /tmp/"
-  (let* ((key-name (make-pathname :name hostname :defaults "/tmp/foo.key"))
-         (cert-name (make-pathname :type "crt" :defaults key-name))
-         (lets-encrypt-name
-           (make-pathname :directory `(:absolute "etc" "letsencrypt" "live" ,hostname)
-                          :name "privkey"
-                          :type "pem")))
-    (cond ((probe-file key-name))
-          ((probe-file lets-encrypt-name) lets-encrypt-name) ; explicit needed, symlinks
-          (t
-           (warn "No private key found by heuristics, creating new pair in /tmp")
-           (maybe-create-certificate key-name cert-name :base "/tmp")))))
-
-(defun find-certificate-file (keypath)
-  "Find a certificate file for private key stored in KEYPATH.
-
-Try file of same name ending with .crt, or, if the name of private key was privkey.pem, try fullchain.pem (this is what let's encrypt uses)."
-  (or
-   (probe-file (make-pathname :type "crt" :defaults keypath))
-   (and (equal (pathname-name keypath) "privkey")
-        (probe-file (make-pathname :name "fullchain" :defaults keypath)))
-   (error "Cannot find cert file")))
-
 (defun create-server (port dispatcher
                       &rest keys
                       &key
@@ -103,6 +73,7 @@ Additional keyword parameters are allowed; they are defined and consumed by
 the dispatcher."
   (when (symbolp dispatcher)
     (setf dispatcher (apply #'make-instance dispatcher :allow-other-keys t keys)))
+;  (with-slots (private-key-file certificate-file) dispatcher)
   (restart-case
       (let ((listening-socket (usocket:socket-listen host port
                                                      :reuse-address t
@@ -204,6 +175,11 @@ connection depending on the dispatch method.")
    :connection-class 'vanilla-server-connection
    :connection-args nil))
 
+(defclass certificate-h2-dispatcher (easy-certificated-context-mixin
+                                     h2-server-context-mixin
+                                     base-dispatcher)
+  ())
+
 (defclass single-client-dispatcher (base-dispatcher)
   ()
   (:documentation "Handle the connection while doing nothing else.
@@ -238,17 +214,3 @@ layer when needed."))
       (process-server-stream (server-socket-stream plain dispatcher)
                              :connection (apply #'make-instance (get-connection-class dispatcher)
                                                 (get-connection-args dispatcher))))))
-
-(defun maybe-create-certificate (key certificate &key system (base
-                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
-  "Generate key and a self-signed certificate to it for localhost using openssl
-cli."
-  (unless (and (probe-file key)
-               (probe-file certificate))
-    (let ((key-file (ensure-directories-exist (merge-pathnames key base)))
-          (cert-file (ensure-directories-exist (merge-pathnames certificate base))))
-      (uiop:run-program
-       `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring key-file)
-                   "-outform" "PEM" "-out" ,(namestring cert-file)))
-      (terpri)
-      (values key-file cert-file))))

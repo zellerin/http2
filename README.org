@@ -21,6 +21,16 @@ to start an empty TLS server and serve a "Hello world" page.
 
 Check [[https://doc.zellerin.cz/http2/tutorials.html][tutorials]] that show in more detail how to use the client or the server.
 
+** Demo pages
+
+Simple demo can be started by running
+: sbcl --script scaffolding/run-server.lisp
+
+It opens two web server, multi-threaded one https://localhost:8080 and a polling
+one on https://localhost:8081. Both should be functionally equivalent with a
+different backend. Both provide a ~/test~ page that tests some more tricky parts
+of the backend in the browser.
+
 ** Status
 In quicklisp. Documentation on [[https://docs.zellerin.cz/http2/][separate page]].
 

@@ -11,14 +11,17 @@
 
 (deftest client-server-match ()
   "Run server, fetch a response from it."
-  (multiple-value-bind (response code)
-      (multiple-value-bind (dispatcher url)
-          (start 0)
-        (unwind-protect
-             (retrieve-url url)
-          (stop dispatcher)))
-    (is (= code 404))
-    (is (search "Not found" response))))
+  (let ((http2/server:*poll-timeout* 0.5)
+        (http2/server:*no-client-poll-timeout* 0.5))
+    (dolist (dispatcher-class '(http2/server::detached-poll-dispatcher http2/server::detached-tls-threaded-dispatcher))
+      (multiple-value-bind (response code)
+          (multiple-value-bind (dispatcher url)
+              (start 0 :dispatcher dispatcher-class)
+            (unwind-protect
+                 (retrieve-url (puri:merge-uris "/doesnotexists" url))
+              (stop dispatcher)))
+        (is (= code 404))
+        (is (search "Not found" response))))))
 
 (define-exact-handler "/hello-world"
   (handler (foo :utf-8 nil)
@@ -30,14 +33,17 @@
 
 (deftest tutorial-server-content ()
   "Run server, fetch a response from it."
-  (multiple-value-bind (response code)
-      (multiple-value-bind (dispatcher url)
-          (start 0)
-        (unwind-protect
-             (retrieve-url (puri:merge-uris "/hello-world" url))
-          (stop dispatcher)))
-    (is (= code 200))
-    (is (search "Hello World, this is random" response))))
+  (let ((http2/server:*poll-timeout* 0.5)
+        (http2/server:*no-client-poll-timeout* 0.5))
+    (dolist (dispatcher-class '(http2/server::detached-poll-dispatcher http2/server::detached-tls-threaded-dispatcher))
+      (multiple-value-bind (response code)
+          (multiple-value-bind (dispatcher url)
+              (start 0 :dispatcher dispatcher-class)
+            (unwind-protect
+                 (retrieve-url (puri:merge-uris "/hello-world" url))
+              (stop dispatcher)))
+        (is (= code 200))
+        (is (search "Hello World, this is random" response))))))
 
 (define-exact-handler "/body"
   (handler (foo :utf-8 nil)

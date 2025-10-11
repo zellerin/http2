@@ -232,11 +232,15 @@ continuation flags, if any, so must be separate."
        (process-end-headers connection http-stream)
        (maybe-end-stream header-flags http-stream)
        (values #'parse-frame-header 9))
-      (to-backtrace
+#+sameasbelow      (to-backtrace
        (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
                9))
       (t
-       (error "TODO: Implement me nicely")))))
+       ;; We read full headers, but we need to read more (continuation frame)
+       ;; FIXME: simplify it for this case and write tests for this
+       (values (read-continuation-frame-on-demand http-stream data (or to-backtrace end)
+                                                  end header-flags)
+               9)))))
 
 (defun read-priority (data http-stream start)
   (let* ((e+strdep (aref/wide data start 4))
@@ -287,12 +291,11 @@ first on a stream reprioritize the stream (Section 5.3.3). ;
     (lambda (connection data http-stream flags)
       "Read priority frame. Invoke APPLY-STREAM-PRIORITY if priority was present."
       (declare (ignore connection))
-      (assert (zerop start))
-      (unless (= 5 length)
+      (unless (= 5 (- length start))
         ;;   A PRIORITY frame with a length other than 5 octets MUST be treated as
         ;;   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-        (http-stream-error 'frame-size-error http-stream))
-      (read-priority data http-stream 0)))
+        (http-stream-error 'incorrect-frame-size http-stream))
+      (read-priority data http-stream start)))
 
 (define-frame-type 9 :continuation-frame
     "```
@@ -307,12 +310,10 @@ fragments (Section 4.3).  Any number of CONTINUATION frames can be sent, as long
 as the preceding frame is on the same stream and is a HEADERS, PUSH_PROMISE, or
 CONTINUATION frame without the END_HEADERS flag set."
     ((headers list))
-    (:length (reduce '+ (mapcar 'length headers))
+    (:length (length headers)
      :flags (end-headers end-stream))
     (lambda (buffer start headers)
-      (when (cdr headers)
-        (error "Multiple header groups not supported now."))
-      (replace buffer (car headers) :start1 start))
+      (replace buffer headers :start1 start))
 
     ;; reader
     ;; If we needed continuation frame, we would be in READ-BYTE*.
@@ -362,7 +363,7 @@ expected, and then it is parsed by a different function."
               ;; empty continuation header, expect another one
               (read-continuation-frame-on-demand expected-stream old-data old-data-start old-data-end header-flags))
              (t
-              (values (lambda (connection data)
+              (values (lambda (connection data start end)
                         (declare (ignore connection))
                         (declare ((simple-array (unsigned-byte 8) *) data))
                         (let ((full-data (make-octet-buffer (+ length
@@ -370,7 +371,8 @@ expected, and then it is parsed by a different function."
                           (unless (= old-data-start old-data-end)
                             (replace full-data old-data :start2 old-data-start
                                                         :end2 old-data-end))
-                          (replace full-data data :start1 (- old-data-end old-data-start))
+                          (replace full-data data :start1 (- old-data-end old-data-start)
+                                   :start2 start :end2 end)
                           (read-and-add-headers full-data stream-or-connection
                                                 0 (length full-data) flags header-flags)))
                       length)))))))

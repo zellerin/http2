@@ -62,7 +62,11 @@ Existing implementations are for:
 ")
 
   (:method ((connection write-buffer-connection-mixin) frame)
-    (vector-push-extend frame (get-to-write connection))
+    (with-slots (to-write) connection
+      (let ((old-size (fill-pointer to-write)))
+        (adjust-array to-write (+ (length to-write) (length frame)))
+        (incf (fill-pointer to-write) (length frame))
+        (replace to-write frame :start1 old-size)))
     frame)
   (:method ((connection stream-based-connection-mixin) frame)
     (write-sequence frame (get-network-stream connection))
@@ -181,7 +185,7 @@ Apart from name and documentation, each frame type keeps this:
   (bad-state-error nil :type (or null (unsigned-byte 8)))
   flag-keywords)
 
-(defconstant +known-frame-types-count+ 256
+(defconstant +allowed-frame-types-count+ 256
   "Frame types are indexed by an octet.")
 
 (defun make-unknown-frame-type (type)
@@ -199,16 +203,91 @@ Apart from name and documentation, each frame type keeps this:
                       #'parse-frame-header 9))))))
 
 (defvar *frame-types*
-  (map 'vector  #'make-unknown-frame-type (alexandria:iota +known-frame-types-count+))
+  (map 'vector  #'make-unknown-frame-type (alexandria:iota +allowed-frame-types-count+))
   "Array of frame types. It is populated later with DEFINE-FRAME-TYPE.")
 
 (deftype writer-fn ()
+  "Function that write to an OCTET-VECTOR starting at FRAME-SIZE position."
   `(and compiled-function (function (octet-vector frame-size &rest t))))
+
+
+(defsection @flags ()
+  "HTTP/2 frames have a flags octet. We represent individual tags with a keyword and
+provide
+functions to convert between those two representation.
+
+TODO: In future I might change representation to +ack+ being directly one and
+skip translating completely."
+  (flags-to-code function)
+  (get-flag function))
+
+(defvar *flag-codes-keywords*
+  '(:padded 8 :end-stream 1 :ack 1 :end-headers 4 :priority 32)
+  "Property list of tag names and their values..
+
+This makes use of the fact that same flag name has same index in all headers
+where it is used.")
+
+(defun flags-to-code (pars)
+  "Convert list of flags to a flag octet code. This is not supposed to be fast.
+
+```cl-transcript
+(http2/core:flags-to-code '(:padded t))
+=> 8
+```
+"
+  (loop for (par val) on pars by #'cddr
+        when val
+          sum (getf *flag-codes-keywords* par)))
+
+(defun get-flag (flags flag-name)
+  "Boolean that indicates whether the flag of FLAG-NAME is in FLAGS.
+
+```cl-transcript
+(get-flag 21 :ack)
+=> T
+```
+
+For constant FLAG-NAME this is supposed to be fast.
+"
+  (declare ((unsigned-byte 8) flags)
+           (keyword flag-name))
+  (plusp (logand flags (getf *flag-codes-keywords* flag-name))))
+
+(define-compiler-macro get-flag (&whole whole flags flag-name)
+  (if (keywordp flag-name)
+      `(plusp (logand ,flags ,(getf *flag-codes-keywords* flag-name)))
+      whole))
+
+#+unused
+(defun has-flag (flags flag-name allowed)
+  "Does the FLAGS octet contain tag FLAG-NAME "
+  (declare ((unsigned-byte 8) flags)
+           (keyword flag-name))
+  (when (member flag-name allowed)
+    (get-flag flags flag-name)))
+
+(defsection @padding ()
+  "Optional padding is represented by a NIL or an array of padding bytes."
+  (padding type))
+
+(deftype padding ()
+  "If padding is present, it is an octet vector up to 256 bytes"
+  `(or null octet-vector))
+
+(defun padded-length (length padding)
+  "Length of the frame with added padding (incl. padding size)."
+  (declare (type padding padding))
+  (if padding (+ 1 length (length padding)) length))
+
+(defsection @padding-write ()
+  )
 
 (defun write-body-and-padding (buffer fn padded pars)
   "Add payload and possibly padding to a BUFFER that already contains 9 octets of the header."
   (declare (writer-fn fn)
-           (octet-vector buffer))
+           (octet-vector buffer)
+           (padding padded))
   (cond
     ((null padded) (apply fn buffer 9 pars))
     (t
@@ -217,36 +296,14 @@ Apart from name and documentation, each frame type keeps this:
      (replace buffer padded :start1 (- (length buffer) (length padded)))))
   buffer)
 
-(defun padded-length (length padding)
-  "Length of the frame with added padding (incl. padding size)."
-  (if padding (+ 1 length (length padding)) length))
-
-(defvar *flag-codes-keywords*
-    '(:padded 8 :end-stream 1 :ack 1 :end-headers 4 :priority 32)
-    "Property list of flag names and their values..
-
-This makes use of the fact that same flag name has same index in all headers
-where it is used.")
-
-(defun flags-to-code (pars)
-  (loop for (par val) on pars by #'cddr
-        when val
-          sum (getf *flag-codes-keywords* par)))
-
-(defun get-flag (flags flag-name)
-  (declare ((unsigned-byte 8) flags)
-           (keyword flag-name))
-  (plusp (logand flags (getf *flag-codes-keywords* flag-name))))
-
-(define-compiler-macro get-flag (flags flag-name)
-  (when (keywordp flag-name)
-    `(plusp (logand ,flags ,(getf *flag-codes-keywords* flag-name)))))
-
-(defun has-flag (flags flag-name allowed)
-  (when (member flag-name allowed)
-    (get-flag flags flag-name)))
+(defsection @padding-read ()
+  (with-padding-marks macro))
 
 (defmacro with-padding-marks ((connection flags start end) &body body)
+  "Look at the FLAGS and LENGTH (captured variable, FIXME) of a frame, with possibly padded payload that starts at START, and adjust START and set END for this frame to start and end of the actual payload.
+
+CONNECTION is used only to have somewhere to signal possible error."
+  ;; FIXME: does it work with START != 0? What is length then?
   `(let* ((padded (get-flag ,flags :padded))
           (,end length))
      (when padded
@@ -256,16 +313,19 @@ where it is used.")
        (connection-error 'too-big-padding ,connection))
      ,@body))
 
+(defsection @frame-definitions ())
+
 (defmacro define-frame-writer (type-code writer-name http-connection-or-stream
                                flags length parameters key-parameters
                                documentation
                                body)
+  "Define a function named WRITER-NAME name writes a frame of type TYPE-CODE"
   `(defun ,writer-name (,http-connection-or-stream
                         ,@(mapcar 'first parameters)
                         &rest keys
-                       &key
-                         ,@(union (mapcar 'first key-parameters)
-                                  flags))
+                        &key
+                          ,@(union (mapcar 'first key-parameters)
+                                   flags))
      ,documentation
      (declare (ignore ,@(remove 'priority flags)))
      (let ((length ,length))
@@ -488,3 +548,36 @@ and size of data that the following function expects."
 FIXME: might be also continuation-frame-header"
   (declare (ignorable data connection start end))
   (values #'parse-frame-header 9))
+
+(defun get-flag-keywords (frame-type flags)
+  (when (numberp frame-type)
+    (setf frame-type (aref *frame-types* frame-type)))
+  (loop for flag-name in (frame-type-flag-keywords frame-type)
+        when (get-flag flags flag-name)
+          collect flag-name))
+
+(defun trace-frames ()
+  "Trace incoming and outgoing frames on a generic level. Example:
+```
+(http2/core::trace-frames)
+"
+  (trace-object decode-frame-header 0 (nil)
+                ("Read ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
+                 (& 0)  (& 1)  (get-flag-keywords (& 0) (& 2))
+                 (when (plusp (sb-debug:arg 3)) (& 3)) (plusp (& 4))))
+  (trace-object write-frame-header-to-vector 0
+      ("Writing ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
+       (aref *frame-types* (& 3))  (& 4) (get-flag-keywords (& 3) (& 2))
+       (when (plusp (sb-debug:arg 5)) (& 5)) (& 6))))
+
+(defun process-frames (connection data)
+  "Process DATA as frames by CONNECTION."
+  (loop
+    with start of-type frame-size = 0 and end of-type frame-size = (length data)
+    with fn of-type receiver-fn = #'parse-frame-header
+    with size of-type frame-size = 9
+    for old-size of-type frame-size = size
+    while (> end start)
+    do
+       (multiple-value-setq (fn size) (funcall fn connection data start (min end (+ start size))))
+       (incf start old-size)))
