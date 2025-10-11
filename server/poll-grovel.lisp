@@ -26,6 +26,7 @@
 (constant (c-pollnval "POLLNVAL"))
 
 (constant (eagain "EAGAIN"))
+(constant (eintr"EINTR"))
 (constant (einprogress "EINPROGRESS"))
 
 (constant (pf-inet "PF_INET"))

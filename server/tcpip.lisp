@@ -116,7 +116,7 @@ Otherwise signal an error."
 
 (defun poll (dispatcher timeout)
   (with-slots (fdset fdset-size) dispatcher
-    (checked-syscall (lambda (res) (not (minusp res)))
+    (checked-syscall (lambda (res) (or (not (minusp res)) (= eintr (errno))))
                      #'poll% fdset fdset-size timeout)))
 
 (defun set-fd-slot (fdset socket new-events idx)
