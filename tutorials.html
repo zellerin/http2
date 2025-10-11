@@ -1,23 +1,13 @@
 <!DOCTYPE html>
 <html xmlns='http://www.w3.org/1999/xhtml' xml:lang='en' lang='en'>
 <head>
-<title>Tutorials
-</title>
+<title>Tutorials</title>
 <link type='text/css' href='style.css' rel='stylesheet'>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width">
-   <script src="jquery.min.js"></script>
+<script src="jquery.min.js"></script>
 <script src="toc.min.js"></script>
-<script type="text/x-mathjax-config">
-     MathJax.Hub.Config({
-       tex2jax: {
-         inlineMath: [['$','$']],
-         processEscapes: true
-       }
-     });
-   </script>
-   <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-   </script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"></script>
    
 </head>
 <body>
@@ -30,22 +20,31 @@
 <div id="content">
 <p><a id="x-28HTTP2-3A-40TUTORIALS-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2:@TUTORIALS%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="overview.html#%22http2%22%20ASDF%2FSYSTEM:SYSTEM" title="&quot;http2&quot; ASDF/SYSTEM:SYSTEM">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8594;</a> <a href="tutorials.html" title="Tutorials">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/overview.lisp#L36">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="overview.html" title="Overview">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8594;</a> <a href="tutorials.html" title="Tutorials">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/overview.lisp#L45">&#955;</a></span></span></p>
+
 <h2><a href="tutorials.html">2 Tutorials</a></h2>
+
 <p><a id="x-28HTTP2-2FCLIENT-3A-40CLIENT-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="tutorials.html" title="Tutorials">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L8">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="tutorials.html" title="Tutorials">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L8">&#955;</a></span></span></p>
+
 <h3><a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION">2.1 Using built-in HTTP/2 client</a></h3>
+
 <h6>[in package HTTP2/CLIENT]</h6>
+
 <p>There is a simple client in the package http2/client.</p>
+
 <p><a id="x-28HTTP2-2FCLIENT-3ARETRIEVE-URL-20FUNCTION-29"></a>
 <a id="HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L273">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" >RETRIEVE-URL</a></span></span> <span class="locative-args">URL &amp;REST PARS &amp;KEY METHOD CONTENT CONTENT-FN ADDITIONAL-HEADERS CONTENT-TYPE CHARSET GZIP-CONTENT &amp;ALLOW-OTHER-KEYS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L277">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" >RETRIEVE-URL</a></span></span> <span class="locative-args">URL &amp;REST PARS &amp;KEY METHOD CONTENT CONTENT-FN ADDITIONAL-HEADERS CONTENT-TYPE CHARSET GZIP-CONTENT &amp;ALLOW-OTHER-KEYS</span></span></p>
 
 <p>Retrieve <code>URL</code> (a string) through HTTP/2 over TLS.</p>
 
-<p>See RETRIEVE-URL-USING-CONNECTION for documentation of the keyword parameters.</p>
+<p>See <a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" title="HTTP2/CLIENT:FETCH-RESOURCE GENERIC-FUNCTION"><code>FETCH-RESOURCE</code></a> for documentation of the keyword parameters.</p>
 
 <p>Example:</p>
 
@@ -73,19 +72,23 @@
 
 <p>See <a href="#HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION" title="HTTP2/CLIENT:DRAKMA-STYLE-STREAM-VALUES FUNCTION"><code>DRAKMA-STYLE-STREAM-VALUES</code></a> for meaning of the individual values.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AREQUEST-HEADERS-20FUNCTION-29"></a>
 <a id="HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L15">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION" >REQUEST-HEADERS</a></span></span> <span class="locative-args">METHOD PATH AUTHORITY &amp;KEY (SCHEME &quot;https&quot;) CONTENT-TYPE GZIP-CONTENT ADDITIONAL-HEADERS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L15">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION" >REQUEST-HEADERS</a></span></span> <span class="locative-args">METHOD PATH AUTHORITY &amp;KEY (SCHEME &quot;https&quot;) CONTENT-TYPE GZIP-CONTENT ADDITIONAL-HEADERS</span></span></p>
 
 <p>Encode standard request headers. The obligatory headers are passed as the
 positional arguments. <code>ADDITIONAL-HEADERS</code> are a list of conses, each containing
 header name and value.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3ADRAKMA-STYLE-STREAM-VALUES-20FUNCTION-29"></a>
 <a id="HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L241">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION" >DRAKMA-STYLE-STREAM-VALUES</a></span></span> <span class="locative-args">RAW-STREAM &amp;KEY CLOSE-STREAM</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L245">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION" >DRAKMA-STYLE-STREAM-VALUES</a></span></span> <span class="locative-args">RAW-STREAM &amp;KEY CLOSE-STREAM</span></span></p>
 
 <p>Return values as from <code>DRAKMA:HTTP-REQUEST</code>. Some of the values are meaningless,
 but kept for compatibility purposes.</p>
@@ -100,34 +103,42 @@ but kept for compatibility purposes.</p>
 <li><p>reason phrase (bogus value)</p></li>
 </ul></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L5">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L321">&#955;</a></span></span></p>
+
 <h3><a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION">2.2 Starting HTTP/2 server</a></h3>
+
 <h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
 <p>Start server on foreground with <a href="#HTTP2%2FSERVER:RUN%20FUNCTION" title="HTTP2/SERVER:RUN FUNCTION"><code>RUN</code></a>, or on background with <a href="#HTTP2%2FSERVER:START%20FUNCTION" title="HTTP2/SERVER:START FUNCTION"><code>START</code></a>.</p>
+
 <p>This creates (as of this version) a multithreaded server that serves 404 Not
 found responses on any request.</p>
+
 <p><a id="x-28HTTP2-2FSERVER-3ARUN-20FUNCTION-29"></a>
 <a id="HTTP2%2FSERVER:RUN%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L391">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:RUN%20FUNCTION" >RUN</a></span></span> <span class="locative-args">PORT &amp;REST PARS &amp;KEY CERTIFICATE-FILE PRIVATE-KEY-FILE</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L369">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:RUN%20FUNCTION" >RUN</a></span></span> <span class="locative-args">PORT &amp;REST PARS &amp;KEY CERTIFICATE-FILE PRIVATE-KEY-FILE</span></span></p>
 
 <p>Run a default HTTP/2 server on <code>PORT</code> on foreground.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3ASTART-20FUNCTION-29"></a>
 <a id="HTTP2%2FSERVER:START%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L330">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:START%20FUNCTION" >START</a></span></span> <span class="locative-args">PORT &amp;REST ARGS &amp;KEY (HOST <code>*VANILLA-HOST*</code>) (DISPATCHER <a href="reference.html#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" title="HTTP2/SERVER:*VANILLA-SERVER-DISPATCHER* VARIABLE"><code>*VANILLA-SERVER-DISPATCHER*</code></a>) (CERTIFICATE-FILE '<code>FIND-CERTIFICATE-FILE</code>) (PRIVATE-KEY-FILE '<code>FIND-PRIVATE-KEY-FILE</code>) &amp;ALLOW-OTHER-KEYS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L334">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:START%20FUNCTION" >START</a></span></span> <span class="locative-args">PORT &amp;REST ARGS &amp;KEY (HOST <code>*VANILLA-HOST*</code>) (DISPATCHER <a href="implementation.html#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" title="HTTP2/SERVER:*VANILLA-SERVER-DISPATCHER* VARIABLE"><code>*VANILLA-SERVER-DISPATCHER*</code></a>) &amp;ALLOW-OTHER-KEYS</span></span></p>
 
 <p>Start a default HTTP/2 https server on <code>PORT</code> on background.</p>
 
 <p>Returns two values with a detached (see below) dispatcher, which is default:</p>
 
 <ul>
-<li><p>thread with the server (to be able to close the server). The specific object
-  returned is subject to change, what is guaranteed is that it is suitable
-  parameter for <code>STOP</code>.</p></li>
+<li><p>Server instance (that is appropriate parameter for stop)</p></li>
 <li><p>base url of the server (most useful when <code>PORT</code> was 0 - any free port)</p></li>
 </ul>
 
@@ -135,32 +146,38 @@ found responses on any request.</p>
 
 <p><code>DISPATCHER</code> parameter sets the dispatcher to use for the server. Dispatchers
 determine how are new requests handled. Presently there are several sets of
-dispatchers defined:</p>
-
-<ul>
-<li><p><a href="reference.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER CLASS"><code>POLL-DISPATCHER</code></a> and <a href="reference.html#HTTP2%2FSERVER:DETACHED-POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:DETACHED-POLL-DISPATCHER CLASS"><code>DETACHED-POLL-DISPATCHER</code></a> use polling interface that uses openssl directly,</p></li>
-<li><p><a href="reference.html#HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-THREADED-DISPATCHER CLASS"><code>TLS-THREADED-DISPATCHER</code></a> and <a href="reference.html#HTTP2%2FSERVER:DETACHED-TLS-THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:DETACHED-TLS-THREADED-DISPATCHER CLASS"><code>DETACHED-TLS-THREADED-DISPATCHER</code></a> use thread per connection and use CL+SSL,</p></li>
-<li><p><a href="reference.html#HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-SINGLE-CLIENT-DISPATCHER CLASS"><code>TLS-SINGLE-CLIENT-DISPATCHER</code></a> and <a href="reference.html#HTTP2%2FSERVER:DETACHED-TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:DETACHED-TLS-SINGLE-CLIENT-DISPATCHER CLASS"><code>DETACHED-TLS-SINGLE-CLIENT-DISPATCHER</code></a> handle one connection at time
-  in a single thread using CL+SSL and is simplest of these.</p></li>
-</ul>
+dispatchers defined, see <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">Server classes</a></p>
 
 <p>Detached variants run the server in a separate thread and returns immediately
 after opening the socket.</p>
 
-<p>There are also non-<code>TLS</code> variants of the -TLS- dispatchers to simplify finding errors.</p>
-
-<p>Value of <a href="reference.html#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" title="HTTP2/SERVER:*VANILLA-SERVER-DISPATCHER* VARIABLE"><code>*VANILLA-SERVER-DISPATCHER*</code></a> is not specified (set it if you care) but
+<p>Value of <a href="implementation.html#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" title="HTTP2/SERVER:*VANILLA-SERVER-DISPATCHER* VARIABLE"><code>*VANILLA-SERVER-DISPATCHER*</code></a> is not specified (set it if you care) but
 should be presently best detached dispatcher.</p>
 
-<p><code>FIND-PRIVATE-KEY-FILE</code> and <code>FIND-CERTIFICATE-FILE</code> as default values for the
+<p>FIND-PRIVATE-KEY-FILE and <code>FIND-CERTIFICATE-FILE</code> as default values for the
 respective parameters try to locate the files.</p></li>
 </ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3ASTOP-20FUNCTION-29"></a>
+<a id="HTTP2%2FSERVER:STOP%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L374">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:STOP%20FUNCTION" >STOP</a></span></span> <span class="locative-args">&amp;OPTIONAL (SERVER (<a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_car_c.htm" title="CAR (MGL-PAX:CLHS FUNCTION)"><code>CAR</code></a> <code>*SERVERS*</code>))</span></span></p>
+
+<p>Stop a server and remove it from list of servers.</p></li>
+</ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-CONTENT-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L14">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L6">&#955;</a></span></span></p>
+
 <h3><a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION">2.3 Define content for HTTP/2 server</a></h3>
+
 <h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
 <p>To server something else than 404 Not found, you need to define handlers for specific paths. Simple handler definition can look like</p>
+
 <pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">define-exact-handler</span></i> <span class="string">"/hello-world"</span>
   <span class="paren2">(<span class="code">handler <span class="paren3">(<span class="code">foo <span class="keyword">:utf-8</span> nil</span>)</span>
     <span class="paren3">(<span class="code"><i><span class="symbol">with-open-stream</span></i> <span class="paren4">(<span class="code">foo foo</span>)</span>
@@ -168,38 +185,48 @@ respective parameters try to locate the files.</p></li>
        '<span class="paren5">(<span class="code"><span class="paren6">(<span class="code"><span class="keyword">:status</span> <span class="string">"200"</span></span>)</span>
          <span class="paren6">(<span class="code"><span class="string">"content-type"</span> <span class="string">"text/html; charset=utf-8"</span></span>)</span></span>)</span></span>)</span>
       <span class="paren4">(<span class="code">format foo <span class="string">"Hello World, this is random: ~a"</span> <span class="paren5">(<span class="code">random 10</span>)</span></span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
 <p>This defines a handler on &quot;/hello-world&quot; path that sends reasonable headers, writes some text to the stream and closes the stream (via <a href="http://www.lispworks.com/documentation/HyperSpec/Body/m_w_op_1.htm" title="WITH-OPEN-STREAM (MGL-PAX:CLHS MGL-PAX:MACRO)"><code>WITH-OPEN-STREAM</code></a>). The text written is passed  to the client as data (body).</p>
+
 <p>In general, the handlers are set using <a href="#HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:DEFINE-PREFIX-HANDLER MGL-PAX:MACRO"><code>DEFINE-PREFIX-HANDLER</code></a> or
 <a href="#HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:DEFINE-EXACT-HANDLER MGL-PAX:MACRO"><code>DEFINE-EXACT-HANDLER</code></a>, and are functions typically created by <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro,
 or (in simple cases) by <a href="#HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION" title="HTTP2/SERVER:REDIRECT-HANDLER FUNCTION"><code>REDIRECT-HANDLER</code></a> or <a href="#HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION" title="HTTP2/SERVER:SEND-TEXT-HANDLER FUNCTION"><code>SEND-TEXT-HANDLER</code></a> functions.</p>
+
 <p><a id="x-28HTTP2-2FSERVER-3ADEFINE-PREFIX-HANDLER-20MGL-PAX-3AMACRO-29"></a>
 <a id="HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L189">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO" >DEFINE-PREFIX-HANDLER</a></span></span> <span class="locative-args">PREFIX FN &amp;OPTIONAL CONNECTION</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L182">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO" >DEFINE-PREFIX-HANDLER</a></span></span> <span class="locative-args">PREFIX FN &amp;OPTIONAL CONNECTION</span></span></p>
 
 <p>Define function to run when peer closes http stream on <code>CONNECTION</code> (or any
 server defined in future) if the path of the stream starts with <code>PREFIX</code>.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3ADEFINE-EXACT-HANDLER-20MGL-PAX-3AMACRO-29"></a>
 <a id="HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L196">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO" >DEFINE-EXACT-HANDLER</a></span></span> <span class="locative-args">PATH FN &amp;OPTIONAL CONNECTION</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L189">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO" >DEFINE-EXACT-HANDLER</a></span></span> <span class="locative-args">PATH FN &amp;OPTIONAL CONNECTION</span></span></p>
 
 <p>Define function to run when peer closes http stream on <code>CONNECTION</code> (or any
 server defined in future) if the path of the stream is <code>PATH</code>.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3AHANDLER-20TYPE-29"></a>
 <a id="HTTP2%2FSERVER:HANDLER%20TYPE"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L127">[type]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20TYPE" >HANDLER</a></span></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L120">[type]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20TYPE" >HANDLER</a></span></span></span></p>
 
 <p>Function that can be called with <code>CONNECTION</code> and <code>HTTP2-STREAM</code> to write a response to
 the http request described by <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a> object.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3AHANDLER-20MGL-PAX-3AMACRO-29"></a>
 <a id="HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L132">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" >HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP) &amp;BODY BODY</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L125">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" >HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP) &amp;BODY BODY</span></span></p>
 
 <p>Return a <a href="#HTTP2%2FSERVER:HANDLER%20TYPE" title="HTTP2/SERVER:HANDLER TYPE"><code>HANDLER</code></a> type function.</p>
 
@@ -217,26 +244,32 @@ the http request described by <a href="http://www.lispworks.com/documentation/Hy
 <p>The handler body needs to close the underlying stream if the response is
 actually to be sent, or possibly schedule sending more data for later.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3ACONSTANT-HANDLER-20MGL-PAX-3AMACRO-29"></a>
 <a id="HTTP2%2FSERVER:CONSTANT-HANDLER%20MGL-PAX:MACRO"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L158">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:CONSTANT-HANDLER%20MGL-PAX:MACRO" >CONSTANT-HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP HEADERS) &amp;BODY BODY</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L151">[macro]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:CONSTANT-HANDLER%20MGL-PAX:MACRO" >CONSTANT-HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP HEADERS) &amp;BODY BODY</span></span></p>
 
 <p>Run <code>BODY</code> to print the output to <code>FLEXI-STREAM-NAME</code> in compile time. This
 constant (static) page is served every time as-is.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3AREDIRECT-HANDLER-20FUNCTION-29"></a>
 <a id="HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L226">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION" >REDIRECT-HANDLER</a></span></span> <span class="locative-args">TARGET &amp;KEY (CODE &quot;301&quot;) (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) CONTENT</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L219">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION" >REDIRECT-HANDLER</a></span></span> <span class="locative-args">TARGET &amp;KEY (CODE &quot;301&quot;) (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) CONTENT</span></span></p>
 
 <p>A handler that emits redirect response with http status being <code>CODE</code>, and
 optionally provides <code>CONTENT</code> with <code>CONTENT-TYPE</code>.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3ASEND-TEXT-HANDLER-20FUNCTION-29"></a>
 <a id="HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L211">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION" >SEND-TEXT-HANDLER</a></span></span> <span class="locative-args">TEXT &amp;KEY (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) (GZIP <code>T</code>) ADDITIONAL-HEADERS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L204">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION" >SEND-TEXT-HANDLER</a></span></span> <span class="locative-args">TEXT &amp;KEY (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) (GZIP <code>T</code>) ADDITIONAL-HEADERS</span></span></p>
 
 <p>A handler that returns <code>TEXT</code> as content of <code>CONTENT-TYPE</code>.</p>
 
@@ -246,10 +279,12 @@ content that can change on individual invocations write to the stream.</p>
 <p><code>ADDITIONAL-HEADERS</code> are sent along with :status and content-type
 headers.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3ASEND-HEADERS-20FUNCTION-29"></a>
 <a id="HTTP2%2FCORE:SEND-HEADERS%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/classes.lisp#L218">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:SEND-HEADERS%20FUNCTION" >SEND-HEADERS</a></span></span> <span class="locative-args">STREAM HEADERS &amp;KEY END-STREAM (END-HEADERS <code>T</code>) &amp;ALLOW-OTHER-KEYS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/classes.lisp#L218">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:SEND-HEADERS%20FUNCTION" >SEND-HEADERS</a></span></span> <span class="locative-args">STREAM HEADERS &amp;KEY END-STREAM (END-HEADERS <code>T</code>) &amp;ALLOW-OTHER-KEYS</span></span></p>
 
 <p>Send <code>HEADERS</code> to a HTTP2 stream. The stream is returned.</p>
 
@@ -258,23 +293,32 @@ headers.</p></li>
 <p>Inside <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro, this names a function that has the <code>STREAM</code>
 argument implicit and only <code>HEADERS</code> and key parameters are to be provided.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3ASEND-GOAWAY-20FUNCTION-29"></a>
 <a id="HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L101">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION" >SEND-GOAWAY</a></span></span> <span class="locative-args">CODE DEBUG-DATA</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L94">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION" >SEND-GOAWAY</a></span></span> <span class="locative-args">CODE DEBUG-DATA</span></span></p>
 
 <p>Start closing connection, sending <code>CODE</code> and <code>DEBUG-DATA</code> in the go-away frame to
 peer. Must be called from inside of <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3A-40REQUEST-DETAILS-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L43">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L36">&#955;</a></span></span></p>
+
 <h3><a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION">2.4 Getting request details</a></h3>
+
 <h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
 <p>Sometimes you need to get some data from the request.</p>
+
 <p>These data can be carried by querying the HTTP/2 stream object involved. If you
 define handlers by <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro, it is available in a lexically bound STREAM
 variable.</p>
+
 <pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">define-exact-handler</span></i> <span class="string">"/body"</span>
   <span class="paren2">(<span class="code">handler <span class="paren3">(<span class="code">foo <span class="keyword">:utf-8</span> nil</span>)</span>
     <span class="paren3">(<span class="code"><i><span class="symbol">with-open-stream</span></i> <span class="paren4">(<span class="code">foo foo</span>)</span>
@@ -286,29 +330,37 @@ variable.</p>
          <span class="paren5">(<span class="code">http-stream-to-string stream</span>)</span>
          <span class="paren5">(<span class="code">http2/core::get-headers stream</span>)</span>
          <span class="paren5">(<span class="code">http2/core::get-body stream</span>)</span></span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-PATH-20GENERIC-FUNCTION-29"></a>
 <a id="HTTP2%2FCORE:GET-PATH%20GENERIC-FUNCTION"></a></p>
+
 <ul>
 <li><span class=reference-bullet><span class=reference><span class="locative-type">[generic-function]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-PATH%20GENERIC-FUNCTION" >GET-PATH</a></span></span> <span class="locative-args">OBJECT</span></span></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-HEADERS-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3AHEADER-COLLECTING-MIXIN-29-29"></a>
 <a id="HTTP2%2FCORE:GET-HEADERS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HEADER-COLLECTING-MIXIN%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/frames/headers.lisp#L13">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-HEADERS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HEADER-COLLECTING-MIXIN%29" >GET-HEADERS</a></span></span> <span class="locative-args">HEADER-COLLECTING-MIXIN (:HEADERS)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/frames/headers.lisp#L13">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-HEADERS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HEADER-COLLECTING-MIXIN%29" >GET-HEADERS</a></span></span> <span class="locative-args">HEADER-COLLECTING-MIXIN (:HEADERS)</span></span></p>
 
 <p>List of collected (header . value) pairs. Does not include <code>:method</code>, <code>:path</code>, etc.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-METHOD-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
 <a id="HTTP2%2FCORE:GET-METHOD%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/classes.lisp#L118">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-METHOD%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-METHOD</a></span></span> <span class="locative-args">SERVER-STREAM (:METHOD)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/classes.lisp#L118">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-METHOD%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-METHOD</a></span></span> <span class="locative-args">SERVER-STREAM (:METHOD)</span></span></p>
 
 <p>The HTTP method ([RFC7231], Section 4)</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-SCHEME-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
 <a id="HTTP2%2FCORE:GET-SCHEME%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/classes.lisp#L121">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-SCHEME%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-SCHEME</a></span></span> <span class="locative-args">SERVER-STREAM (:SCHEME)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/classes.lisp#L121">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-SCHEME%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-SCHEME</a></span></span> <span class="locative-args">SERVER-STREAM (:SCHEME)</span></span></p>
 
 <p>Scheme portion of the target URI ([RFC3986], Section 3.1).</p>
 
@@ -316,82 +368,113 @@ variable.</p>
 A proxy or gateway can translate requests for non-HTTP schemes,
 enabling the use of HTTP to interact with non-HTTP services</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-AUTHORITY-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
 <a id="HTTP2%2FCORE:GET-AUTHORITY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/classes.lisp#L128">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-AUTHORITY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-AUTHORITY</a></span></span> <span class="locative-args">SERVER-STREAM (:AUTHORITY)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/classes.lisp#L128">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-AUTHORITY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-AUTHORITY</a></span></span> <span class="locative-args">SERVER-STREAM (:AUTHORITY)</span></span></p>
 
 <p>The authority portion of the target URI ([RFC3986], Section 3.2)</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3A-40REQUEST-BODY-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8592;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/server/dispatch.lisp#L73">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8592;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/server/dispatch.lisp#L66">&#955;</a></span></span></p>
+
 <h4><a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION">2.4.1 Body of the request</a></h4>
+
 <p>Sometimes there is a body in the client request.</p>
+
 <p>When sending a such a request, you can use <code>CONTENT</code> parameter of the
 <a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>HTTP2/CLIENT:RETRIEVE-URL</code></a>, together with <code>CONTENT-TYPE</code>.</p>
+
 <pre><code><span class="code"> <span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://localhost:8080/body"</span> <span class="keyword">:content</span> <span class="string">"Hello"</span></span>)</span>
  <span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://localhost:8080/body"</span>
        <span class="keyword">:content</span> #<span class="paren2">(<span class="code">1 2 3</span>)</span> <span class="keyword">:content-type</span> <span class="string">"application/octet-stream"</span></span>)</span></span></code></pre>
+
 <p>When you write a handler for such a request, you should know if you want binary
 or text data. The vanilla class for the server streams looks at the headers, and
 if they look like UTF-8 (as per <code>IS-UTF8-P</code>), it processes the data as text, if
 not, they are collected as binary vector.</p>
+
 <p>When your client systematically send headers that do not make it <code>TEXT</code> and you
 want to read text, as last resort change class of your streams to include
 <a href="#HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS" title="HTTP2/CORE:FALLBACK-ALL-IS-ASCII CLASS"><code>FALLBACK-ALL-IS-ASCII</code></a> (or improve <code>IS-UTF8-P</code>, or add some other decoding function).</p>
+
 <p>If you do not want to see text at all, change class to NOT include
 <code>UTF8-PARSER-MIXIN</code> or any other conversion mixin.</p>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-BODY-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ABODY-COLLECTING-MIXIN-29-29"></a>
 <a id="HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/frames/data.lisp#L10">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29" >GET-BODY</a></span></span> <span class="locative-args">BODY-COLLECTING-MIXIN (:BODY)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/frames/data.lisp#L10">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29" >GET-BODY</a></span></span> <span class="locative-args">BODY-COLLECTING-MIXIN (:BODY)</span></span></p>
 
 <p>Body of the request as an octet vector.</p>
 
 <p>May be empty if some higher priority mixin (e.g., <code>UTF8-PARSER-MIXIN</code>) processed
 the data.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AHTTP-STREAM-TO-STRING-20FUNCTION-29"></a>
 <a id="HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/binary-payload.lisp#L57">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION" >HTTP-STREAM-TO-STRING</a></span></span> <span class="locative-args">HTTP-STREAM</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/binary-payload.lisp#L57">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION" >HTTP-STREAM-TO-STRING</a></span></span> <span class="locative-args">HTTP-STREAM</span></span></p>
 
 <p><code>HTTP-STREAM</code> should be a <code>TEXT-COLLECTING-STREAM</code>.</p>
 
 <p>HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AFALLBACK-ALL-IS-ASCII-20CLASS-29"></a>
 <a id="HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS"></a></p>
+
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/utf8.lisp#L86">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS" >FALLBACK-ALL-IS-ASCII</a></span></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/utf8.lisp#L86">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS" >FALLBACK-ALL-IS-ASCII</a></span></span></span></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3A-40CUSTOMIZING-CLIENT-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L86">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8592;</a> <a href="tutorials.html" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L86">&#955;</a></span></span></p>
+
 <h3><a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION">2.5 Customize client</a></h3>
+
 <h6>[in package HTTP2/CLIENT]</h6>
+
 <p><a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>RETRIEVE-URL</code></a> is in fact a thin wrapper over <a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" title="HTTP2/CLIENT:FETCH-RESOURCE GENERIC-FUNCTION"><code>FETCH-RESOURCE</code></a> generic function.</p>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20GENERIC-FUNCTION-29"></a>
 <a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[generic-function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM URL PARS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[generic-function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM URL PARS</span></span></p>
 
 <p>Retrieve <code>URL</code> over some medium - HTTP/2 connection, network socket, .....</p>
 
 <p>The <code>ARGS</code> is a property list used by some methods and ignored/passed down by others.</p></li>
 </ul>
+
 <p>You can customize its behaviour by creating subclasses for the <a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS"><code>GENERIC-REQUEST</code></a>
 class and specialized methods for your new classes, as well as by changing
 documented variables.</p>
+
 <p><a id="x-28HTTP2-2FCLIENT-3A-40CUSTOMIZING-CLIENT-EXAMPLE-MULTI-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L35">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L35">&#955;</a></span></span></p>
+
 <h4><a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION">2.5.1 Client example: multiple requests</a></h4>
+
 <p>For example, this is how you can make a client that download several pages from
 same source.</p>
+
 <p>First, you need a custom request class, both to have something to specialize
 <a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" title="HTTP2/CLIENT:FETCH-RESOURCE GENERIC-FUNCTION"><code>FETCH-RESOURCE</code></a> on and to keep the list of resources to fetch.</p>
+
 <pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">defclass</span></i> multi-url-request <span class="paren2">(<span class="code">simple-request</span>)</span>
   <span class="paren2">(<span class="code"><span class="paren3">(<span class="code">urls <span class="keyword">:accessor</span> get-urls <span class="keyword">:initarg</span> <span class="keyword">:urls</span></span>)</span></span>)</span></span>)</span>
 
@@ -400,9 +483,11 @@ same source.</p>
 
   <span class="paren2">(<span class="code">dolist <span class="paren3">(<span class="code">r <span class="paren4">(<span class="code">get-urls request</span>)</span></span>)</span>
     <span class="paren3">(<span class="code">fetch-resource connection r nil</span>)</span></span>)</span></span>)</span></span></code></pre>
+
 <p>Then you need a specialized stream class to specialize what to do when the
 responses arrive. Here it prints out the response body for simplicity, and ends
 if it got the last response.</p>
+
 <pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">defclass</span></i> my-client-stream <span class="paren2">(<span class="code">vanilla-client-stream</span>)</span>
   <span class="paren2">(<span class="code"></span>)</span></span>)</span>
 
@@ -411,43 +496,58 @@ if it got the last response.</p>
   <span class="paren2">(<span class="code">when <span class="paren3">(<span class="code">null <span class="paren4">(<span class="code">get-streams <span class="paren5">(<span class="code">get-connection stream</span>)</span></span>)</span></span>)</span>
     <span class="paren3">(<span class="code">signal 'client-done</span>)</span></span>)</span>
   <span class="paren2">(<span class="code">terpri</span>)</span></span>)</span></span></code></pre>
+
 <p>See <a href="#HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29" title="HTTP2/CORE:GET-BODY (MGL-PAX:ACCESSOR HTTP2/CORE:BODY-COLLECTING-MIXIN)"><code>GET-BODY</code></a>,  <a href="#HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION" title="HTTP2/CORE:HTTP-STREAM-TO-STRING FUNCTION"><code>HTTP-STREAM-TO-STRING</code></a> and <a href="#HTTP2%2FCLIENT:CLIENT-DONE%20CONDITION" title="HTTP2/CLIENT:CLIENT-DONE CONDITION"><code>CLIENT-DONE</code></a>.</p>
+
 <p>And finally, you need to pass these as the call parameter:</p>
+
 <pre><code><span class="code"><span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://localhost:8088/body"</span>
    <span class="keyword">:request-class</span> 'multi-url-request
    <span class="keyword">:urls</span> '<span class="paren2">(<span class="code"><span class="string">"https://localhost:8088/body"</span> <span class="string">"https://localhost:8088/"</span></span>)</span>
    <span class="keyword">:stream-class</span> 'my-client-stream</span>)</span></span></code></pre>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-CONNECTION-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3AHTTP2-STREAM-MINIMAL-29-29"></a>
 <a id="HTTP2%2FCORE:GET-CONNECTION%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HTTP2-STREAM-MINIMAL%29"></a></p>
+
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/frames/http2-stream.lisp#L18">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-CONNECTION%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HTTP2-STREAM-MINIMAL%29" >GET-CONNECTION</a></span></span> <span class="locative-args">HTTP2-STREAM-MINIMAL (:CONNECTION)</span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/frames/http2-stream.lisp#L18">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-CONNECTION%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HTTP2-STREAM-MINIMAL%29" >GET-CONNECTION</a></span></span> <span class="locative-args">HTTP2-STREAM-MINIMAL (:CONNECTION)</span></span></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCORE-3AGET-STREAMS-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASTREAM-COLLECTION-29-29"></a>
 <a id="HTTP2%2FCORE:GET-STREAMS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:STREAM-COLLECTION%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/core/frames/http2-stream.lisp#L29">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-STREAMS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:STREAM-COLLECTION%29" >GET-STREAMS</a></span></span> <span class="locative-args">STREAM-COLLECTION (:STREAMS)</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/core/frames/http2-stream.lisp#L29">[accessor]</a></span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-STREAMS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:STREAM-COLLECTION%29" >GET-STREAMS</a></span></span> <span class="locative-args">STREAM-COLLECTION (:STREAMS)</span></span></p>
 
 <p>Sequence of streams the connection knows about.
 This includes all open and half-closed streams, but not the already closed and
 idle streams.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3A-40CUSTOMIZING-CLIENT-REFERENCE-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8593;</a> <a href="reference.html" title="More detailed API documentation">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L96">&#955;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">&#8593;</a> <a href="reference.html" title="More detailed API documentation">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">&#8634;</a></span></span></p>
+
 <h4><a href="#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION">2.5.2 Client reference</a></h4>
+
 <p>For a simple request without body, following documented methods are called in
 sequence:</p>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28T-20STRING-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28T%20STRING%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28T-20STRING-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28T%20STRING%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28T%20STRING%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM (URL <code>STRING</code>(<a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_string.htm" title="STRING (MGL-PAX:CLHS CLASS)"><code>0</code></a> <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_string.htm" title="STRING (MGL-PAX:CLHS FUNCTION)"><code>1</code></a>)) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28T%20STRING%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM (URL <code>STRING</code>(<a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_string.htm" title="STRING (MGL-PAX:CLHS CLASS)"><code>0</code></a> <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_string.htm" title="STRING (MGL-PAX:CLHS FUNCTION)"><code>1</code></a>)) ARGS</span></span></p>
 
 <p>Parse <code>URL</code> into <code>PURI:URI</code> object and fetch the resource using that.</p></li>
 </ul>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28T-20PURI-3AURI-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28T%20PURI:URI%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28T-20PURI-3AURI-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28T%20PURI:URI%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28T%20PURI:URI%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM (URL <code>PURI:URI</code>) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28T%20PURI:URI%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">MEDIUM (URL <code>PURI:URI</code>) ARGS</span></span></p>
 
 <p>Convert <code>URL</code> into an instance of <a href="#HTTP2%2FCLIENT:SIMPLE-REQUEST%20CLASS" title="HTTP2/CLIENT:SIMPLE-REQUEST CLASS"><code>SIMPLE-REQUEST</code></a>, <a href="#HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-UTF8-BODY CLASS"><code>REQUEST-WITH-UTF8-BODY</code></a> or <a href="#HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BINARY-BODY CLASS"><code>REQUEST-WITH-BINARY-BODY</code></a> class.</p>
 
@@ -460,10 +560,12 @@ something else, behaviour is undocumented.</p>
 
 <p>Note that some of the methods actually wait to get the responses.</p></li>
 </ul>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28STREAM-20HTTP2-2FCLIENT-3AGENERIC-REQUEST-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28STREAM%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28STREAM-20HTTP2-2FCLIENT-3AGENERIC-REQUEST-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28STREAM%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28STREAM%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(NETWORK-STREAM <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a>) (REQUEST <a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS"><code>GENERIC-REQUEST</code></a>) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28STREAM%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(NETWORK-STREAM <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a>) (REQUEST <a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS"><code>GENERIC-REQUEST</code></a>) ARGS</span></span></p>
 
 <p>Open HTTP/2 connection over the <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a> and fetch the resource using this connection.</p>
 
@@ -472,10 +574,12 @@ something else, behaviour is undocumented.</p>
 <p>Class of the new connection is taken from <code>:CONNECTION-CLASS</code> property of <code>ARGS</code>,
 falling back to <a href="#HTTP2%2FCLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS*%20VARIABLE" title="HTTP2/CLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS* VARIABLE"><code>*DEFAULT-CLIENT-CONNECTION-CLASS*</code></a>. <code>ARGS</code> are passed to the <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_mk_ins.htm" title="MAKE-INSTANCE (MGL-PAX:CLHS GENERIC-FUNCTION)"><code>MAKE-INSTANCE</code></a>.</p></li>
 </ul>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AGENERIC-REQUEST-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AGENERIC-REQUEST-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS"><code>GENERIC-REQUEST</code></a>) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:GENERIC-REQUEST%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS"><code>GENERIC-REQUEST</code></a>) ARGS</span></span></p>
 
 <p>Open the new stream by sending headers frame to the server.</p>
 
@@ -483,65 +587,83 @@ falling back to <a href="#HTTP2%2FCLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS*%20VAR
 
 <p>Return the new stream.</p></li>
 </ul>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AREQUEST-WITH-UTF8-BODY-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AREQUEST-WITH-UTF8-BODY-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-UTF8-BODY CLASS"><code>REQUEST-WITH-UTF8-BODY</code></a>) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-UTF8-BODY CLASS"><code>REQUEST-WITH-UTF8-BODY</code></a>) ARGS</span></span></p>
 
 <p>Open the HTTP/2 stream and send out the content as UTF-8.</p></li>
 </ul>
-<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20NIL-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AREQUEST-WITH-BINARY-BODY-20T-29-29-29"></a>
-<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20T%29%29"></a></p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3AFETCH-RESOURCE-20-28METHOD-20-28HTTP2-2FCORE-3ACLIENT-HTTP2-CONNECTION-20HTTP2-2FCLIENT-3AREQUEST-WITH-BINARY-BODY-20T-29-29-29"></a>
+<a id="HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20T%29%29"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20NIL%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BINARY-BODY CLASS"><code>REQUEST-WITH-BINARY-BODY</code></a>) ARGS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L155">[method]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20%28METHOD%20%28HTTP2%2FCORE:CLIENT-HTTP2-CONNECTION%20HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20T%29%29" >FETCH-RESOURCE</a></span></span> <span class="locative-args">(CONNECTION <code>CLIENT-HTTP2-CONNECTION</code>) (REQUEST <a href="#HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BINARY-BODY CLASS"><code>REQUEST-WITH-BINARY-BODY</code></a>) ARGS</span></span></p>
 
 <p>Open the HTTP/2 stream and send out the content as octets sequence.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AGENERIC-REQUEST-20CLASS-29"></a>
 <a id="HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L114">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" >GENERIC-REQUEST</a></span></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L114">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" >GENERIC-REQUEST</a></span></span></span></p>
 
 <p>Base class for requests. It has slots for <code>URI</code>, HTTP <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_method.htm" title="METHOD (MGL-PAX:CLHS CLASS)"><code>METHOD</code></a>, <code>HEADERS</code> (some headers
 are implicit) and <code>NO-BODY</code> flag to determine whether there would be data frames
 sent.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3ASIMPLE-REQUEST-20CLASS-29"></a>
 <a id="HTTP2%2FCLIENT:SIMPLE-REQUEST%20CLASS"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L125">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:SIMPLE-REQUEST%20CLASS" >SIMPLE-REQUEST</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS">GENERIC-REQUEST</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L125">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:SIMPLE-REQUEST%20CLASS" >SIMPLE-REQUEST</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS">GENERIC-REQUEST</a></span></span></p>
 
 <p>Class for requests with no body. Implies <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_get.htm" title="GET (MGL-PAX:CLHS FUNCTION)"><code>GET</code></a> method by default.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AREQUEST-WITH-BODY-20CLASS-29"></a>
 <a id="HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L131">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" >REQUEST-WITH-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS">GENERIC-REQUEST</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L131">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" >REQUEST-WITH-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:GENERIC-REQUEST%20CLASS" title="HTTP2/CLIENT:GENERIC-REQUEST CLASS">GENERIC-REQUEST</a></span></span></p>
 
 <p>Base class for requests with a body. Implies POST method by default. Some method
 for <a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" title="HTTP2/CLIENT:FETCH-RESOURCE GENERIC-FUNCTION"><code>FETCH-RESOURCE</code></a> must be defined to actually send the content in data frames.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AREQUEST-WITH-BINARY-BODY-20CLASS-29"></a>
 <a id="HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS"></a></p>
+
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L144">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS" >REQUEST-WITH-BINARY-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BODY CLASS">REQUEST-WITH-BODY</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L144">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BINARY-BODY%20CLASS" >REQUEST-WITH-BINARY-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BODY CLASS">REQUEST-WITH-BODY</a></span></span></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3AREQUEST-WITH-UTF8-BODY-20CLASS-29"></a>
 <a id="HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS"></a></p>
+
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L140">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS" >REQUEST-WITH-UTF8-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BODY CLASS">REQUEST-WITH-BODY</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L140">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-UTF8-BODY%20CLASS" >REQUEST-WITH-UTF8-BODY</a></span></span> <span class="locative-args"><a href="#HTTP2%2FCLIENT:REQUEST-WITH-BODY%20CLASS" title="HTTP2/CLIENT:REQUEST-WITH-BODY CLASS">REQUEST-WITH-BODY</a></span></span></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3A-2ADEFAULT-CLIENT-CONNECTION-CLASS-2A-20VARIABLE-29"></a>
 <a id="HTTP2%2FCLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS*%20VARIABLE"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L148">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS*%20VARIABLE" >*DEFAULT-CLIENT-CONNECTION-CLASS*</a></span></span> <span class="locative-args">VANILLA-CLIENT-CONNECTION</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L148">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:*DEFAULT-CLIENT-CONNECTION-CLASS*%20VARIABLE" >*DEFAULT-CLIENT-CONNECTION-CLASS*</a></span></span> <span class="locative-args">VANILLA-CLIENT-CONNECTION</span></span></p>
 
 <p>Default class to be used for new connections in <a href="#HTTP2%2FCLIENT:FETCH-RESOURCE%20GENERIC-FUNCTION" title="HTTP2/CLIENT:FETCH-RESOURCE GENERIC-FUNCTION"><code>FETCH-RESOURCE</code></a>.</p></li>
 </ul>
+
 <p><a id="x-28HTTP2-2FCLIENT-3ACLIENT-DONE-20CONDITION-29"></a>
 <a id="HTTP2%2FCLIENT:CLIENT-DONE%20CONDITION"></a></p>
+
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/master/client/client.lisp#L261">[condition]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:CLIENT-DONE%20CONDITION" >CLIENT-DONE</a></span></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/client/client.lisp#L265">[condition]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:CLIENT-DONE%20CONDITION" >CLIENT-DONE</a></span></span></span></p>
 
 <p>Handled by <a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>RETRIEVE-URL</code></a>. The client should signal it when the processing is
 done.</p></li>

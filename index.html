@@ -1,23 +1,13 @@
 <!DOCTYPE html>
 <html xmlns='http://www.w3.org/1999/xhtml' xml:lang='en' lang='en'>
 <head>
-<title>HTTP2 in Common Lisp
-</title>
+<title>HTTP2 in Common Lisp</title>
 <link type='text/css' href='style.css' rel='stylesheet'>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width">
-   <script src="jquery.min.js"></script>
+<script src="jquery.min.js"></script>
 <script src="toc.min.js"></script>
-<script type="text/x-mathjax-config">
-     MathJax.Hub.Config({
-       tex2jax: {
-         inlineMath: [['$','$']],
-         processEscapes: true
-       }
-     });
-   </script>
-   <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-   </script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"></script>
    
 </head>
 <body>
@@ -30,15 +20,15 @@
 <div id="content">
 <p><a id="x-28HTTP2-3A-40INDEX-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2:@INDEX%20MGL-PAX:SECTION"></a></p>
-<p><span class="outer-navigation"><span class="navigation"> <a href="overview.html" title="Overview">&#8594;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8634;</a></span></span></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="overview.html" title="Overview">&#8594;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/overview.lisp#L19">&#955;</a></span></span></p>
+
 <h1><a href="index.html"><code>HTTP2</code> in Common Lisp</a></h1>
+
 <h2>Table of Contents</h2>
-<ul>
-<li><a href="overview.html" title="Overview">1 Overview</a>
 
 <ul>
-<li><a href="overview.html#%22http2%22%20ASDF%2FSYSTEM:SYSTEM" title="&quot;http2&quot; ASDF/SYSTEM:SYSTEM">1.1 The http2 ASDF System</a></li>
-</ul></li>
+<li><a href="overview.html" title="Overview">1 Overview</a></li>
 <li><a href="tutorials.html" title="Tutorials">2 Tutorials</a>
 
 <ul>
@@ -57,18 +47,25 @@
 <li><a href="tutorials.html#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">2.5.2 Client reference</a></li>
 </ul></li>
 </ul></li>
-<li><a href="reference.html" title="More detailed API documentation">3 More detailed API documentation</a>
+<li><a href="reference.html" title="More detailed API documentation">3 More detailed API documentation</a></li>
+<li><a href="implementation.html" title="Implementation details (not part of API)">4 Implementation details (not part of API)</a>
 
 <ul>
-<li><a href="reference.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">3.1 Server API reference</a></li>
-<li><a href="reference.html#HTTP2%2FSERVER:@ASYNC-SERVER%20MGL-PAX:SECTION" title="Polling server">3.2 Polling server</a>
+<li><a href="implementation.html#HTTP2%2FHPACK:@HPACK-API%20MGL-PAX:SECTION" title="HPACK - RFC7541 implementation.">4.1 HPACK - RFC7541 implementation.</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">4.2 Server API reference</a>
 
 <ul>
-<li><a href="reference.html#HTTP2%2FSERVER:@APP-INTERFACE%20MGL-PAX:SECTION" title="Interface to the application">3.2.1 Interface to the application</a></li>
-<li><a href="reference.html#HTTP2%2FSERVER:@REQUEST-HANDLING%20MGL-PAX:SECTION" title="Client actions loop (implementation)">3.2.2 Client actions loop (implementation)</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">4.2.1 Server classes</a></li>
+</ul></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@ASYNC-SERVER%20MGL-PAX:SECTION" title="Polling server overview">4.3 Polling server overview</a>
+
+<ul>
+<li><a href="implementation.html#HTTP2%2FSERVER:@APP-INTERFACE%20MGL-PAX:SECTION" title="Interface to the polling server">4.3.1 Interface to the polling server</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@REQUEST-HANDLING%20MGL-PAX:SECTION" title="Client actions loop (implementation)">4.3.2 Client actions loop (implementation)</a></li>
 </ul></li>
 </ul></li>
 </ul>
+
 <h6>[in package HTTP2]</h6>
   </div>
 </div>
