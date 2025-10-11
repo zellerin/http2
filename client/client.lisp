@@ -80,8 +80,8 @@ And finally, you need to pass these as the call parameter:
    :stream-class 'my-client-stream)
 ```
 """
-  (get-connection (method nil (http2-stream-minimal)))
-  (get-streams (method nil (stream-collection))))
+  (get-connection (method (http2-stream-minimal)))
+  (get-streams (method (stream-collection))))
 
 (defsection @customizing-client
     (:title "Customize client")
@@ -97,12 +97,12 @@ And finally, you need to pass these as the call parameter:
     (:title "Client reference")
   "For a simple request without body, following documented methods are called in
 sequence:"
-  (fetch-resource (method nil (t string t)))
-  (fetch-resource (method nil (t puri:uri t)))
-  (fetch-resource (method nil (stream generic-request t)))
-  (fetch-resource (method nil (client-http2-connection generic-request t)))
-  (fetch-resource (method nil (client-http2-connection request-with-utf8-body t)))
-  (fetch-resource (method nil (client-http2-connection request-with-binary-body t)))
+  (fetch-resource (method (t string t)))
+  (fetch-resource (method (t puri:uri t)))
+  (fetch-resource (method (stream generic-request t)))
+  (fetch-resource (method (client-http2-connection generic-request t)))
+  (fetch-resource (method (client-http2-connection request-with-utf8-body t)))
+  (fetch-resource (method (client-http2-connection request-with-binary-body t)))
   (generic-request class)
   (simple-request class)
   (request-with-body class)

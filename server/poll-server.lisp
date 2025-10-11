@@ -41,10 +41,9 @@ encrypting and writing of data for all the sockets."
 
 (defsection @tls-endpoint (:title "TLS endpoint")
   ""
-  (tls-endpoint struct)
+  (tls-endpoint type)
   (make-tls-endpoint function)
-  (with-tls-endpoint macro)
-)
+  (with-tls-endpoint macro))
 
 (defsection @request-handling
     (:title "Client actions loop (implementation)"

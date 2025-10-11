@@ -57,10 +57,10 @@ variable.
 
 "
   (get-path generic-function)
-  (get-headers (method nil (HTTP2/core::header-collecting-mixin)))
-  (get-method (method nil (server-stream)))
-  (get-scheme (method nil (server-stream)))
-  (get-authority (method nil (server-stream)))
+  (get-headers (method (HTTP2/core::header-collecting-mixin)))
+  (get-method (method (server-stream)))
+  (get-scheme (method (server-stream)))
+  (get-authority (method (server-stream)))
   (@request-body section))
 
 (defsection @request-body
@@ -87,7 +87,7 @@ FALLBACK-ALL-IS-ASCII (or improve IS-UTF8-P, or add some other decoding function
 
 If you do not want to see text at all, change class to \\NOT include
 UTF8-PARSER-MIXIN or any other conversion mixin."
-  (get-body (method nil (body-collecting-mixin)))
+  (get-body (method (body-collecting-mixin)))
   (http-stream-to-string function)
   (http2/client::fallback-all-is-ascii class))
 
