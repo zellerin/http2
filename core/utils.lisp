@@ -355,10 +355,6 @@ ancestors to descend from. "
   (get-medium generic-function)
   (get-medium (method (communication-error))))
 
-(define-condition communication-error (serious-condition)
-  ((medium :accessor get-medium :initarg :medium))
-  (:documentation "Something happens that prevents communication from going on, unless handled."))
-
 (define-condition done (communication-error)
   ()
   (:documentation "This condition is signalled when the socket on the other side is closed (for

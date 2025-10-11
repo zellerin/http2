@@ -61,3 +61,9 @@ HANDLER macro to define content to serve."))
 
 (mgl-pax:define-package #:http2
     (:use #:cl #:mgl-pax #:http2/server #:http2/client))
+
+(in-package #:http2/utils)
+
+(define-condition communication-error (serious-condition)
+  ((medium :accessor get-medium :initarg :medium))
+  (:documentation "Something happens that prevents communication from going on, unless handled."))
