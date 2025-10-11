@@ -200,8 +200,7 @@ MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
                          (:conc-name "CLIENT-")
                          (:print-object
                           (lambda (object out)
-                            (format out "#<client fd ~d, ~d octets to ~a>" (client-fd object)
-                                    (client-octets-needed object) (client-io-on-read object)))))
+                            (format out "tls endpoint for ~a" (client-application-data object)))))
   "Data of one TLS endpoint that is connected to a socket that is part of a FDSET. This includes:
 
 - File descriptor of underlying socket (FD).
