@@ -189,12 +189,6 @@ the first parameter."
   (do-pong generic-function)
   (do-goaway generic-function))
 
-
-#|
-
-
-|#
-
 (defun count-open-streams (connection)
   ;; 20240822 TODO: unused - remove or use to check when creating new stream.
   (count '(open half-closed/local half-closed/remote) (get-streams connection) :key #'get-state :test 'member))

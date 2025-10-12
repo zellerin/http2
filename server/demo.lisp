@@ -43,8 +43,8 @@
 
   "Rudimental CSS to prettify and colorize the results table in /test.
 
-Complication solved by padding is that the intermediate yellow text can be
-longer than PASS text and table width changes on fly.")
+Padding is needed so that the intermediate yellow text can be longer than PASS
+text and table width changes on fly.")
 
 (defparameter *tests*
   `()
@@ -262,18 +262,20 @@ extended and return."
                 (http2/server:http-stream-to-string stream)))))
 
 (defun schedule-repeated-fn (connection stream delay period fn)
+  "Repeatedly call FN on the CONNECTION and STREAM, until the stream is closed or
+an error occurs (likely, end of communication).
+
+FN is expected to send a data frames(s) to the stream."
   (labels ((send-event-and-plan-next ()
              (handler-case
                  (progn
-                   ;; stream might be closed already
-                   ;; in such case just dont schedule more
                    (unless (eql (http2/core::get-state stream) 'http2/core::closed)
                      (funcall fn connection stream)
                      (schedule-task http2/server::*scheduler* period
                                     #'send-event-and-plan-next
                                     stream)))
                (end-of-file () nil)
-               (http2/utils::communication-error () nil))))
+               (http2/utils:communication-error () nil))))
     (schedule-task http2/server::*scheduler* delay
                    #'send-event-and-plan-next 'stream)))
 

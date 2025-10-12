@@ -348,6 +348,8 @@ DISPATCHER parameter sets the dispatcher to use for the server. Dispatchers
 determine how are new requests handled. Presently there are several sets of
 dispatchers defined, see @DISPATCHERS
 
+HOST is used to bind appropriately the listening socket. Typically it would be
+localhost or \"0.0.0.0\".
 
 Detached variants run the server in a separate thread and returns immediately
 after opening the socket.
@@ -355,7 +357,9 @@ after opening the socket.
 Value of *VANILLA-SERVER-DISPATCHER* is not specified (set it if you care) but
 should be presently best detached dispatcher.
 
-FIND-PRIVATE-KEY-FILE and FIND-CERTIFICATE-FILE as default values for the
+PRIVATE-KEY-FILE and CERTIFICATE-FILE determine where to look for the
+certificate and the private key. By default, HOSTNAME (defaulting to HOST) is
+used to find the file in predefined locations (see FIND-PRIVATE-KEY-FILE)
 respective parameters try to locate the files."
   (declare (optimize debug safety (speed 0)))
   (multiple-value-bind (server socket)
@@ -363,8 +367,7 @@ respective parameters try to locate the files."
              :host host
              args)
     (push server *servers*)
-    (values server
-            (url-from-socket socket host t))))
+    (values server (url-from-socket socket host t))))
 
 (defun run (port &rest pars &key certificate-file private-key-file)
   "Run a default HTTP/2 server on PORT on foreground."

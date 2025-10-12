@@ -2,15 +2,6 @@
 
 Rudimentary clack support should be working. Demo from clack readme is working
 after some preparations:
-** Preparation
-#+begin_src lisp :results none
-  (ql:quickload :http2/server)
-  (load
-   (merge-pathnames  "clack/http2.lisp"
-                     (asdf:system-source-directory (asdf:find-system :http2))))
-  (uiop:run-program
-   "openssl req -new -nodes -x509 -days 365 -subj /CN=localhost -keyout /tmp/server.key -outform PEM -out /tmp/server.crt")
-#+end_src
 
 ** Running clack demo
 #+begin_src lisp :results none
@@ -29,6 +20,5 @@ after some preparations:
 :END:
 - No websockets fot http/2. This is why Clog would not run out of the box.
 - http/2 over plain unencrypted protocol is in general not supported, so a
-  certificate are needed. The preparation above generates disposable self-signed
-  certificate for testing. For non-localhost deployment you would get proper
-  certificate, [[https://letsencrypt.org/docs/certificates-for-localhost/][for localhost it might be tricky]].
+  certificate are needed. The server creates a self-signed one, but for a non-localhost deployment you should get proper
+  certificate.

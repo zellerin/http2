@@ -84,7 +84,10 @@ APPLY-TEXT-DATA-FRAME on it."
       (call-next-method)))
 
 (defclass fallback-all-is-ascii ()
-  ())
+  ()
+  (:documentation "Treat all data input as ASCII, that is, convert octets to a string with
+CODE-CHAR. It is compatible with UTF8-PARSER-MIXIN if provided after it in the
+list of direct superclasses."))
 
 (defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
   (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
