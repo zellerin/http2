@@ -241,7 +241,7 @@ new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream
-                                 utf8-parser-mixin text-collecting-stream
+                                 utf8-parser-mixin fallback-all-is-ascii  text-collecting-stream
                                  http2/core::header-collecting-mixin
                                  body-collecting-mixin
                                  multi-part-data-stream)
