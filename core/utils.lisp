@@ -315,7 +315,7 @@ If it does not exist, generate the key and self signed cert in /tmp/"
           ((probe-file lets-encrypt-name) lets-encrypt-name) ; explicit needed, symlinks
           (t
            (warn "No private key found by heuristics, creating new pair in /tmp")
-           (maybe-create-certificate key-name cert-name :base "/tmp")))))
+           (maybe-create-certificate key-name cert-name :base "/tmp" :hostname hostname)))))
 
 (defun find-certificate-file (keypath)
   "Find a certificate file for private key stored in KEYPATH.
@@ -327,8 +327,7 @@ Try file of same name ending with .crt, or, if the name of private key was privk
         (probe-file (make-pathname :name "fullchain" :defaults keypath)))
    (error "Cannot find cert file")))
 
-(defun maybe-create-certificate (key certificate &key system (base
-                                                              (if system (asdf:component-pathname (asdf:find-system system)) #P"/tmp/")))
+(defun maybe-create-certificate (key certificate &key hostname (base  #P"/tmp/"))
   "Generate key and a self-signed certificate to it for localhost using openssl
 cli."
   (unless (and (probe-file key)
@@ -336,7 +335,8 @@ cli."
     (let ((key-file (ensure-directories-exist (merge-pathnames key base)))
           (cert-file (ensure-directories-exist (merge-pathnames certificate base))))
       (uiop:run-program
-       `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj" "/CN=localhost" "-keyout" ,(namestring key-file)
+       `("openssl" "req" "-new" "-nodes" "-x509" "-days" "365" "-subj"
+                   ,(format nil "/CN=~a" hostname) "-keyout" ,(namestring key-file)
                    "-outform" "PEM" "-out" ,(namestring cert-file)))
       (terpri)
       (values key-file cert-file))))
