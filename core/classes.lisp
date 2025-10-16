@@ -2,37 +2,39 @@
 
 (in-package :http2/core)
 
-(defsection @base-classes
-    (:title "Classes")
-  "There are two parallel class hierarchies, one for HTTP2 connections, one for the HTTP2 streams.
+(defsection @implementation/overview (:title "Overview")
+  "There are three core groups of classes:
 
-In general, CLIENT- and SERVER- classes implement required minimal behaviour for
-the client, resp. server, and are supposed to be stable, while VANILLA classes
-implement \"typical\" or best practice behaviour and may change in time. They
-should be good for ad-hoc activities and experiments; for stable behaviour,
-make your class using appropriate mixins.
+- @CONNECTIONS, derived from HTTP2-CONNECTION, represent a connection as in the RFC,
+- Streams, derived from HTTP2-STREAM-MINIMAL, represent a HTTP/2 stream as in the RFC,
+- Dispatchers, derived from HTTP2/server/shared:BASE-DISPATCHER, represent a server that may receive and dispatch new connections.
 
-![Class hierarchy](./classes.svg)"
+Dispatcher create new connection instances as they receive requests, and
+connections create new stream instances to serve the streams to the clients.
+
+Clients do not need dispatchers; they create the connection to the server explicitly."
+  (receiver-fn type)
+  (@connections section)
+  (@streams section)
+  (@base-classes section)
+  (@write-data-handling section)
+  (@data-received section)
+  #+nil  (http2/stream-overlay:process-pending-frames function))
+
+(defsection @connections (:title "HTTP/2 Connections")
   (http2-connection class)
+  "At any point of time, a HTTP2-CONNECTION expects explicit number of octets as an
+input, i.e., 9 octets for a header, or frame size octets of the frame
+payload. This information is not stored in the connection (why?), but lexically
+in a loop in functions that make the update, together with a function that acts
+on the connection when the data are available. See
+HTTP2/STREAM-OVERLAY:PROCESS-PENDING-FRAMES that reads the input data
+from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
+#+nil  (http2/stream-overlay:process-pending-frames function)
+  (server-http2-connection class)
   (client-http2-connection class)
-  #+nil  (http2-stream class)
-  (get-stream-class generic-function)
-  (open-http2-stream function)
-  (get-network-stream function)
-  (server-stream class)
-  (client-stream class)
-  (close-connection restart)
-  (get-body generic-function)
-  (get-path generic-function)
-  (send-headers generic-function)
-  (get-method generic-function)
-  (get-headers generic-function)
-  (get-scheme generic-function)
-  (get-authority generic-function)
-  (get-status (method nil client-stream)))
+  (@data section))
 
-
-;;;; Classes
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
   ((acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
    (stream-class             :accessor get-stream-class             :initarg :stream-class
@@ -52,7 +54,14 @@ make your class using appropriate mixins.
                      :peer-window-size 65535)
 
   (:documentation
-   "A simple connection: promise push not allowed, otherwise reasonable behaviour"))
+   "A simple connection instance reflecting several aspects of the connections:
+
+- connection is a collection of streams  (STREAM-COLLECTION),
+- connection maintains flow control (FLOW-CONTROL-MIXIN),
+- connection maintains hpack state (HPACK-ENDPOINT),
+- connection maintain some  internal configuration variables such as maximum frames size (FRAME-CONTEXT),
+- connection maintain window sizes (FLOW-CONTROL-MIXIN),
+- connection can create new streams and needs to track the parameters of the new stream (class, windows sizes)"))
 
 (defmethod print-object ((connection http2-connection) out)
   (print-unreadable-object (connection out :type t :identity nil)))
@@ -62,18 +71,30 @@ make your class using appropriate mixins.
   0)
 
 (defmethod get-connection ((c http2-connection))
+  "Some frame actions can act both on streams and on connection. In that case,
+pretending that connection of connection is the same connection can be useful."
   c)
 
 (defclass client-http2-connection (http2-connection)
   ()
   (:default-initargs :id-to-use 1)
   (:documentation
-   "Client connections have odd-numbered streams."))
+   "Client connections initiate odd-numbered streams."))
 
 (defclass server-http2-connection (http2-connection)
   ((peer-accepts-push :accessor get-peer-accepts-push :initarg :peer-accepts-push))
   (:default-initargs :id-to-use 2
-   :peer-accepts-push t))
+   :peer-accepts-push t)
+  (:documentation "Server connection initiate even numbered streams."))
+
+
+(defsection @streams (:title "HTTP/2 Streams")
+  (http2-stream-minimal class)
+  (http2-stream class)
+  (http2-stream-state type)
+  (stream-collection class)
+  (server-stream class)
+  (client-stream class))
 
 (defclass http2-stream (http2-stream-minimal flow-control-mixin)
   ((data             :accessor get-data             :initarg :data)
@@ -93,12 +114,8 @@ make your class using appropriate mixins.
   (:documentation
    "Representation of HTTP/2 stream. See RFC7540."))
 
-(defgeneric get-network-stream (object)
-  (:documentation "Get network stream for the object.")
-  (:method ((object http2-stream))
-    (get-network-stream (get-connection object))))
-
 (defmethod initialize-instance :after ((stream http2-stream) &key connection)
+  "Set the window parameters of new stream from the connection defaults."
   (with-slots (peer-window-size window-size) stream
     (unless  (slot-boundp stream 'peer-window-size)
       (setf peer-window-size (get-initial-peer-window-size connection)))
@@ -131,13 +148,47 @@ than :status allowed, etc."))
    (path      :accessor get-path      :initarg :path
               :type string
               :documentation "The path and query parts of the target URI"))
-  (:default-initargs :method nil :scheme nil :authority nil :path nil))
+  (:default-initargs :method nil :scheme nil :authority nil :path nil)
+  (:documentation "Server streams need to track attributes from the client headers such as PATH."))
 
 (defmethod print-object ((stream server-stream) out)
   (if *print-escape*
       (print-unreadable-object (stream out :type t)
         (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
       (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
+
+(defsection @base-classes
+    (:title "Classes")
+  "There are two parallel class hierarchies, one for HTTP2 connections, one for the HTTP2 streams.
+
+In general, CLIENT- and SERVER- classes implement required minimal behaviour for
+the client, resp. server, and are supposed to be stable, while VANILLA classes
+implement \"typical\" or best practice behaviour and may change in time. They
+should be good for ad-hoc activities and experiments; for stable behaviour,
+make your class using appropriate mixins.
+
+![Class hierarchy](./classes.svg)"
+  (client-http2-connection class)
+  #+nil  (http2-stream class)
+  (get-stream-class generic-function)
+  (open-http2-stream function)
+  (get-network-stream function)
+                                        ;  (close-connection restart)
+  (get-body generic-function)
+  (get-path generic-function)
+  (send-headers function)
+  (get-method generic-function)
+  (get-headers generic-function)
+  (get-scheme generic-function)
+  (get-authority generic-function)
+  (get-status (method (client-stream))))
+
+
+;;;; Classes
+(defgeneric get-network-stream (object)
+  (:documentation "Get network stream for the object.")
+  (:method ((object http2-stream))
+    (get-network-stream (get-connection object))))
 
 (defclass timeshift-pinging-connection ()
   ()
@@ -146,8 +197,7 @@ than :status allowed, etc."))
 after DO-PING is send."))
 
 ;; 20240709 TODO: Link the section to documentation
-(defsection @write-data-handling ()
-  (:section "Writing frames")
+(defsection @write-data-handling  (:title "Writing frames")
   "There are two strategies how to write data that a connection produces - either
 write them to a stream, or store them for future. They specialize QUEUE-FRAME
 generic function to actually store the data."
@@ -155,17 +205,16 @@ generic function to actually store the data."
   (stream-based-connection-mixin class)
   (queue-frame generic-function)
   (parse-client-preface function)
-  (+client-preface-start+ variable)
-  (server-http2-connection class))
+  (+client-preface-start+ variable))
 
 
 ;;;; Callbacks from frame reading functions
 (defsection @data-received
     (:title "Processing data frames")
   (apply-data-frame generic-function)
-  (apply-data-frame (method nil (t t t t)))
+  (apply-data-frame (method (t t t t)))
   (body-collecting-mixin class)
-  (apply-data-frame (method nil (body-collecting-mixin t t t))))
+  (apply-data-frame (method (body-collecting-mixin t t t))))
 
 
 (defsection @stream-closed

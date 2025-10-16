@@ -42,7 +42,9 @@ idle streams.")
                      :streams nil
                      :window-size 65535
                      :initial-peer-window-size 65535
-                     :initial-window-size 65535))
+                     :initial-window-size 65535)
+  (:documentation "Live connections can have zero, one or more @STREAMS that are not closed, and
+can generate new ones."))
 
 (defsection @stream-states
     (:title "Stream states")

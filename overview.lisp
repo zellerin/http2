@@ -31,9 +31,10 @@ simple client to fetch a resource or how to serve simple pages."
 (defsection @implementation
     (:title "Implementation details (not part of API)")
 
-  "Here are some notes that try to explain how are things implemented. If this is
+    "Here are some notes that try to explain how are things implemented. If this is
 out of sync or if it does not make sense at all, fixing it is not a hight
 priority, and definitely not a blocker."
+  (http2/core::@implementation/overview section)
   (http2/hpack::@hpack-api section)
   (http2/server::@server-reference section)
   (http2/server/poll::@async-server section))

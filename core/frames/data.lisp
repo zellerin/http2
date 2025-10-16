@@ -1,19 +1,5 @@
 (in-package http2/core)
 
-(defsection @data (:title "Data and flow control")
-  "Received data are applied (as octets) on the appropriate stream with APPLY-DATA-FRAME.
-
-See: BODY-COLLECTING-MIXIN, HTTP2/STREAM-OVERLAY:HTTP2-STREAM-WITH-INPUT-STREAM,
-GZIP-DECODING-MIXIN, UTF8-PARSER-MIXIN and FALLBACK-ALL-IS-ASCII for some
-options how to convert the octet frames to something more usable."
-  (apply-data-frame generic-function)
-  "Data to write are send by WRITE-DATA-FRAME-MULTI or WRITE-DATA-FRAME. These do
-not take into account limits set up by the peer, so use WRITE-BINARY-PAYLOAD instead."
-  "Send and received octets are accounted for and must be within some limits (window)."
-  (flow-control-mixin class)
-  (get-peer-window-size generic-function)
-  (get-max-peer-frame-size generic-function))
-
 ;;;; content:
 ;;;; - classes
 ;;;; - flow control frame definition
@@ -24,6 +10,39 @@ not take into account limits set up by the peer, so use WRITE-BINARY-PAYLOAD ins
 ;;;;  - higher level function
 ;;;;  - low level
 ;;;; - data frame definition
+
+
+(defsection @data (:title "Data and flow control")
+  "HTTP streams can receive some data (content, body). We can see treat in
+several ways:
+
+- we can collect the data till all is received (end of stream from the peer) and
+  then process it as whole. If you need this, use BODY-COLLECTING-MIXIN class and GET-BODY function, or
+  TEXT-COLLECTING-STREAM class and HTTP-STREAM-TO-STRING function.
+- we may want to do something with each recieved chunk of data as soon as it
+  arrives. In this case, specialize APPLY-DATA-FRAME or APPLY-TEXT-DATA-FRAME.
+
+In both cases, one may want to work either with a string or with octets. The
+latter is default, for the former use UTF8-PARSER-MIXIN and/or
+FALLBACK-ALL-IS-ASCII.
+
+The body can be gzipped; in such case derive the stream from GZIP-DECODING-MIXIN."
+  (apply-data-frame generic-function)
+  (apply-text-data-frame generic-function)
+  (apply-data-frame (method (utf8-parser-mixin t t t)))
+  (body-collecting-mixin class)
+  (apply-data-frame (method  (BODY-COLLECTING-MIXIN t t t)))
+  (utf8-parser-mixin class)
+  (is-utf8-p function)
+  (gzip-decoding-mixin class)
+  (apply-data-frame (method :around (gzip-decoding-mixin t t t)))
+  (text-collecting-stream class)
+  "Data to write are send by WRITE-DATA-FRAME-MULTI or WRITE-DATA-FRAME. These do
+not take into account limits set up by the peer, so use WRITE-BINARY-PAYLOAD instead."
+  "Send and received octets are accounted for and must be within some limits (window)."
+  (flow-control-mixin class)
+  (get-peer-window-size generic-function)
+  (get-max-peer-frame-size generic-function))
 
 (defsection @data-classes (:title "Classes")
   )
@@ -53,6 +72,13 @@ the data."))
    "Mixin that collect all the received body (possibly unzipped data frames
 converted to proper encoding) into its TEXT slot."))
 
+(defun http-stream-to-string (http-stream)
+  "HTTP-STREAM should be a TEXT-COLLECTING-STREAM.
+
+HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."
+  (with-output-to-string (*standard-output*)
+    (mapc 'princ (nreverse (get-text http-stream)))))
+
 (defclass multi-part-data-stream ()
   ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
   (:default-initargs :window-size-increment-callback nil)
@@ -63,7 +89,7 @@ When peer sends window size increment frame, call specified callback
 function. This is set in WRITE-BINARY-PAYLOAD to write rest of data to write."))
 
 (defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream http2/stream-overlay::binary-stream)
-  ((output-buffer   :accessor get-output-buffer))
+  ((output-buffer :accessor get-output-buffer))
   (:default-initargs :to-write 0 :to-store 0)
   (:documentation
    "Binary stream that accepts new octets to the output-buffer"))
@@ -97,24 +123,10 @@ APPLY-WINDOW-SIZE-INCREMENT callback."
 This is used only in tracing, not during normal use."
   0)
 
-
-
 (defsection @accepting-data
     (:title "Accepting data frames")
   "When a data frame is received, APPLY-DATA-FRAME generic function is called. The specific
-action depends on the class of the receiving HTTP/2 stream. There are
-specializers for UTF8-PARSER-MIXIN."
-  (apply-data-frame generic-function)
-  (utf8-parser-mixin class)
-  (is-utf8-p function)
-  (apply-data-frame (method (utf8-parser-mixin t t t)))
-  (gzip-decoding-mixin class)
-  (apply-data-frame (method :around (gzip-decoding-mixin t t t)))
-  (body-collecting-mixin class)
-  (apply-data-frame (method  (BODY-COLLECTING-MIXIN t t t)))
-
-  (apply-text-data-frame generic-function)
-  (text-collecting-stream class))
+action depends on the class of the receiving HTTP/2 stream.")
 
 (defun account-read-window-contribution (connection stream length)
   "Update window size when we receive data."
@@ -140,21 +152,7 @@ Run PEER-ENDS-HTTP-STREAM callback on the stream if appropriate."
        (maybe-end-stream flags active-stream)
        (values #'parse-frame-header 9)))))
 
-(define-frame-writer 8 write-window-update-frame stream-or-connection nil 4
-  ((window-size-increment 31)) ((reserved t)) "```
-    +-+-------------------------------------------------------------+
-    |R|              Window Size Increment (31)                     |
-    +-+-------------------------------------------------------------+
-  ```
 
-The WINDOW_UPDATE frame (type=0x8) is used to implement flow control; see
-Section 5.2 for an overview.  Flow control operates at two levels: on each
-individual stream and on the entire connection."
-  (lambda (buffer start window-size-increment reserved)
-    (write-31-bits buffer start window-size-increment
-                   reserved)
-    (incf (get-window-size stream-or-connection)
-          window-size-increment)))
 
 (defgeneric apply-data-frame (stream payload start end)
   (:documentation
@@ -180,13 +178,6 @@ frame from START to END.")
 (defmethod apply-text-data-frame ((stream text-collecting-stream) text)
   (push text (get-text stream)))
 
-; TODO: 2024-12-27 How it works with GET-BODY and BODY-COLLECTING-MIXIN?
-(defun http-stream-to-string (http-stream)
-  "HTTP-STREAM should be a TEXT-COLLECTING-STREAM.
-
-HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."
-  (with-output-to-string (*standard-output*)
-    (mapc 'princ (nreverse (get-text http-stream)))))
 
 
 (defsection @data-write (:title "Writing"))
@@ -411,7 +402,8 @@ As always, use untrace to stop tracing."
 
 (defsection @data-frame-lowlevel (:title "Data frame")
   (parse-data-frame function)
-  (write-data-frame function))
+  (write-data-frame function)
+  (write-data-frame-multi function))
 
 (define-frame-type 0 :data-frame
     "```
@@ -429,6 +421,22 @@ As always, use untrace to stop tracing."
      :must-have-stream-in (open half-closed/local))
     nil
     nil)
+
+(define-frame-writer 8 write-window-update-frame stream-or-connection nil 4
+  ((window-size-increment 31)) ((reserved t)) "```
+    +-+-------------------------------------------------------------+
+    |R|              Window Size Increment (31)                     |
+    +-+-------------------------------------------------------------+
+  ```
+
+The WINDOW_UPDATE frame (type=0x8) is used to implement flow control; see
+Section 5.2 for an overview.  Flow control operates at two levels: on each
+individual stream and on the entire connection."
+  (lambda (buffer start window-size-increment reserved)
+    (write-31-bits buffer start window-size-increment
+                   reserved)
+    (incf (get-window-size stream-or-connection)
+          window-size-increment)))
 
 (define-frame-type 8 :window-update-frame
     "```
