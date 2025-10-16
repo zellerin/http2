@@ -177,6 +177,15 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
                    (replace buffer headers :start1 start))
                  headers)))
 
+;;; FIXME: wtf is it doing here???
+(defun write-priority (priority buffer start &optional headers)
+  (write-31-bits buffer start
+                 (priority-stream-dependency priority)
+                 (priority-exclusive priority))
+  (setf (aref buffer (+ 4 start)) (priority-weight priority))
+  (when headers (replace buffer headers :start1 (+ start 5)))
+  buffer)
+
 (defun write-headers-frame
     (stream headers &rest keys &key end-headers end-stream padded priority)
   "```
