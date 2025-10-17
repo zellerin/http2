@@ -85,9 +85,16 @@ APPLY-TEXT-DATA-FRAME on it."
 
 (defclass fallback-all-is-ascii ()
   ()
-  (:documentation "Treat all data input as ASCII, that is, convert octets to a string with
-CODE-CHAR. It is compatible with UTF8-PARSER-MIXIN if provided after it in the
-list of direct superclasses."))
+  (:documentation "Treat all non-binary data input as ASCII, that is, convert octets to a string
+with CODE-CHAR. It is compatible with UTF8-PARSER-MIXIN if provided after it in
+the list of direct superclasses."))
+
+(defun is-binary (content-type)
+  (or
+   (alexandria:starts-with-subseq "binary/" content-type)
+   (equal "application/octet-stream" content-type)))
 
 (defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
-  (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end))))
+  (if (is-binary (cdr (assoc "content-type" (get-headers stream) :test 'string-equal)))
+      (call-next-method)
+      (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end)))))
