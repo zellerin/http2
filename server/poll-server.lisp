@@ -15,7 +15,7 @@ SEND-UNENCRYPTED-BYTES to encrypt and send more data.
 The central function is SERVE-TLS that orchestrates reading, decrypting,
 encrypting and writing of data for all the sockets."
   (get-clients function)
-                                        ;  (client-application-data function)
+                                        ; (client-application-data function)
   (client-ssl function)
   (poll-dispatcher-mixin class)
   (process-client-sockets function)
@@ -32,12 +32,7 @@ encrypting and writing of data for all the sockets."
   (*no-client-poll-timeout* variable)
   (*poll-timeout* variable)
   (poll-timeout condition)
-  (compute-poll-timeout-value function)
-
-  "Following functions are obsolete."
-  (make-client function) ; obsolete
-
-  )
+  (compute-poll-timeout-value function))
 
 (defsection @tls-endpoint (:title "TLS endpoint")
   ""

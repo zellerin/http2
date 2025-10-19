@@ -189,39 +189,6 @@ Do not check whether write is possible."
   (decf (get-peer-window-size connection) length)
   (decf (get-peer-window-size stream) length))
 
-(defun write-data-frame (stream data &rest keys &key padded end-stream)
-  "```
-  +---------------+-----------------------------------------------+
-  |                            Data (*)                         ...
-  +---------------------------------------------------------------+
-```
-
-  DATA frames (type=0x0) convey arbitrary, variable-length sequences of
-  octets associated with a stream.  One or more DATA frames are used,
-  for instance, to carry HTTP request or response payloads."
-  (declare (ignore padded end-stream)
-           (octet-vector data))
-  (let ((length (length data)))
-    (write-frame stream length +data-frame+ keys
-                 (lambda (buffer start data)
-                   (account-write-window-contribution (get-connection stream)
-                                                      stream length)
-                   (replace buffer data :start1 start))
-                 data)))
-
-(defun write-data-frame-multi (stream data &rest keys &key end-stream)
-  "Write a data frame that includes DATA - that is a sequence of octet vectors."
-  (declare (ignore end-stream))
-  (let ((length (reduce #'+  data :key #'length)))
-    (write-frame stream length +data-frame+ keys
-                 (lambda (buffer start data)
-                   (account-write-window-contribution (get-connection stream)
-                                                      stream length)
-                   (dolist (datum data)
-                     (replace buffer datum :start1 start)
-                     (incf start (length datum))))
-                 data)))
-
 (defun write-binary-payload (connection stream payload &key (end-stream t))
   "Write binary PAYLOAD to the http2 STREAM.
 
@@ -421,6 +388,39 @@ As always, use untrace to stop tracing."
      :must-have-stream-in (open half-closed/local))
     nil
     nil)
+
+(defun write-data-frame (stream data &rest keys &key padded end-stream)
+  "```
+  +---------------+-----------------------------------------------+
+  |                            Data (*)                         ...
+  +---------------------------------------------------------------+
+```
+
+  DATA frames (type=0x0) convey arbitrary, variable-length sequences of
+  octets associated with a stream.  One or more DATA frames are used,
+  for instance, to carry HTTP request or response payloads."
+  (declare (ignore padded end-stream)
+           (octet-vector data))
+  (let ((length (length data)))
+    (write-frame stream length +data-frame+ keys
+                 (lambda (buffer start data)
+                   (account-write-window-contribution (get-connection stream)
+                                                      stream length)
+                   (replace buffer data :start1 start))
+                 data)))
+
+(defun write-data-frame-multi (stream data &rest keys &key end-stream)
+  "Write a data frame that includes DATA - that is a sequence of octet vectors."
+  (declare (ignore end-stream))
+  (let ((length (reduce #'+  data :key #'length)))
+    (write-frame stream length +data-frame+ keys
+                 (lambda (buffer start data)
+                   (account-write-window-contribution (get-connection stream)
+                                                      stream length)
+                   (dolist (datum data)
+                     (replace buffer datum :start1 start)
+                     (incf start (length datum))))
+                 data)))
 
 (define-frame-writer 8 write-window-update-frame stream-or-connection nil 4
   ((window-size-increment 31)) ((reserved t)) "```
