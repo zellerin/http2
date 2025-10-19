@@ -63,6 +63,9 @@ HANDLER macro to define content to serve."))
     (:use #:cl #:mgl-pax #:http2/server #:http2/client))
 
 (in-package #:http2/utils)
+(defsection @error-root ()
+  (communication-error condition)
+  (medium unspecified))
 
 (define-condition communication-error (serious-condition)
   ((medium :accessor get-medium :initarg :medium))

@@ -372,13 +372,6 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
 (defmethod do-pong ((connection timeshift-pinging-connection) data)
   (format t "Ping time: ~5fs~%" (/ (- (get-internal-real-time) data) 1.0 internal-time-units-per-second)))
 
-(defmethod do-goaway ((connection server-http2-connection) error-code last-stream-id debug-data)
-  (unless (eq error-code '+no-error+)
-    (signal 'go-away :last-stream-id last-stream-id
-                     :error-code error-code
-                     :debug-data debug-data)
-    (invoke-restart 'close-connection)))
-
 
 (defvar +client-preface-start+
   #.(vector-from-hex-text "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a")

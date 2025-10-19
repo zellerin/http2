@@ -17,10 +17,10 @@
        (defcode +refused-stream+      7  "The endpoint refused the stream prior to performing any application processing")
        (defcode +cancel+              8  "The endpoint indicates that the stream is no longer needed")
        (defcode +compression-error+   9  "The endpoint is unable to maintain the header compression context for the connection")
-       (defcode +connect-error+       #xa  "The connection established in response to a      CONNECT request was reset or abnormally closed")
+       (defcode +connect-error+       #xa  "The connection established in response to a CONNECT request was reset or abnormally closed")
        (defcode +enhance-your-calm+   #xb  "The endpoint detected that its peer is exhibiting a behavior that might be generating excessive load")
        (defcode +inadequate-security+ #xc  "The underlying transport has properties that do not meet minimum security requirements")
-       (defcode +http-1-1-required+   #xd  "The endpoint requires that HTTP/11 be used instead of HTTP/2")))
+       (defcode +http-1-1-required+   #xd  "The endpoint requires that HTTP/1.1 be used instead of HTTP/2")))
 
     "This table maps error codes to mnemonic names - symbols.
 
@@ -60,16 +60,28 @@
   (do-goaway generic-function)
   (h2-not-supported-by-server condition))
 
-(define-condition go-away (serious-condition)
-  ((error-code     :accessor get-error-code     :initarg :error-code)
-   (debug-data     :accessor get-debug-data     :initarg :debug-data)
+(define-condition go-away (communication-error)
+  ((error-code     :accessor get-error-code     :initarg :error-code
+                   :type symbol)
+   (debug-data     :accessor get-debug-data     :initarg :debug-data
+                   :type vector)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
+  ;; TODO: maybe subconditions for the error codes?
   (:report (lambda (err stream)
              (with-slots (error-code debug-data) err
                (format stream
-                       "~a sent GO-AWAY frame with error ~a.~@[~2%There were debug data in frame:~%~a~]"
-                       (get-medium err)
-                       error-code (and debug-data (map 'string 'code-char debug-data)))))))
+                       "~@<Peer sent GO-AWAY frame. Connection can no longer be used.~_Error code ~W - ~W~@[~_Debug data: ~W~]~:>"
+                       (get-medium err) error-code (documentation error-code 'variable)
+                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
+  (:documentation "Signalled by DO-GOAWAY when go-away frame arrives."))
+
+(define-condition go-away-no-error (go-away)
+  ()
+  (:report (lambda (err stream)
+             (with-slots (error-code debug-data) err
+               (format stream
+                       "~@<Peer requested to close connection (not an error).~@[~_Debug data: ~W~]~:>"
+                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data)))))))
 
 (define-condition http2-condition ()
   ())
@@ -85,13 +97,8 @@
 (define-condition http2-simple-error (http2-error simple-condition)
   ())
 
-(defmethod print-object ((err go-away) out)
-  (with-slots (error-code debug-data last-stream-id) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a (~s)" error-code (map 'string 'code-char debug-data)))))
-
-(define-condition connection-error (http2-error)
-  ((connection :accessor get-connection :initarg :connection)
+(define-condition connection-error (communication-error)
+  ((medium :accessor get-connection :initarg :connection)
    (code       :accessor get-code       :initarg :code))
   (:documentation
    "A connection error is signalled when we detect an illegal frame content.

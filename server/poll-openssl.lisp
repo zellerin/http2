@@ -16,6 +16,11 @@ See manual page for SSL_get_error for the overview."
 
 (define-condition ssl-error-condition (communication-error)
   ((codes :accessor get-codes :initarg :codes))
+  (:report (lambda (condition out)
+             (format out "Peer sent an alert: ~{~a~%~}"
+                     (mapcar (lambda (code)
+                               (foreign-string-to-lisp (err-reason-error-string code)))
+                             (get-codes condition)))))
   (:documentation "An error condition on SSL side that is not handled separately.
 
 The list of error codes is in openssl/sslerr.h.
@@ -26,11 +31,13 @@ A non-recoverable, fatal error in the SSL library occurred, usually a protocol
  connection and SSL_shutdown() must not be called."))
 
 (defmethod print-object ((object ssl-error-condition) stream)
-  (print-unreadable-object (object stream :type t :identity nil)
-    (dolist (code (get-codes object))
-      (format stream "~x: ~a" code
-              (foreign-string-to-lisp (err-reason-error-string code))))
-    (format stream " on ~a" (get-medium object))))
+  (if *print-escape*
+      (print-unreadable-object (object stream :type t :identity nil)
+        (dolist (code (get-codes object))
+          (format stream "~x: ~a" code
+                  (foreign-string-to-lisp (err-reason-error-string code))))
+        (format stream " on ~a" (get-medium object)))
+      (call-next-method)))
 
 (defun get-ssl-errors ()
   "Get SSL error and either close connection immediately (for some known and
@@ -63,7 +70,9 @@ indicate that the underlying transport has been closed."))
   ()
   (:documentation  "The TLS/SSL peer has closed the connection for writing by sending the
 close_notify alert.  No more data can be read.  This does not necessarily
-indicate that the underlying transport has been closed."))
+indicate that the underlying transport has been closed.")
+  ;; To test: run a curl request
+  (:report "Peer closed TLS connection."))
 
 (define-condition ssl-blocked (communication-error)
   ()
@@ -75,7 +84,8 @@ indicate that the underlying transport has been closed."))
    "The last operation was a read operation from a nonblocking BIO. Not enough data
 was available at this time to complete the operation.  If at a later time the
 underlying BIO has data available for reading the same function can be called
-again."))
+again.")
+  (:report "Not enough data for SSL read. Waiting for more data normally fixes this"))
 
 (define-condition ssl-wants-write (ssl-blocked)
   ()

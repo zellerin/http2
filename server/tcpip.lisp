@@ -100,6 +100,10 @@ Otherwise signal an error."
 (defcfun "ioctl" :int "Use to set nonblock on OSX"
   (fd :int) (code :uint) (flag :pointer) (fsize :int))
 
+(defcfun "getpeername" :int (socket :int) (address :pointer) (len :pointer))
+(defcfun "inet_ntoa" :string (in :pointer))
+(defcfun "htons" :ushort (port :ushort))
+
 (defun strerror (errnum)
   "Lisp string for particular error. See man strerror(3)."
   (let ((str (make-array 256 :element-type 'character)))
@@ -331,3 +335,16 @@ follow later (EAGAIN)."
     (let ((res (read-buffer socket vector max-size)))
       (when (plusp res)
         (values (subseq vector 0 res))))))
+
+(defun fd-to-ip (fd)
+  (with-foreign-objects ((addr '(:struct sockaddr-in)) (len :int))
+    (setf (mem-ref len :int) size-of-sockaddr-in)
+    (checked-syscall #'zerop #'getpeername fd addr len)
+    (assert (= (mem-ref len :int) size-of-sockaddr-in))
+    (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
+      (values (format nil "~a.~a.~a.~a:~a"
+                      (ldb (byte 8 0) sin-addr)
+                      (ldb (byte 8 8) sin-addr)
+                      (ldb (byte 8 16) sin-addr)
+                      (ldb (byte 8 24) sin-addr)
+                      (htons sin-port))))))

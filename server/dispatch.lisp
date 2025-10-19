@@ -381,11 +381,16 @@ respective parameters try to locate the files."
      (warn "No running server to stop"))
     (t
      (restart-case (stop-server server)
-       (OK () ))
+       (continue ()
+         :report "Just remove server from list of running servers"
+         :test (lambda (err) #+sbcl(typep err 'SB-THREAD:INTERRUPT-THREAD-ERROR)
+                       #-sbcl t)))
      (setf *servers* (remove server *servers*))))
   server)
 
 (defmethod stop-server ((dispatcher detached-server-mixin))
+  ;; TODO: does it work for non-sbcl lisps? As in "implementation-defined" note
+  ;; in the doc of destroy-thread.
   (bordeaux-threads:destroy-thread  (get-thread dispatcher)))
 
 

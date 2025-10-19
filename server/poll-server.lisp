@@ -483,14 +483,23 @@ that expects a response."
           ((plusp res) res)
           (t (error "This cant happen (#1)")))))
 
+(define-condition write-failed (communication-error)
+  ((expected :accessor get-expected :initarg :expected)
+   (written  :accessor get-written  :initarg :written)
+   (client   :accessor get-client   :initarg :client))
+  (:report (lambda (error out)
+             (with-slots (expected written client) error
+                 (format out "Write to peer ~W failed: tried to write ~W, written ~W"
+                         client expected written)))))
+
 (defun write-data-to-socket (client)
   "Write buffered encrypted data Ⓔ to the client socket ⑥. Update the write buffer to
 keep what did not fit."
   (let ((concated (client-write-buf client))) ;;DEBUG
     (let ((written
             (push-bytes client (constantly nil)
-                         #'send-to-peer
-                         concated 0 (client-write-buf-size client))))
+                        #'send-to-peer
+                        concated 0 (client-write-buf-size client))))
       (cond ((= written (client-write-buf-size client))
              (remove-state client 'has-data-to-write)
              (setf (client-write-buf-size client) 0))
@@ -500,7 +509,8 @@ keep what did not fit."
              (replace (client-write-buf client) (client-write-buf client)
                       :start2 written :end2 (client-write-buf-size client))
              (decf (client-write-buf-size client) written))
-            (t (error "Write failed")))
+            (t (error 'write-failed :expected (client-write-buf-size client)
+                      :client client :written written)))
       written)))
 
 (defun encrypt-and-send (client)
@@ -839,12 +849,10 @@ reading of the client hello."
         (restart-case
             (handler-case
                 (handle-client-io client dispatcher)
-              (communication-error (err) (invoke-restart 'http2/core:close-connection err))
-;              (ssl-error-condition (err) (invoke-restart 'http2/core:close-connection err))
-              (connection-error (err) (invoke-restart 'http2/core:close-connection err))) ; e.g., http/1.1 client
+              (communication-error (err) (invoke-restart 'close-connection err)))
           (close-connection (&optional err)
             :report "Close current connection"
-            (print err *error-output*)
+            (format *error-output* "~&~@<~A ~A~:>" (get-ip (client-application-data client)) err)
             (force-output *error-output*)
             (unwind-protect
                  (when err

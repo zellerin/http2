@@ -361,5 +361,7 @@ ancestors to descend from. "
 reading)."))
 
 (defmethod print-object ((err communication-error) out)
-  (print-unreadable-object (err out :type t)
-    (format out "on ~a" (http2/utils:get-medium err))))
+  (if *print-escape*
+      (print-unreadable-object (err out :type t)
+        (format out "on ~a" (http2/utils:get-medium err)))
+      (call-next-method)))

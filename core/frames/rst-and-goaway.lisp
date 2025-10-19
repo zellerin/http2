@@ -22,13 +22,12 @@
 
 (defgeneric do-goaway (connection error-code last-stream-id debug-data)
   (:documentation
-   "Called when a go-away frame is received. By default throws GO-AWAY condition if
+   "OBSOLETE. MAY BE REMOVED SOON. Use handlers for go-away instead.
+
+Called when a go-away frame is received. By default throws GO-AWAY condition if
 error was reported.")
   (:method (connection error-code last-stream-id debug-data)
-    (unless (eq error-code '+no-error+)
-      (error 'go-away :last-stream-id last-stream-id
-                      :error-code error-code
-                      :debug-data debug-data))))
+    nil))
 
 (define-frame-type 3 :rst-stream-frame
     "The RST_STREAM frame (type=0x3) allows for immediate termination of a
@@ -113,8 +112,12 @@ error was reported.")
       (let ((last-id (aref/wide data 0 4))
             (error-code (aref/wide data 4 4))
             (data (subseq data 8)))
-        (do-goaway connection (get-error-name error-code) last-id data))
-      (invoke-restart 'close-connection)))
+        (do-goaway connection (get-error-name error-code) last-id data)
+        (error (if (zerop error-code) 'go-away-no-error 'go-away)
+               :last-stream-id last-id
+               :error-code error-code
+               :debug-data data
+               :medium connection))))
 
 (defun connection-error (class connection &rest args)
   "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
