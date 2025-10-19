@@ -1,8 +1,8 @@
 (in-package http2/core)
 
 ;;;; content:
-;;;; - classes
 ;;;; - flow control frame definition
+;;;; - classes
 ;;;; - reading
 ;;;;  - higher level functions to read
 ;;;;  - low level
@@ -11,6 +11,64 @@
 ;;;;  - low level
 ;;;; - data frame definition
 
+(defsection @flow-control (:title "Flow control")
+  "Each (non-empty) data frame consumes part of the data window. The accounting for
+the windows is maintained by the FLOW-CONTROL-MIXIN."
+  (flow-control-mixin class)
+  (get-peer-window-size generic-function)
+  (apply-window-size-increment generic-function)
+  (get-window-open-fn (method (flow-control-mixin))))
+
+(defclass flow-control-mixin ()
+  ((window-size      :accessor get-window-size      :initarg :window-size)
+   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size)
+   (window-open-fn   :accessor get-window-open-fn   :initarg :window-open-fn
+                     :initform nil
+                     :documentation "Reference to a function to call when the window is extended. This is used in the
+handler for /long in the demo.lisp example."))
+  (:documentation
+   "The flow control parameters that are kept both per-stream and per-connection.
+
+In addition to the accounting items (current window size of both endpoints) it
+also tracks a callback to be called when window is increased (WINDOW-OPEN-FN)."))
+
+(defclass multi-part-data-stream ()
+  ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
+  (:default-initargs :window-size-increment-callback nil)
+  (:documentation
+   "Implement writing of data that may possibly be too big to send at once.
+
+When peer sends window size increment frame, call specified callback
+function. This is set in WRITE-BINARY-PAYLOAD to write rest of data to write."))
+
+(defgeneric apply-window-size-increment (object increment)
+  (:documentation
+   "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
+the stream or connection, and possibly calls WINDOW-OPEN-FN.")
+  (:method ((object (eql :closed)) increment))
+  (:method ((object flow-control-mixin) increment)
+    (with-slots (window-open-fn peer-window-size) object
+      (incf peer-window-size increment)
+      (when window-open-fn
+        (funcall window-open-fn))))
+
+  (:method :after ((object multi-part-data-stream) increment)
+    (with-slots (window-size-increment-callback) object
+      (when window-size-increment-callback
+        (funcall window-size-increment-callback object)))))
+
+(defun account-read-window-contribution (connection stream length)
+  "Update window size when we receive data."
+  ;; TODO: throw an error when this goes below zero
+  (decf (get-window-size connection) length)
+  (decf (get-window-size stream) length))
+
+(defun account-write-window-contribution (connection stream length)
+  "Update peer window size for stream and connection after writing data.
+
+Do not check whether write is possible."
+  (decf (get-peer-window-size connection) length)
+  (decf (get-peer-window-size stream) length))
 
 (defsection @data (:title "Data and flow control")
   "HTTP streams can receive some data (content, body). We can see treat in
@@ -40,20 +98,10 @@ The body can be gzipped; in such case derive the stream from GZIP-DECODING-MIXIN
   "Data to write are send by WRITE-DATA-FRAME-MULTI or WRITE-DATA-FRAME. These do
 not take into account limits set up by the peer, so use WRITE-BINARY-PAYLOAD instead."
   "Send and received octets are accounted for and must be within some limits (window)."
-  (flow-control-mixin class)
-  (get-peer-window-size generic-function)
-  (get-max-peer-frame-size generic-function))
+  )
 
 (defsection @data-classes (:title "Classes")
   )
-
-(defclass flow-control-mixin ()
-  ((window-size      :accessor get-window-size      :initarg :window-size)
-   (peer-window-size :accessor get-peer-window-size :initarg :peer-window-size)
-   (window-open-fn   :accessor get-window-open-fn   :initarg :window-open-fn
-                     :initform nil))
-  (:documentation
-   "The flow control parameters that are kept both per-stream and per-connection."))
 
 (defclass body-collecting-mixin ()
   ((body :accessor get-body :initarg :body
@@ -78,15 +126,6 @@ converted to proper encoding) into its TEXT slot."))
 HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."
   (with-output-to-string (*standard-output*)
     (mapc 'princ (nreverse (get-text http-stream)))))
-
-(defclass multi-part-data-stream ()
-  ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
-  (:default-initargs :window-size-increment-callback nil)
-  (:documentation
-   "Implement writing of data that may possibly be too big to send at once.
-
-When peer sends window size increment frame, call specified callback
-function. This is set in WRITE-BINARY-PAYLOAD to write rest of data to write."))
 
 (defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream http2/stream-overlay::binary-stream)
   ((output-buffer :accessor get-output-buffer))
@@ -127,12 +166,6 @@ This is used only in tracing, not during normal use."
     (:title "Accepting data frames")
   "When a data frame is received, APPLY-DATA-FRAME generic function is called. The specific
 action depends on the class of the receiving HTTP/2 stream.")
-
-(defun account-read-window-contribution (connection stream length)
-  "Update window size when we receive data."
-  ;; TODO: throw an error when this goes below zero
-  (decf (get-window-size connection) length)
-  (decf (get-window-size stream) length))
 
 (defun parse-data-frame (active-stream flags)
   "Return parser for a generic data frame (possibly with a padding). That is a
@@ -182,13 +215,6 @@ frame from START to END.")
 
 (defsection @data-write (:title "Writing"))
 
-(defun account-write-window-contribution (connection stream length)
-  "Update peer window size for stream and connection after writing data.
-
-Do not check whether write is possible."
-  (decf (get-peer-window-size connection) length)
-  (decf (get-peer-window-size stream) length))
-
 (defun write-binary-payload (connection stream payload &key (end-stream t))
   "Write binary PAYLOAD to the http2 STREAM.
 
@@ -219,23 +245,6 @@ continues when window size increases."
                        (error "FIXME: this is unsupported, do we really need :END-STREAM nil version?"))
         (setf window-size-increment-callback #'write-chunk)
         (write-chunk stream)))))
-
-(defgeneric apply-window-size-increment (object increment)
-  (:documentation
-   "Called on window update frame. By default, increases PEER-WINDOW-SIZE slot of
-the strem or connection.")
-  (:method ((object (eql :closed)) increment))
-  (:method (object increment)
-    (incf (get-peer-window-size object) increment))
-  (:method :after ((object flow-control-mixin) increment)
-    (with-slots (window-open-fn) object
-      (when window-open-fn
-        (funcall window-open-fn)))))
-
-(defmethod apply-window-size-increment :after ((object multi-part-data-stream) increment)
-  (with-slots (window-size-increment-callback) object
-    (when window-size-increment-callback
-      (funcall window-size-increment-callback object))))
 
 (defsection @lisp-stream-emulation
     (:title "Emulate Lisp stream over frames")

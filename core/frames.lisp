@@ -8,6 +8,7 @@
   (queue-frame generic-function)
   (stream-based-connection-mixin class)
   (write-buffer-connection-mixin class)
+  (get-max-peer-frame-size generic-function)
   (frame-context class)
   (flush-http2-data generic-function))
 

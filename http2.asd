@@ -28,7 +28,6 @@
                              (:file "frames/push-promise")
                              (:file "frames/altsvc")
                              (:file "frames/ping")
-                             (:file "binary-payload")
                              (:file "gzip-decode")
                              (:file "utf8")))))
 
