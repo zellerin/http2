@@ -200,7 +200,16 @@ table otherwise."
        (http2/core:get-peer-window-size stream)))
 
 (defun inner-writer (stream min max data-write-code continue)
-  "Store the writer for the code to the stream callback and run it."
+  "Repeatedly call or arrange to call CONTINUE.
+
+
+CONTINUE is a function that returns two values:
+- data to write, and
+- code write more data (of same structure) or nil at the end.
+
+
+
+Store the writer for the code to the stream callback and run it."
   (funcall
    (setf (http2/core::get-window-open-fn stream)
          (lol:alambda ()

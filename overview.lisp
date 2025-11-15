@@ -36,6 +36,7 @@ out of sync or if it does not make sense at all, fixing it is not a hight
 priority, and definitely not a blocker."
   (http2/core::@implementation/overview section)
   (http2/hpack::@hpack-api section)
+  (http2/core::@data section)
   (http2/server::@server-reference section)
   (http2/server/poll::@async-server section))
 

@@ -64,7 +64,12 @@
   ((error-code     :accessor get-error-code     :initarg :error-code)
    (debug-data     :accessor get-debug-data     :initarg :debug-data)
    (last-stream-id :accessor get-last-stream-id :initarg :last-stream-id))
-  (:documentation "Signaled when GO-AWAY frame is received."))
+  (:report (lambda (err stream)
+             (with-slots (error-code debug-data) err
+               (format stream
+                       "~a sent GO-AWAY frame with error ~a.~@[~2%There were debug data in frame:~%~a~]"
+                       (get-medium err)
+                       error-code (and debug-data (map 'string 'code-char debug-data)))))))
 
 (define-condition http2-condition ()
   ())

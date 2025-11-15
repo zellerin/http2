@@ -98,6 +98,25 @@ The body can be gzipped; in such case derive the stream from GZIP-DECODING-MIXIN
   "Data to write are send by WRITE-DATA-FRAME-MULTI or WRITE-DATA-FRAME. These do
 not take into account limits set up by the peer, so use WRITE-BINARY-PAYLOAD instead."
   "Send and received octets are accounted for and must be within some limits (window)."
+  "User in most cases probably prefers not to care about windows and data frames,
+and binary vs text and content encoding and compression of the data.
+
+This poses several topics:
+
+- Overlay a Common Lisp stream over data frames. This is done using gray
+  streams, see XXX.
+-  Handle window management. The problem is that we do not
+  want to block an individual stream handler. So the options I can see are:
+
+- We can actually ignore the issue, if the size of the output is small, it would
+  work. You can WRITE-DATA-FRAME if you need to send binary data up to 16384 octets (or more
+  if negotiated with the per)
+- We can signal error when the output is too big, and let the application code handle that.
+  The application would need a callback to resume operations when the window is open again.
+  Problem - it complicates the application.
+- We can buffer all the input and send it when there is an opportunity automatically.
+  Problem - potentially conses a lot."
+  "Starting from the low-level, options are:"
   )
 
 (defsection @data-classes (:title "Classes")

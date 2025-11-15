@@ -301,7 +301,9 @@ For constant FLAG-NAME this is supposed to be fast.
   (with-padding-marks macro))
 
 (defmacro with-padding-marks ((connection flags start end) &body body)
-  "Look at the FLAGS and LENGTH (captured variable, FIXME) of a frame, with possibly padded payload that starts at START, and adjust START and set END for this frame to start and end of the actual payload.
+  "Look at the FLAGS and LENGTH (captured variable, FIXME) of a frame, with
+possibly padded payload that starts at START, and adjust START and set END for
+this frame to start and end of the actual payload.
 
 CONNECTION is used only to have somewhere to signal possible error."
   ;; FIXME: does it work with START != 0? What is length then?
