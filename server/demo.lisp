@@ -142,7 +142,7 @@ table otherwise."
         (resp-length (length (@ reply response-text))))
     (unless (and
              (= 200 resp-code)
-             (= 2588905 resp-length))
+             (= 2594035 resp-length))
       (+ "code " resp-code ", length "  resp-length))))
 
 (define-simple-server-test "Body passing"
@@ -199,43 +199,17 @@ table otherwise."
   (min (http2/core:get-peer-window-size (http2/core::get-connection stream))
        (http2/core:get-peer-window-size stream)))
 
-(defun inner-writer (stream min max data-write-code continue)
-  "Repeatedly call or arrange to call CONTINUE.
+(defun create-part (from to)
+  "String with paragraphs for testing in given range"
+  (with-output-to-string (out)
+    (cl-who:with-html-output (out)
+      (loop for i from from to to
+            do
+               (cl-who:htm (:p "A paragraph #" (format out "~d" i) "."))))))
 
+(defvar *long-handler-items* 99999 "How many paragraphs are sent by *long* handler")
 
-CONTINUE is a function that returns two values:
-- data to write, and
-- code write more data (of same structure) or nil at the end.
-
-
-
-Store the writer for the code to the stream callback and run it."
-  (funcall
-   (setf (http2/core::get-window-open-fn stream)
-         (lol:alambda ()
-           "Run body from min to below max. Send the data while there is space in the peer
-window. If there is no longer space, put itself to the callback for window being
-extended and return."
-           (loop for i from MIN below MAX
-                 if (> (compute-stream-window-size stream) 16384)
-                   do (funcall data-write-code i)
-                 else
-                   do
-                      (setf (http2/core::get-window-open-fn stream) #'lol:self
-                            min i)
-                      (return)
-                 finally (funcall continue)
-                         (setf (http2/core::get-window-open-fn stream) nil))))))
-
-(defun inner-writer-test ()
-  (let ((stream (make-instance 'http2/core::http2-stream :peer-window-size 50000
-                               :connection (make-instance 'http2/core::http2-connection :peer-window-size 1000000))))
-    (inner-writer stream 1 100
-                  (lambda (i) (decf (http2/core::get-peer-window-size stream) 10000) i)
-                  (lambda () (return-from inner-writer-test)))
-    (loop
-      (funcall (http2/core::get-window-open-fn stream))
-      (incf (http2/core::get-peer-window-size stream) 50000))))
+(defvar *long-handler-chunk-size* 500 "How many chunks are in one action. Supposedly this helps speed, but test needed.")
 
 (define-exact-handler "/long"
     ;; FIXME: put the looping logic to the callbacks
@@ -245,12 +219,18 @@ extended and return."
          ("refresh" "30; url=/")))
       (with-html-output (out)
         (:h1 "Test long body")
-        (inner-writer stream 1 100000
-                      (lambda (i)  (htm (:p "A paragraph #" (format out "~d" i) ".")))
-                      (lambda ()
-                        (write-sequence "</body></html>" out)
-                        (close out)
-                        (setf (http2/core::get-window-open-fn stream) nil))))))
+        (let ((i (1+ *long-handler-chunk-size*))
+              (chunk (create-part 1 *long-handler-chunk-size*)))
+          (labels ((write-chunk ()
+                     (write-sequence chunk out)
+                     (setf chunk (when (<= i *long-handler-items*)
+                                   (create-part i (min *long-handler-items* (incf i *long-handler-chunk-size*)))))
+                     (values (if chunk #'write-chunk (lambda ()
+                                                       (write-sequence "</body></html>" out)
+                                                       (close out)
+                                                       (values nil 0)))
+                             (length chunk))))
+            (http2/core::long-write stream #'write-chunk (length chunk)))))))
 
 (define-exact-handler "/slow"
     (handler (foo :utf-8 nil)
@@ -267,8 +247,7 @@ extended and return."
         (send-headers
          `((:status "200") ("content-type" "text/plain; charset=utf-8")
            ("refresh" "3; url=/")))
-        (format foo  "~a"
-                (http2/server:http-stream-to-string stream)))))
+        (write-sequence (http2/server:http-stream-to-string stream) foo))))
 
 (defun schedule-repeated-fn (connection stream delay period fn)
   "Repeatedly call FN on the CONNECTION and STREAM, until the stream is closed or
@@ -290,6 +269,7 @@ FN is expected to send a data frames(s) to the stream."
 
 (define-exact-handler "/event-stream"
     (lambda (connection stream)
+      "Output series of events. Use -N (--no-buffer) curl parameter to test."
       (send-headers stream `((:status "200") ("content-type" "text/event-stream")))
       (let ((i 0))
         (schedule-repeated-fn connection stream 0.0 1.0

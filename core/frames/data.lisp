@@ -17,7 +17,7 @@ the windows is maintained by the FLOW-CONTROL-MIXIN."
   (flow-control-mixin class)
   (get-peer-window-size generic-function)
   (apply-window-size-increment generic-function)
-  (get-window-open-fn (method (flow-control-mixin))))
+  (long-write function))
 
 (defclass flow-control-mixin ()
   ((window-size      :accessor get-window-size      :initarg :window-size)
@@ -31,6 +31,54 @@ handler for /long in the demo.lisp example."))
 
 In addition to the accounting items (current window size of both endpoints) it
 also tracks a callback to be called when window is increased (WINDOW-OPEN-FN)."))
+
+(define-condition duplicit-long-write ()
+  ((old-action :accessor get-old-action :initarg :old-action)
+   (new-action :accessor get-new-action :initarg :new-action)
+   (stream     :accessor get-stream     :initarg :stream)
+   (requested  :accessor get-requested  :initarg :requested))
+  (:report (lambda (error out)
+             (with-slots (old-action new-action stream requested) error
+               (with-slots (peer-window-size) stream
+                 (format out "~@<~W requests long write ~W, but we already have a callback action ~W~:_~:>"
+                         stream new-action old-action))))))
+
+(defun continue-long-write (stream action size-needed)
+  "Actually implement LONG-WRITE behaviour. "
+  (declare (type flow-control-mixin stream)
+           ((or null compiled-function) action))
+  (with-slots (peer-window-size window-open-fn connection) stream
+    (with-slots ((connection-window peer-window-size)) connection
+
+      (loop
+        (cond ((null action)
+               (setf window-open-fn nil)
+               (return nil))
+              ((> size-needed peer-window-size)
+               (setf window-open-fn action)
+               (return action))
+              ((> size-needed connection-window)
+               (error "Connection window too small"))
+              (t (setf (values action size-needed) (funcall action))))))))
+
+(defun long-write (stream action size-needed)
+  "ACTION is a function that writes data to the stream using appropriate layer (not
+necessary flushing), and return two values, next ACTION and size needed for
+it. Writing to the stream also implicitly lowers the peer-window-size.
+
+Calling these function is done either till the next action is NIL, or till the
+peer window size is too low. In the latter case, store the next function so that
+this is re-run when the appropriate window frame is received.
+
+This is supposed to be final part of sending data to the stream. Do not call it second
+time on same stream.
+
+See /long example in demo.lisp.."
+  (with-slots (window-open-fn) stream
+    (when (and action window-open-fn)
+      (error 'window-full :old-action window-open-fn :new-action action
+                          :stream stream)))
+  (continue-long-write stream action size-needed))
 
 (defclass multi-part-data-stream ()
   ((window-size-increment-callback :accessor get-window-size-increment-callback :initarg :window-size-increment-callback))
@@ -50,7 +98,7 @@ the stream or connection, and possibly calls WINDOW-OPEN-FN.")
     (with-slots (window-open-fn peer-window-size) object
       (incf peer-window-size increment)
       (when window-open-fn
-        (funcall window-open-fn))))
+        (continue-long-write object window-open-fn (get-max-peer-frame-size (get-connection object))))))
 
   (:method :after ((object multi-part-data-stream) increment)
     (with-slots (window-size-increment-callback) object
