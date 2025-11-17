@@ -33,6 +33,7 @@ from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
 #+nil  (http2/stream-overlay:process-pending-frames function)
   (server-http2-connection class)
   (client-http2-connection class)
+  (get-initial-peer-window-size generic-function)
   (@data section))
 
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
@@ -94,7 +95,9 @@ pretending that connection of connection is the same connection can be useful."
   (http2-stream-state type)
   (stream-collection class)
   (server-stream class)
-  (client-stream class))
+  (client-stream class)
+
+  (get-status generic-function))
 
 (defclass http2-stream (http2-stream-minimal flow-control-mixin)
   ((data             :accessor get-data             :initarg :data)
@@ -181,7 +184,8 @@ make your class using appropriate mixins.
   (get-headers generic-function)
   (get-scheme generic-function)
   (get-authority generic-function)
-  (get-status (method (client-stream))))
+  (get-status (method (client-stream)))
+  (timeshift-pinging-connection class))
 
 
 ;;;; Classes

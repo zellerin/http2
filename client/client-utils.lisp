@@ -27,7 +27,7 @@
      (unwind-protect
           (progn ,@body)
        (when ,name
-         (http2/stream-overlay::process-pending-frames ,name t)))))
+         (process-pending-frames ,name t)))))
 
 (defun connect-to-tls-server (host &key (port 443) (sni host) verify
                                  (alpn-protocols '("h2")))
@@ -41,9 +41,9 @@ protocol (H2 by default)."
       (error 'h2-not-supported-by-server :host host :port port))
     stream))
 
-(defclass vanilla-client-connection (http2/core::client-http2-connection
-                                     http2/stream-overlay:stream-based-connection-mixin
-                                     http2/core::timeshift-pinging-connection)
+(defclass vanilla-client-connection (client-http2-connection
+                                     stream-based-connection-mixin
+                                     timeshift-pinging-connection)
   ()
   (:default-initargs :stream-class 'vanilla-client-stream)
   (:documentation
@@ -51,12 +51,8 @@ protocol (H2 by default)."
    VANILLA-CLIENT-STREAM. Behaves as client, can send pings to measure roundtrip
    time and optionally prints history. See individual superclasses for details."))
 
-(defclass vanilla-client-stream (utf8-parser-mixin
-                                 http2/core::gzip-decoding-mixin
-                                 http2/core::client-stream
-                                 http2/core::header-collecting-mixin
-                                 text-collecting-stream
-                                 body-collecting-mixin)
+(defclass vanilla-client-stream (utf8-parser-mixin gzip-decoding-mixin client-stream
+                                 header-collecting-mixin text-collecting-stream body-collecting-mixin)
   ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn))
   (:default-initargs :end-headers-fn (constantly nil))
   (:documentation
