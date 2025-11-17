@@ -255,7 +255,7 @@ but kept for compatibility purposes.
 - reason phrase (bogus value)"
   (values
    (or (get-body raw-stream) (http-stream-to-string raw-stream))
-   (parse-integer (http2/core::get-status raw-stream))
+   (parse-integer (get-status raw-stream))
    (get-headers raw-stream)
    "/"
    (get-connection raw-stream)

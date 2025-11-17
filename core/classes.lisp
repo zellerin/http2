@@ -94,10 +94,7 @@ pretending that connection of connection is the same connection can be useful."
   (http2-stream class)
   (http2-stream-state type)
   (stream-collection class)
-  (server-stream class)
-  (client-stream class)
-
-  (get-status generic-function))
+  (server-stream class))
 
 (defclass http2-stream (http2-stream-minimal flow-control-mixin)
   ((data             :accessor get-data             :initarg :data)
@@ -124,15 +121,6 @@ pretending that connection of connection is the same connection can be useful."
       (setf peer-window-size (get-initial-peer-window-size connection)))
     (unless  (slot-boundp stream 'window-size)
       (setf window-size (get-initial-window-size connection)))))
-
-(defclass client-stream (http2-stream)
-  ((status :accessor get-status :initarg :status
-           :documentation
-           "HTTP status code field (see [RFC7231], Section 6)"))
-  (:default-initargs :status nil)
-  (:documentation
-   "HTTP2 stream that checks headers as required for clients (no psedoheader other
-than :status allowed, etc."))
 
 (defclass server-stream (http2-stream)
   ((method    :accessor get-method    :initarg :method
@@ -184,7 +172,6 @@ make your class using appropriate mixins.
   (get-headers generic-function)
   (get-scheme generic-function)
   (get-authority generic-function)
-  (get-status (method (client-stream)))
   (timeshift-pinging-connection class))
 
 
@@ -224,8 +211,7 @@ generic function to actually store the data."
 (defsection @stream-closed
     (:title "Processing end of data")
   (peer-ends-http-stream generic-function)
-  (peer-ends-http-stream (method nil (vanilla-server-stream)))
-  (peer-ends-http-stream (method nil (vanilla-client-stream))))
+  (peer-ends-http-stream (method nil (vanilla-server-stream))))
 
 (defsection @callbacks
     (:title "Frame read callbacks")

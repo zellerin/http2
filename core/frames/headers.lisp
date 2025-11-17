@@ -20,12 +20,13 @@
 (defgeneric add-header (connection stream name value)
   (:method (connection stream name value)
     #+nil    (warn 'no-new-header-action :header name :stream stream))
+    (:method :before (connection stream (name symbol) value)
+      (when (get-seen-text-header stream)
+        (http-stream-error 'pseudo-header-after-text-header stream
+                           :name name
+                           :value value)))
 
-  (:method (connection (stream server-stream) (name symbol) value)
-    (when (get-seen-text-header stream)
-      (http-stream-error 'pseudo-header-after-text-header stream
-                         :name name
-                         :value value))
+  (:method  (connection (stream server-stream) (name symbol) value)
     (case name
       (:method
           (check-place-empty-and-set-it value get-method))
@@ -39,39 +40,20 @@
        (http-stream-error 'incorrect-request-pseudo-header  stream
                           :name name :value value))))
 
-  (:method (connection (stream client-stream) (name symbol) value)
-    (when (get-seen-text-header stream)
-      (http-stream-error 'pseudo-header-after-text-header stream
-                         :name name
-                         :value value))
-    (case name
-      (:status
-       (setf (get-status stream) value))
-      (t
-       (http-stream-error 'incorrect-response-pseudo-header stream
-                          :name name
-                          :value value))))
-
   (:method (connection (stream header-collecting-mixin) name value)
     (push (cons name value) (get-headers stream))))
 
 (defgeneric process-end-headers (connection stream)
 
   (:method (connection stream))
-
-  (:method (connection (stream client-stream))
-    ;; Headers sanity check
-    (unless (get-status stream)
-      (http-stream-error 'missing-pseudo-header stream
-                         :name :status
-                         :value 'missing))
+  (:method :after (connection stream)
     ;; next header section may contain another :status
     (setf (get-seen-text-header stream) nil))
 
   (:method (connection (stream server-stream))
     ;; Headers sanity check
     (unless (or (equal (get-method stream) "CONNECT")
-             (and (get-method stream) (get-scheme stream) (get-path stream)))
+                (and (get-method stream) (get-scheme stream) (get-path stream)))
       (http-stream-error 'missing-pseudo-header stream
                          :name "One of pseudo headers"
                          :value 'missing))))

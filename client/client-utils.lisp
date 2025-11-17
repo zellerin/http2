@@ -21,6 +21,31 @@
   (utf8-parser-mixin class)
   (extract-charset-from-content-type function))
 
+(defclass client-stream (http2-stream)
+  ((status :accessor get-status :initarg :status
+           :documentation
+           "HTTP status code field (see [RFC7231], Section 6)"))
+  (:default-initargs :status nil)
+  (:documentation
+   "HTTP2 stream that checks headers as required for clients (no psedoheader other
+than :status allowed, etc."))
+
+(defmethod add-header (connection (stream client-stream) (name symbol) value)
+    (case name
+      (:status
+       (setf (get-status stream) value))
+      (t
+       (http-stream-error 'incorrect-response-pseudo-header stream
+                          :name name
+                          :value value))))
+
+(defmethod process-end-headers (connection (stream client-stream))
+    ;; Headers sanity check
+    (unless (get-status stream)
+      (http-stream-error 'missing-pseudo-header stream
+                         :name :status
+                         :value 'missing)))
+
 (defmacro with-http2-connection ((name class lisp-stream &rest params) &body body)
   "Run BODY with NAME bound to instance of CLASS with parameters."
   `(let ((,name (make-instance ,class :network-stream ,lisp-stream ,@params)))
