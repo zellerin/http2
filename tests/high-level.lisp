@@ -45,7 +45,7 @@
         (is (= code 200))
         (is (search "Hello World, this is random" response))))))
 
-(define-exact-handler "/body"
+(define-exact-handler "/body-and-headers"
   (handler (foo :utf-8 nil)
     (with-open-stream (foo foo)
       (send-headers
@@ -65,12 +65,12 @@
       (unwind-protect
            (progn
              (multiple-value-bind (response code)
-                 (retrieve-url (puri:merge-uris "/body" url)
+                 (retrieve-url (puri:merge-uris "/body-and-headers" url)
                                :content "ABC")
                (is (= code 200))
                (is (equal response "POST request; ABC ((\"content-type\" . \"text/plain; charset=utf-8\")); NIL")))
              (multiple-value-bind (response code)
-                 (retrieve-url (puri:merge-uris "/body" url)
+                 (retrieve-url (puri:merge-uris "/body-and-headers" url)
                                :content #(1 2 3))
                (is (= code 200))
                (is (equal response "POST request;  ((\"content-type\" . \"application/octet-stream\")); #(1 2 3)"))))
