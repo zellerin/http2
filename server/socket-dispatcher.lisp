@@ -40,6 +40,10 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
 
 (defvar *vanilla-host* "localhost")
 
+(defun make-connection-object (dispatcher)
+    (apply #'make-instance (get-connection-class dispatcher)
+           (get-connection-args dispatcher)))
+
 (defgeneric start-server-on-socket (dispatcher socket)
   (:method (dispatcher listening-socket)
     (usocket:with-server-socket (socket listening-socket)

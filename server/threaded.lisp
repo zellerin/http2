@@ -27,9 +27,8 @@
            (restart-case
                (with-open-stream (stream (server-socket-stream socket dispatcher))
                  (http2/server::process-server-stream stream
-                                                      :connection
-                                                      (apply #'make-instance (get-connection-class dispatcher)
-                                                             (get-connection-args dispatcher))))
+                                                      :connection (make-connection-object dispatcher)
+))
              (kill-client-connection () nil))))) ; FIXME:
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))

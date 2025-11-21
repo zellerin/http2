@@ -755,13 +755,13 @@ The defaults reflect the fact that the macro should not be used with TLS endpoin
           (progn ,@body)
        (close-openssl ,name))))
 
-(defun make-tls-server-object (socket ctx idx)
+(defun make-tls-server-object (socket ctx idx connection-object)
   "Create new TLS ENDPOINT object suitable for TLS server.
 
 Initially, the ENCRYPT-BUFFER contains the settings to send, and next action is
 reading of the client hello."
   ;; FIXME: use class from the dispatcher
-  (let* ((client (make-tls-endpoint socket ctx (make-instance 'poll-server-connection) idx)))
+  (let* ((client (make-tls-endpoint socket ctx connection-object idx)))
     (setf (get-client (client-application-data client)) client) ;
     (ssl-set-accept-state (client-ssl client)) ; set as server; no return value
     (set-next-action client #'parse-client-preface +client-preface-length+)
@@ -799,8 +799,11 @@ reading of the client hello."
                                   (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket)) (null-pointer) (null-pointer)))
          (fdset-idx (add-new-fdset-item socket dispatcher)))
     (when fdset-idx
-      (push (make-tls-server-object socket ctx fdset-idx) (get-clients dispatcher))
-      (setup-port socket *nagle*))))
+      (push (make-tls-server-object socket ctx fdset-idx (make-connection-object dispatcher)) (get-clients dispatcher))
+      (setup-port socket *nagle*)
+      (format *error-output* "~&~A Connected~%"
+              (get-ip (client-application-data (car (get-clients dispatcher)))))
+      (force-output *error-output*))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
