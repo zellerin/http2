@@ -278,6 +278,7 @@ CONNECTION."
 
 (defmethod peer-ends-http-stream ((stream vanilla-server-stream))
   "Send appropriate payload, or an error page."
+  (log-closed-stream stream "- processing")
   (let ((connection (http2/core::get-connection stream)))
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
@@ -296,14 +297,19 @@ maybe we do) or GO-AWAY (client closes connection - or maybe we do) is
 signalled."
   (let ((connection (or connection
                         (make-instance connection-class))))
-    (with-simple-restart (close-connection "Close current connection")
+    (restart-case
       (handler-case
           (unwind-protect
                (progn
                  (setf (get-network-stream connection) stream)
-                 (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+)))
-            (cleanup-connection connection))
-        (end-of-file ())))))
+                 (log-server-connected connection)
+                 (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+))))
+        (end-of-file ()))
+      (close-connection (error)
+        :report "Cleanly close current connection"
+        :interactive (lambda () (list "Interactive restart"))
+        (log-server-disconnected connection error)
+        (cleanup-connection connection)))))
 
 (defsection @dispatchers
     ()

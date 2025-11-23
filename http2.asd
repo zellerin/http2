@@ -18,9 +18,9 @@
                              (:file "errors")
                              (:file "hpack")
 #+nil                             (:file "glossary")
+                             (:file "frames/http2-stream")
                              (:file "classes")
                              (:file "frames")
-                             (:file "frames/http2-stream")
                              (:file "frames/rst-and-goaway")
                              (:file "frames/headers")
                              (:file "frames/data")
@@ -63,6 +63,7 @@
   :depends-on ("puri" #+nil "http2/tls" "http2/core" "http2/stream-based" "http2/openssl")
   :components ((:file "socket-dispatcher")
                (:file "dispatch")
+               (:file "logging")
                (:file "scheduler")))
 
 (defsystem "http2/server/threaded"

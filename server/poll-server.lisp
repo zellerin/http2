@@ -806,9 +806,7 @@ reading of the client hello."
     (when fdset-idx
       (push (make-tls-server-object socket ctx fdset-idx (make-connection-object dispatcher)) (get-clients dispatcher))
       (setup-port socket *nagle*)
-      (format *error-output* "~&~A Connected~%"
-              (get-ip (client-application-data (car (get-clients dispatcher)))))
-      (force-output *error-output*))))
+      (log-server-connected (client-application-data (car (get-clients dispatcher)))))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
@@ -852,8 +850,7 @@ reading of the client hello."
               (communication-error (err) (invoke-restart 'close-connection err)))
           (close-connection (&optional err)
             :report "Close current connection"
-            (format *error-output* "~&~@<~A ~A~:>" (get-ip (client-application-data client)) err)
-            (force-output *error-output*)
+            (log-server-disconnected (client-application-data client) err)
             (unwind-protect
                  (when err
                    (signal 'poll-server-close :client client :dispatch dispatcher
@@ -970,9 +967,9 @@ Maximum number of clients is fixed (by default *fdset-size*, by default
 
 Timeouts can be specified for polling."))
 
-(defmethod print-object ((dispatcher poll-dispatcher-mixin) out)
-  (print-unreadable-object (dispatcher out :type t)
-    (format out "~a clients" (length (get-clients dispatcher)))))
+(defmethod print-object :after ((dispatcher poll-dispatcher-mixin) out)
+  (unless  *print-escape*
+      (format out " with ~a clients" (length (get-clients dispatcher)))))
 
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin)
   ()
@@ -1001,6 +998,9 @@ from C code."
     (serve-tls socket dispatcher))
   ;; there is an outer loop in create-server that we want to skip
   (invoke-restart 'kill-server))
+
+(defmethod get-peer-name ((connection poll-server-connection))
+    (http2/tcpip:fd-to-ip (http2/server/poll::client-fd  (get-client connection))))
 
 
 

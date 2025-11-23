@@ -9,7 +9,7 @@
   (:method (stream error-code)
     (unwind-protect
          (unless (eq error-code +cancel+)
-           (warn 'http-stream-error :stream stream :code error-code))
+           (error 'http-stream-error :stream stream :code error-code))
       (close-http2-stream stream)))
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
@@ -65,13 +65,15 @@ error was reported.")
       (values #'parse-frame-header 9)))
 
 (defun http-stream-error (e stream &rest args)
-  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise appropriate warning in case someone is interested, close affected stream, and continue."
+  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise
+appropriate warning in case someone is interested, close affected stream, and
+continue."
   (let ((e (apply #'make-instance e :stream stream args)))
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
-      (flush-http2-data (get-connection stream)))
-    (warn e)
-    (close-http2-stream stream)))
+      (flush-http2-data (get-connection stream))
+      (warn e)
+      (close-http2-stream stream))))
 
 (define-frame-type 7 :goaway-frame
     "```

@@ -86,14 +86,14 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
             (connection-error 'frame-too-small-for-priority connection)))
         (read-and-add-headers data active-stream start end flags flags))
     (http-stream-error (e)
-      (format t "We close a stream due to ~a~%" e)
+      (log-closed-stream active-stream e)
       (values #'parse-frame-header 9))))
 
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
   (handler-case
       (read-and-add-headers data (car (get-streams connection)) start end 5 5)
     (http-stream-error (e)
-      (format t "We close a stream due to ~a~%" e)
+      (log-closed-stream (car (get-streams connection)) e)
       (values #'parse-frame-header 9)))
   ;; or just
   #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
@@ -150,7 +150,7 @@ At the beginning, invoke APPLY-STREAM-PRIORITY if priority was present."
 
    The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
    and additionally carries a header block fragment.  HEADERS frames can
-   .be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
+   be sent on a stream in the \"idle\", \"reserved (local)\", \"open\", or
    \"half-closed (remote)\" state."
   (declare (ignore end-stream end-headers))
   (let ((length (length headers)))

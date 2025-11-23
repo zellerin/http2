@@ -34,9 +34,11 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (:default-initargs :name "HTTP/2 server"))
 
 (defmethod print-object ((server detached-server-mixin) out)
-  (print-unreadable-object (server out :type t)
-    (with-slots (name url) server
-      (format out "~a~@[ on ~a~]" name url))))
+  (with-slots (name url) server
+    (if *print-escape*
+        (print-unreadable-object (server out :type t)
+          (format out "~a ~:[(not connected)~;on ~a~]" name url url))
+        (format t "detached server named ~a ~:[(not connected)~;on ~w~]" name url url))))
 
 (defvar *vanilla-host* "localhost")
 
@@ -177,7 +179,8 @@ connection depending on the dispatch method.")
    (url              :accessor get-url              :initarg  :url))
   (:default-initargs
    :connection-class 'vanilla-server-connection
-   :connection-args nil))
+   :connection-args nil
+   :url nil))
 
 (defclass certificate-h2-dispatcher (easy-certificated-context-mixin
                                      h2-server-context-mixin
@@ -209,7 +212,7 @@ layer when needed."))
         (CL+SSL::SSL-ERROR-SYSCALL 'abort)
         (stream-error 'abort)
         (usocket:connection-aborted-error 'abort)
-        (go-away 'close-connection))
+        (go-away (lambda (err) (invoke-restart 'close-connection err))))
      ,@body))
 
 (defmethod do-new-connection (listening-socket (dispatcher single-client-dispatcher))

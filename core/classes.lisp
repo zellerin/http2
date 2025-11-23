@@ -33,6 +33,7 @@ from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
 #+nil  (http2/stream-overlay:process-pending-frames function)
   (server-http2-connection class)
   (client-http2-connection class)
+  (get-peer-name generic-function)
   (get-initial-peer-window-size generic-function)
   (@data section))
 
@@ -64,8 +65,24 @@ from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
 - connection maintain window sizes (FLOW-CONTROL-MIXIN),
 - connection can create new streams and needs to track the parameters of the new stream (class, windows sizes)"))
 
+(defgeneric get-peer-name (object)
+  (:documentation "Name of the peer. Used primarily in log messages and when object is printed.
+
+Content can vary, e.g.,
+
+- for a server connection peer IP and port,
+- for a client connection hostname of the peer.
+
+The fallback is unescaped print of the object.")
+  (:method ((stream http2-stream-minimal))
+    (get-peer-name (get-connection stream)))
+  (:method (something)
+    (prin1-to-string something)))
+
 (defmethod print-object ((connection http2-connection) out)
-  (print-unreadable-object (connection out :type t :identity nil)))
+  (if *print-escape*
+      (print-unreadable-object (connection out :type t :identity nil))
+      (format out "~a to ~a" (class-name (class-of connection)) (get-peer-name connection))))
 
 (defmethod get-stream-id ((c http2-connection))
   "It is useful sometimes to treat http connection as a stream with ID 0."

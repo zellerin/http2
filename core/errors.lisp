@@ -205,11 +205,13 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (defmethod print-object ((err http-stream-error) out)
   (with-slots (stream code) err
-      (print-unreadable-object (err out :type t)
-        (format out "~d (~a) on ~s"
-                (get-error-name code)
-                (documentation (get-error-name code) 'variable)
-                stream))))
+    (if *print-escape*
+        (print-unreadable-object (err out :type t)
+          (format out "~d (~a) on ~s"
+                  (get-error-name code)
+                  (documentation (get-error-name code) 'variable)
+                  stream))
+        (format out "~a" (documentation (get-error-name code) 'variable)))))
 
 (define-condition incorrect-frame-size (http-stream-error)
   ()

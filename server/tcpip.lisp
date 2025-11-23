@@ -22,8 +22,10 @@
   (syscall-error condition)
   (nonneg-or-eagain function)
   (eagain constant)
+
+  (fd-to-ip function)
                                         ;  (sockaddr-in type)
-#+nil  (size-of-sockaddr-in constant)
+  #+nil  (size-of-sockaddr-in constant)
 
   "File descriptor sets and polling
 

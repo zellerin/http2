@@ -74,3 +74,18 @@ events)."))
              (format stream "The TLS stream ~A is not a HTTP2 stream (ALPN ~s)"
                      (get-tls-stream condition)
                      (get-alpn condition)))))
+
+(defmethod get-peer-name ((object cl+ssl::ssl-stream))
+  (get-peer-name (cl+ssl::ssl-stream-socket object)))
+
+#+sbcl
+(defmethod get-peer-name ((object sb-bsd-sockets:socket))
+  (call-next-method)
+;  (sb-bsd-sockets::socket-peerstring object)
+  )
+
+(defmethod get-peer-name ((object sb-sys:fd-stream))
+  (http2/tcpip:fd-to-ip (sb-sys::fd-stream-fd object)))
+
+(defmethod get-peer-name ((object stream-based-connection-mixin))
+  (get-peer-name (get-network-stream object)))
