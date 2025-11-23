@@ -969,7 +969,8 @@ Timeouts can be specified for polling."))
     (format out "~a clients" (length (get-clients dispatcher)))))
 
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin)
-  ())
+  ()
+  (:default-initargs :connection-class 'poll-server-connection))
 
 (defmethod get-no-client-poll-timeout :after ((dispatcher poll-dispatcher))
   (compute-poll-timeout-value (call-next-method)))
