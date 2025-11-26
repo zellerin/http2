@@ -226,7 +226,9 @@ Return the new stream."
                    (get-method request)
                    (puri:uri-path (get-uri request))
                    (puri:uri-host (get-uri request))
-                   :additional-headers (getf args :additional-headers))
+                   :additional-headers
+                   (append (get-headers request)
+                           (getf args :additional-headers)))
                   :end-stream (get-no-body request)
                   :end-headers t))
 
