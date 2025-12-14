@@ -21,52 +21,535 @@
 <p><a id="x-28HTTP2-3A-40INDEX-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2:@INDEX%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="overview.html" title="Overview">&#8594;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/91ada4de4c864020198137405ec5eb4bec7671ad/overview.lisp#L19">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@OVERVIEW%20MGL-PAX:SECTION" title="Overview">&#8594;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8634;</a></span></span></p>
 
 <h1><a href="index.html"><code>HTTP2</code> in Common Lisp</a></h1>
 
 <h2>Table of Contents</h2>
 
 <ul>
-<li><a href="overview.html" title="Overview">1 Overview</a></li>
-<li><a href="tutorials.html" title="Tutorials">2 Tutorials</a>
+<li><a href="#HTTP2:@OVERVIEW%20MGL-PAX:SECTION" title="Overview">1 Overview</a></li>
+<li><a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">2 Tutorials</a>
 
 <ul>
-<li><a href="tutorials.html#HTTP2%2FCLIENT:@CLIENT%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">2.1 Using built-in HTTP/2 client</a></li>
-<li><a href="tutorials.html#HTTP2%2FSERVER:@SERVER%20MGL-PAX:SECTION" title="Starting HTTP/2 server">2.2 Starting HTTP/2 server</a></li>
-<li><a href="tutorials.html#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">2.3 Define content for HTTP/2 server</a></li>
-<li><a href="tutorials.html#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">2.4 Getting request details</a>
+<li><a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">2.1 Client tutorials</a>
 
 <ul>
-<li><a href="tutorials.html#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">2.4.1 Body of the request</a></li>
+<li><a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">2.1.1 Using built-in HTTP/2 client</a></li>
+<li><a href="#HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION" title="Build your own client">2.1.2 Build your own client</a></li>
 </ul></li>
-<li><a href="tutorials.html#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT%20MGL-PAX:SECTION" title="Customize client">2.5 Customize client</a>
+<li><a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">2.2 Server tutorials</a>
 
 <ul>
-<li><a href="tutorials.html#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-EXAMPLE-MULTI%20MGL-PAX:SECTION" title="Client example: multiple requests">2.5.1 Client example: multiple requests</a></li>
-<li><a href="tutorials.html#HTTP2%2FCLIENT:@CUSTOMIZING-CLIENT-REFERENCE%20MGL-PAX:SECTION" title="Client reference">2.5.2 Client reference</a></li>
+<li><a href="#HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION" title="Starting HTTP/2 server">2.2.1 Starting HTTP/2 server</a></li>
+<li><a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">2.2.2 Define content for HTTP/2 server</a></li>
+<li><a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">2.2.3 Getting request details</a></li>
 </ul></li>
 </ul></li>
-<li><a href="reference.html" title="More detailed API documentation">3 More detailed API documentation</a></li>
+<li><a href="reference.html" title="API documentation">3 API documentation</a>
+
+<ul>
+<li><a href="reference.html#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">3.1 Systems and packages</a></li>
+<li><a href="reference.html#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">3.2 HTTP/2 client API</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">3.3 Server API reference</a>
+
+<ul>
+<li><a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">3.3.1 Server classes</a></li>
+</ul></li>
+<li><a href="reference.html#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION" title="Logging support">3.4 Logging support</a></li>
+</ul></li>
 <li><a href="implementation.html" title="Implementation details (not part of API)">4 Implementation details (not part of API)</a>
 
 <ul>
-<li><a href="implementation.html#HTTP2%2FHPACK:@HPACK-API%20MGL-PAX:SECTION" title="HPACK - RFC7541 implementation.">4.1 HPACK - RFC7541 implementation.</a></li>
-<li><a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">4.2 Server API reference</a>
+<li><a href="implementation.html#HTTP2%2FCORE:@IMPLEMENTATION%2FOVERVIEW%20MGL-PAX:SECTION" title="Overview">4.1 Overview</a>
 
 <ul>
-<li><a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">4.2.1 Server classes</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@CONNECTIONS%20MGL-PAX:SECTION" title="HTTP/2 Connections">4.1.1 HTTP/2 Connections</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@STREAMS%20MGL-PAX:SECTION" title="HTTP/2 Streams">4.1.2 HTTP/2 Streams</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@BASE-CLASSES%20MGL-PAX:SECTION" title="Classes">4.1.3 Classes</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@WRITE-DATA-HANDLING%20MGL-PAX:SECTION" title="Writing frames">4.1.4 Writing frames</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@DATA-RECEIVED%20MGL-PAX:SECTION" title="Processing data frames">4.1.5 Processing data frames</a></li>
 </ul></li>
-<li><a href="implementation.html#HTTP2%2FSERVER:@ASYNC-SERVER%20MGL-PAX:SECTION" title="Polling server overview">4.3 Polling server overview</a>
+<li><a href="implementation.html#HTTP2%2FHPACK:@HPACK-API%20MGL-PAX:SECTION" title="HPACK - RFC7541 implementation.">4.2 HPACK - RFC7541 implementation.</a></li>
+<li><a href="implementation.html#HTTP2%2FCORE:@DATA%20MGL-PAX:SECTION" title="Data and flow control">4.3 Data and flow control</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">4.4 Server API reference</a>
 
 <ul>
-<li><a href="implementation.html#HTTP2%2FSERVER:@APP-INTERFACE%20MGL-PAX:SECTION" title="Interface to the polling server">4.3.1 Interface to the polling server</a></li>
-<li><a href="implementation.html#HTTP2%2FSERVER:@REQUEST-HANDLING%20MGL-PAX:SECTION" title="Client actions loop (implementation)">4.3.2 Client actions loop (implementation)</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">4.4.1 Server classes</a></li>
+</ul></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@ASYNC-SERVER%20MGL-PAX:SECTION" title="Polling server overview">4.5 Polling server overview</a>
+
+<ul>
+<li><a href="implementation.html#HTTP2%2FSERVER:@APP-INTERFACE%20MGL-PAX:SECTION" title="Interface to the polling server">4.5.1 Interface to the polling server</a></li>
+<li><a href="implementation.html#HTTP2%2FSERVER:@REQUEST-HANDLING%20MGL-PAX:SECTION" title="Client actions loop (implementation)">4.5.2 Client actions loop (implementation)</a></li>
 </ul></li>
 </ul></li>
 </ul>
 
 <h6>[in package HTTP2]</h6>
+
+<p><a id="x-28HTTP2-3A-40OVERVIEW-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2:@OVERVIEW%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="index.html" title="`HTTP2` in Common Lisp">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">&#8594;</a> <a href="#HTTP2:@OVERVIEW%20MGL-PAX:SECTION" title="Overview">&#8634;</a></span></span></p>
+
+<h2><a href="#HTTP2:@OVERVIEW%20MGL-PAX:SECTION">1 Overview</a></h2>
+
+<p>This is an HTTP/2 implementation in Common Lisp. It provides both high-level
+interface as well as components to build an optimized tools for specific use cases.</p>
+
+<p>For quick start, quickload <a href="reference.html#%22http2%22%20ASDF%2FSYSTEM:SYSTEM" title="&quot;http2&quot; ASDF/SYSTEM:SYSTEM"><code>HTTP2</code></a> and see <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">Tutorials</a> that show how to use a
+simple client to fetch a resource or how to start the server and serve some
+content.</p>
+
+<p>For more documentation consult <a href="reference.html" title="API documentation">API documentation</a>.</p>
+
+<p><a id="x-28HTTP2-3A-40TUTORIALS-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2:@TUTORIALS%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@OVERVIEW%20MGL-PAX:SECTION" title="Overview">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">&#8594;</a> <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">&#8634;</a></span></span></p>
+
+<h2><a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION">2 Tutorials</a></h2>
+
+<p><a id="x-28HTTP2-2FCLIENT-3A-40CLIENT-TUTORIALS-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">&#8592;</a> <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">&#8634;</a></span></span></p>
+
+<h3><a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION">2.1 Client tutorials</a></h3>
+
+<h6>[in package HTTP2/CLIENT]</h6>
+
+<p>The client tutorials show how to fetch a web resource using built-in
+Drakma-style interface, and how to make more advanced client that does several
+requests in parallel using HTTP/2 streams.</p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3A-40CLIENT-TUTORIAL-SIMPLE-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">&#8593;</a> <a href="#HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION" title="Build your own client">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8634;</a></span></span></p>
+
+<h4><a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION">2.1.1 Using built-in HTTP/2 client</a></h4>
+
+<p>You can use <a href="reference.html#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>RETRIEVE-URL</code></a> to fetch a a web resource.</p>
+
+<pre><code><span class="code"><span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://example.com"</span></span>)</span>
+==&gt; "&lt;!doctype html&gt;
+... &lt;html&gt;
+... &lt;head&gt;
+...     &lt;title&gt;Example Domain&lt;/title&gt;
+...
+...     &lt;meta charset="utf-8" /&gt;
+...     &lt;meta http-equiv="Content-type" content="text/html<span class="comment">; charset=utf-8" /&gt;
+</span>...     &lt;meta name="viewport" conten...[sly-elided string of length 1256]"
+==&gt; 200 <span class="paren1">(<span class="code">8 bits, #xC8, #o310, #b11001000</span>)</span>
+==&gt; <span class="paren1">(<span class="code"><span class="paren2">(<span class="code"><span class="string">"content-length"</span> . <span class="string">"1256"</span></span>)</span> <span class="paren2">(<span class="code"><span class="string">"x-cache"</span> . <span class="string">"HIT"</span></span>)</span> <span class="paren2">(<span class="code"><span class="string">"vary"</span> . <span class="string">"Accept-Encoding"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"server"</span> . <span class="string">"ECS (bsb/27E0)"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"last-modified"</span> . <span class="string">"Thu, 17 Oct 2019 07:18:26 GMT"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"expires"</span> . <span class="string">"Thu, 28 Sep 2023 19:38:44 GMT"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"etag"</span> . <span class="string">"</span><span class="string">\"</span><span class="string">3147526947+ident</span><span class="string">\"</span><span class="string">"</span></span>)</span> <span class="paren2">(<span class="code"><span class="string">"date"</span> . <span class="string">"Thu, 21 Sep 2023 19:38:44 GMT"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"content-type"</span> . <span class="string">"text/html; charset=UTF-8"</span></span>)</span>
+...  <span class="paren2">(<span class="code"><span class="string">"cache-control"</span> . <span class="string">"max-age=604800"</span></span>)</span> <span class="paren2">(<span class="code"><span class="string">"age"</span> . <span class="string">"151654"</span></span>)</span></span>)</span>
+==&gt; "/"
+==&gt; #&lt;VANILLA-CLIENT-CONNECTION &gt;
+==&gt; NIL
+==&gt; "HTTP2 does not provide reason phrases"</span></code></pre>
+
+<p>It was designed to be similar to <code>DRAKMA:HTTP-REQUEST</code>, but is not completely
+same. See below what the function does, some notable differences are:</p>
+
+<ul>
+<li><p>The last parameter (response reason) is no longer relevant in HTTP/2. It is a
+  dummy string that might be removed in further releases.</p></li>
+<li><p>The path is taken as-is. You cannot provide <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_get.htm" title="GET (MGL-PAX:CLHS FUNCTION)"><code>GET</code></a> parameters to fill in.</p></li>
+<li><p>The redirects are not handled transparently. What is returned is returned.</p></li>
+<li><p>It is your responsibility to make sure that the HTTP/2 headers are
+  correct (lowercase, order).</p></li>
+<li><p>You cannot get stream on output to work with. You get the connection, and you
+  can use it.</p></li>
+</ul>
+
+<p>Basically, the differences fall into two areas, that it does not (yet) provide
+all the features of Drakma, and HTTP/2 is different.</p>
+
+<p><a id="x-28HTTP2-2FCLIENT-3A-40TUTORIAL-BUILD-CLIENT-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIAL-SIMPLE%20MGL-PAX:SECTION" title="Using built-in HTTP/2 client">&#8592;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-TUTORIALS%20MGL-PAX:SECTION" title="Client tutorials">&#8593;</a> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8594;</a> <a href="#HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION" title="Build your own client">&#8634;</a></span></span></p>
+
+<h4><a href="#HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION">2.1.2 Build your own client</a></h4>
+
+<p>Let us see what it takes to build simplified <a href="reference.html#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>RETRIEVE-URL</code></a> function from
+components. It will use CL+SSL to build a Lisp stream over TLS stream over
+network stream.</p>
+
+<p>HTTP/2 requests are done over TLS connection created with an ALPN indication that it is to
+be used for  HTTP/2. The helper function here is <code>CONNECT-TO-TLS-SERVER</code>, and then
+<a href="http://www.lispworks.com/documentation/HyperSpec/Body/m_w_op_1.htm" title="WITH-OPEN-STREAM (MGL-PAX:CLHS MGL-PAX:MACRO)"><code>WITH-OPEN-STREAM</code></a> can be used:</p>
+
+<pre><code><span class="code">  <span class="paren1">(<span class="code"><i><span class="symbol">defun</span></i> my-retrieve-url <span class="paren2">(<span class="code">url</span>)</span>
+    <span class="paren2">(<span class="code"><i><span class="symbol">let</span></i> <span class="paren3">(<span class="code"><span class="paren4">(<span class="code">parsed-url <span class="paren5">(<span class="code">puri:parse-uri url</span>)</span></span>)</span></span>)</span>
+      <span class="paren3">(<span class="code"><i><span class="symbol">with-open-stream</span></i> <span class="paren4">(<span class="code">network-stream
+                         <span class="paren5">(<span class="code">connect-to-tls-server <span class="paren6">(<span class="code">puri:uri-host parsed-url</span>)</span>
+                                                <span class="keyword">:sni</span> <span class="paren6">(<span class="code">puri:uri-host parsed-url</span>)</span>
+                                                <span class="keyword">:port</span> <span class="paren6">(<span class="code">or <span class="paren1">(<span class="code">puri:uri-port parsed-url</span>)</span> 443</span>)</span></span>)</span></span>)</span>
+        <span class="paren4">(<span class="code">my-retrieve-url-using-network-stream network-stream url</span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
+<p>Now that we have a Lisp <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a> to communicate over, we can establish HTTP/2
+connection of class <code>VANILLA-CLIENT-CONNECTION</code> over it, send client request, and
+then <code>PROCESS-PENDING-FRAMES</code> until server fully sends the response. That invokes
+restart <code>FINISH-STREAM</code> with the processed stream that we handle. We can get the
+data from it using <code>DRAKMA-STYLE-STREAM-VALUES</code>.</p>
+
+<pre><code><span class="code">  <span class="paren1">(<span class="code"><i><span class="symbol">defun</span></i> my-retrieve-url-using-network-stream <span class="paren2">(<span class="code">lisp-stream url</span>)</span>
+    <span class="paren2">(<span class="code"><i><span class="symbol">with-http2-connection</span></i> <span class="paren3">(<span class="code">connection 'vanilla-client-connection lisp-stream</span>)</span>
+      <span class="paren3">(<span class="code">my-send-client-request connection url</span>)</span>
+      <span class="paren3">(<span class="code">restart-case
+          <span class="paren4">(<span class="code">process-pending-frames connection nil</span>)</span>
+        <span class="paren4">(<span class="code">finish-stream <span class="paren5">(<span class="code">stream</span>)</span>
+          <span class="paren5">(<span class="code">drakma-style-stream-values stream</span>)</span></span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
+<p>Sending the request involves creating a new HTTP2 stream with <a href="implementation.html#HTTP2%2FCORE:OPEN-HTTP2-STREAM%20FUNCTION" title="HTTP2/CORE:OPEN-HTTP2-STREAM FUNCTION"><code>OPEN-HTTP2-STREAM</code></a>
+and proper parameters.</p>
+
+<pre><code><span class="code">  <span class="paren1">(<span class="code"><i><span class="symbol">defun</span></i> my-send-client-request <span class="paren2">(<span class="code">connection url</span>)</span>
+    <span class="paren2">(<span class="code">open-http2-stream connection
+                              <span class="paren3">(<span class="code">request-headers <span class="keyword">:GET</span> <span class="paren4">(<span class="code">puri:uri-path <span class="paren5">(<span class="code">puri:parse-uri url</span>)</span></span>)</span>
+                                               <span class="paren4">(<span class="code">puri:uri-host <span class="paren5">(<span class="code">puri:parse-uri url</span>)</span></span>)</span></span>)</span>
+                              <span class="keyword">:end-stream</span> t</span>)</span></span>)</span></span></code></pre>
+
+<p><a id="x-28HTTP2-3A-40SERVER-TUTORIALS-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@TUTORIAL-BUILD-CLIENT%20MGL-PAX:SECTION" title="Build your own client">&#8592;</a> <a href="#HTTP2:@TUTORIALS%20MGL-PAX:SECTION" title="Tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8594;</a> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8634;</a></span></span></p>
+
+<h3><a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION">2.2 Server tutorials</a></h3>
+
+<p>Server related interfaces are exported from the <a href="#%22HTTP2%2FSERVER%22%20PACKAGE" title="&quot;HTTP2/SERVER&quot; PACKAGE"><code>HTTP2/SERVER</code></a> package and are
+part of the <code>HTTP2/SERVER</code> system. This system is also loaded when <code>HTTP2</code> is loaded.</p>
+
+<p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-START-STOP-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8592;</a> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8634;</a></span></span></p>
+
+<h4><a href="#HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION">2.2.1 Starting HTTP/2 server</a></h4>
+
+<h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
+<p>Start server on foreground with <code>RUN</code>, or on background with <code>START</code>. You can stop server on background with <code>STOP</code>.</p>
+
+<p>This creates (as of this version) a multithreaded server that serves 404 Not
+found responses on any request.</p>
+
+<pre><code><span class="code"><span class="paren1">(<span class="code">http2/server:start 8443</span>)</span>
+==&gt; #&lt;HTTP2/SERVER:DETACHED-TLS-THREADED-DISPATCHER HTTP/2 server on https://localhost:8443/&gt;
+==&gt; #&lt;PURI:URI https://localhost:8443/&gt;
+<span class="comment">;; run curl -k https://localhost:8443/
+</span>127.0.0.1:58565 Connected, using VANILLA-SERVER-CONNECTION
+127.0.0.1:58565 / [#1] - processing</span></code></pre>
+
+<p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-CONTENT-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER-START-STOP%20MGL-PAX:SECTION" title="Starting HTTP/2 server">&#8592;</a> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8594;</a> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8634;</a></span></span></p>
+
+<h4><a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION">2.2.2 Define content for HTTP/2 server</a></h4>
+
+<h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
+<p>To server something else than 404 Not found, you need to define handlers for specific paths. Simple handler definition can look like</p>
+
+<pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">define-exact-handler</span></i> <span class="string">"/hello-world"</span>
+  <span class="paren2">(<span class="code">handler <span class="paren3">(<span class="code">foo <span class="keyword">:utf-8</span> nil</span>)</span>
+    <span class="paren3">(<span class="code"><i><span class="symbol">with-open-stream</span></i> <span class="paren4">(<span class="code">foo foo</span>)</span>
+      <span class="paren4">(<span class="code">send-headers
+       '<span class="paren5">(<span class="code"><span class="paren6">(<span class="code"><span class="keyword">:status</span> <span class="string">"200"</span></span>)</span>
+         <span class="paren6">(<span class="code"><span class="string">"content-type"</span> <span class="string">"text/html; charset=utf-8"</span></span>)</span></span>)</span></span>)</span>
+      <span class="paren4">(<span class="code">format foo <span class="string">"Hello World, this is random: ~a"</span> <span class="paren5">(<span class="code">random 10</span>)</span></span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
+<p>This defines a handler on &quot;/hello-world&quot; path that sends reasonable headers, writes some text to the stream and closes the stream (via <a href="http://www.lispworks.com/documentation/HyperSpec/Body/m_w_op_1.htm" title="WITH-OPEN-STREAM (MGL-PAX:CLHS MGL-PAX:MACRO)"><code>WITH-OPEN-STREAM</code></a>). The text written is passed  to the client as data (body).</p>
+
+<p>In general, the handlers are set using <a href="#HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:DEFINE-PREFIX-HANDLER MGL-PAX:MACRO"><code>DEFINE-PREFIX-HANDLER</code></a> or
+<a href="#HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:DEFINE-EXACT-HANDLER MGL-PAX:MACRO"><code>DEFINE-EXACT-HANDLER</code></a>, and are functions typically created by <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro,
+or (in simple cases) by <a href="#HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION" title="HTTP2/SERVER:REDIRECT-HANDLER FUNCTION"><code>REDIRECT-HANDLER</code></a> or <a href="#HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION" title="HTTP2/SERVER:SEND-TEXT-HANDLER FUNCTION"><code>SEND-TEXT-HANDLER</code></a> functions.</p>
+
+<p><a id="x-28HTTP2-2FSERVER-3ADEFINE-PREFIX-HANDLER-20MGL-PAX-3AMACRO-29"></a>
+<a id="HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[macro]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-PREFIX-HANDLER%20MGL-PAX:MACRO" >DEFINE-PREFIX-HANDLER</a></span></span> <span class="locative-args">PREFIX FN &amp;OPTIONAL CONNECTION</span></span></p>
+
+<p>Define function to run when peer closes http stream on <code>CONNECTION</code> (or any
+server defined in future) if the path of the stream starts with <code>PREFIX</code>.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3ADEFINE-EXACT-HANDLER-20MGL-PAX-3AMACRO-29"></a>
+<a id="HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[macro]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DEFINE-EXACT-HANDLER%20MGL-PAX:MACRO" >DEFINE-EXACT-HANDLER</a></span></span> <span class="locative-args">PATH FN &amp;OPTIONAL CONNECTION</span></span></p>
+
+<p>Define function to run when peer closes http stream on <code>CONNECTION</code> (or any
+server defined in future) if the path of the stream is <code>PATH</code>.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3AHANDLER-20TYPE-29"></a>
+<a id="HTTP2%2FSERVER:HANDLER%20TYPE"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[type]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20TYPE" >HANDLER</a></span></span></span></p>
+
+<p>Function that can be called with <code>CONNECTION</code> and <a href="implementation.html#HTTP2%2FCORE:HTTP2-STREAM%20CLASS" title="HTTP2/CORE:HTTP2-STREAM CLASS"><code>HTTP2-STREAM</code></a> to write a response to
+the http request described by <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a> object.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3AHANDLER-20MGL-PAX-3AMACRO-29"></a>
+<a id="HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[macro]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" >HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP) &amp;BODY BODY</span></span></p>
+
+<p>Return a <a href="#HTTP2%2FSERVER:HANDLER%20TYPE" title="HTTP2/SERVER:HANDLER TYPE"><code>HANDLER</code></a> type function.</p>
+
+<p>This handler, when called, runs <code>BODY</code> in a context where</p>
+
+<ul>
+<li><p><code>FLEXI-STREAM-NAME</code> is bound to an open flexi stream that can be written to (to write response). On background, written text is converted from <code>CHARSET</code> to octets, possibly compressed by <code>GZIP</code> and split into frames,</p></li>
+<li><p>and two lexical functions are defined, <a href="#HTTP2%2FCORE:SEND-HEADERS%20FUNCTION" title="HTTP2/CORE:SEND-HEADERS FUNCTION"><code>SEND-HEADERS</code></a> and <a href="#HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION" title="HTTP2/SERVER:SEND-GOAWAY FUNCTION"><code>SEND-GOAWAY</code></a>.</p></li>
+</ul>
+
+<p>The <code>SEND-HEADERS</code> sends the provided headers to the <a href="http://www.lispworks.com/documentation/HyperSpec/Body/t_stream.htm" title="STREAM (MGL-PAX:CLHS CLASS)"><code>STREAM</code></a>.</p>
+
+<p>The <code>SEND-GOAWAY</code> sends go away frame to the client to close connection.</p>
+
+<p>The handler body needs to close the underlying stream if the response is
+actually to be sent, or possibly schedule sending more data for later.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3ACONSTANT-HANDLER-20MGL-PAX-3AMACRO-29"></a>
+<a id="HTTP2%2FSERVER:CONSTANT-HANDLER%20MGL-PAX:MACRO"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[macro]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:CONSTANT-HANDLER%20MGL-PAX:MACRO" >CONSTANT-HANDLER</a></span></span> <span class="locative-args">(FLEXI-STREAM-NAME CHARSET GZIP HEADERS) &amp;BODY BODY</span></span></p>
+
+<p>Run <code>BODY</code> to print the output to <code>FLEXI-STREAM-NAME</code> in compile time. This
+constant (static) page is served every time as-is.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3AREDIRECT-HANDLER-20FUNCTION-29"></a>
+<a id="HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:REDIRECT-HANDLER%20FUNCTION" >REDIRECT-HANDLER</a></span></span> <span class="locative-args">TARGET &amp;KEY (CODE &quot;301&quot;) (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) CONTENT</span></span></p>
+
+<p>A handler that emits redirect response with http status being <code>CODE</code>, and
+optionally provides <code>CONTENT</code> with <code>CONTENT-TYPE</code>.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3ASEND-TEXT-HANDLER-20FUNCTION-29"></a>
+<a id="HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-TEXT-HANDLER%20FUNCTION" >SEND-TEXT-HANDLER</a></span></span> <span class="locative-args">TEXT &amp;KEY (CONTENT-TYPE &quot;text/html; charset=UTF-8&quot;) (GZIP <code>T</code>) ADDITIONAL-HEADERS</span></span></p>
+
+<p>A handler that returns <code>TEXT</code> as content of <code>CONTENT-TYPE</code>.</p>
+
+<p><code>TEXT</code> is evaluated when handler is defined, not when handler is invoked. For
+content that can change on individual invocations write to the stream.</p>
+
+<p><code>ADDITIONAL-HEADERS</code> are sent along with :status and content-type
+headers.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3ASEND-HEADERS-20FUNCTION-29"></a>
+<a id="HTTP2%2FCORE:SEND-HEADERS%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:SEND-HEADERS%20FUNCTION" >SEND-HEADERS</a></span></span> <span class="locative-args">STREAM HEADERS &amp;KEY END-STREAM (END-HEADERS <code>T</code>) &amp;ALLOW-OTHER-KEYS</span></span></p>
+
+<p>Send <code>HEADERS</code> to a HTTP2 stream. The stream is returned.</p>
+
+<p>The <code>END-HEADERS</code> and <code>END-STREAM</code> allow to set the appropriate flags.</p>
+
+<p>Inside HANDLER macro, this names a function that has the <code>STREAM</code>
+argument implicit and only <code>HEADERS</code> and key parameters are to be provided.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3ASEND-GOAWAY-20FUNCTION-29"></a>
+<a id="HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SEND-GOAWAY%20FUNCTION" >SEND-GOAWAY</a></span></span> <span class="locative-args">CODE DEBUG-DATA</span></span></p>
+
+<p>Start closing connection, sending <code>CODE</code> and <code>DEBUG-DATA</code> in the go-away frame to
+peer. Must be called from inside of <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3A-40REQUEST-DETAILS-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@SERVER-CONTENT%20MGL-PAX:SECTION" title="Define content for HTTP/2 server">&#8592;</a> <a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION" title="Server tutorials">&#8593;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8634;</a></span></span></p>
+
+<h4><a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION">2.2.3 Getting request details</a></h4>
+
+<h6>[in package HTTP2/SERVER with nicknames HTTP2/SERVER/SHARED, HTTP2/SERVER/POLL, HTTP2/SERVER/THREADED]</h6>
+
+<p>Sometimes you need to get some data from the request.</p>
+
+<p>These data can be carried by querying the HTTP/2 stream object involved. If you
+define handlers by <a href="#HTTP2%2FSERVER:HANDLER%20MGL-PAX:MACRO" title="HTTP2/SERVER:HANDLER MGL-PAX:MACRO"><code>HANDLER</code></a> macro, it is available in a lexically bound STREAM
+variable.</p>
+
+<pre><code><span class="code"><span class="paren1">(<span class="code"><i><span class="symbol">define-exact-handler</span></i> <span class="string">"/body"</span>
+  <span class="paren2">(<span class="code">handler <span class="paren3">(<span class="code">foo <span class="keyword">:utf-8</span> nil</span>)</span>
+    <span class="paren3">(<span class="code"><i><span class="symbol">with-open-stream</span></i> <span class="paren4">(<span class="code">foo foo</span>)</span>
+      <span class="paren4">(<span class="code">send-headers
+       '<span class="paren5">(<span class="code"><span class="paren6">(<span class="code"><span class="keyword">:status</span> <span class="string">"200"</span></span>)</span>
+         <span class="paren6">(<span class="code"><span class="string">"content-type"</span> <span class="string">"text; charset=utf-8"</span></span>)</span></span>)</span></span>)</span>
+      <span class="paren4">(<span class="code">format foo <span class="string">"Hello World, this is a ~s request.~3%content~%~s~3%headers~%~s~%~3%body~%~s~%"</span>
+         <span class="paren5">(<span class="code">http2/core::get-method stream</span>)</span>
+         <span class="paren5">(<span class="code">http-stream-to-string stream</span>)</span>
+         <span class="paren5">(<span class="code">http2/core::get-headers stream</span>)</span>
+         <span class="paren5">(<span class="code">http2/core::get-body stream</span>)</span></span>)</span></span>)</span></span>)</span></span>)</span></span></code></pre>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-PATH-20GENERIC-FUNCTION-29"></a>
+<a id="HTTP2%2FCORE:GET-PATH%20GENERIC-FUNCTION"></a></p>
+
+<ul>
+<li><span class=reference-bullet><span class=reference><span class="locative-type">[generic-function]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-PATH%20GENERIC-FUNCTION" >GET-PATH</a></span></span> <span class="locative-args">OBJECT</span></span></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-HEADERS-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3AHEADER-COLLECTING-MIXIN-29-29"></a>
+<a id="HTTP2%2FCORE:GET-HEADERS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HEADER-COLLECTING-MIXIN%29"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[accessor]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-HEADERS%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:HEADER-COLLECTING-MIXIN%29" >GET-HEADERS</a></span></span> <span class="locative-args">HEADER-COLLECTING-MIXIN (:HEADERS)</span></span></p>
+
+<p>List of collected (header . value) pairs. Does not include <code>:method</code>, <code>:path</code>, etc.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-METHOD-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
+<a id="HTTP2%2FCORE:GET-METHOD%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[accessor]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-METHOD%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-METHOD</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FCORE:SERVER-STREAM%20CLASS" title="HTTP2/CORE:SERVER-STREAM CLASS">SERVER-STREAM</a> (:METHOD)</span></span></p>
+
+<p>The HTTP method ([RFC7231], Section 4)</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-SCHEME-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
+<a id="HTTP2%2FCORE:GET-SCHEME%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[accessor]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-SCHEME%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-SCHEME</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FCORE:SERVER-STREAM%20CLASS" title="HTTP2/CORE:SERVER-STREAM CLASS">SERVER-STREAM</a> (:SCHEME)</span></span></p>
+
+<p>Scheme portion of the target URI ([RFC3986], Section 3.1).</p>
+
+<p>Not restricted to &quot;http&quot; and &quot;https&quot; schemed URIs.
+A proxy or gateway can translate requests for non-HTTP schemes,
+enabling the use of HTTP to interact with non-HTTP services</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-AUTHORITY-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ASERVER-STREAM-29-29"></a>
+<a id="HTTP2%2FCORE:GET-AUTHORITY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[accessor]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-AUTHORITY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:SERVER-STREAM%29" >GET-AUTHORITY</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FCORE:SERVER-STREAM%20CLASS" title="HTTP2/CORE:SERVER-STREAM CLASS">SERVER-STREAM</a> (:AUTHORITY)</span></span></p>
+
+<p>The authority portion of the target URI ([RFC3986], Section 3.2)</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FSERVER-3A-40REQUEST-BODY-20MGL-PAX-3ASECTION-29"></a>
+<a id="HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION"></a></p>
+
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8592;</a> <a href="#HTTP2%2FSERVER:@REQUEST-DETAILS%20MGL-PAX:SECTION" title="Getting request details">&#8593;</a> <a href="reference.html" title="API documentation">&#8594;</a> <a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8634;</a></span></span></p>
+
+<h5><a href="#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION">Body of the request</a></h5>
+
+<p>Sometimes there is a body in the client request.</p>
+
+<p>When sending a such a request, you can use <code>CONTENT</code> parameter of the
+<a href="reference.html#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>HTTP2/CLIENT:RETRIEVE-URL</code></a>, together with <code>CONTENT-TYPE</code>.</p>
+
+<pre><code><span class="code"> <span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://localhost:8080/body"</span> <span class="keyword">:content</span> <span class="string">"Hello"</span></span>)</span>
+ <span class="paren1">(<span class="code">http2/client:retrieve-url <span class="string">"https://localhost:8080/body"</span>
+       <span class="keyword">:content</span> #<span class="paren2">(<span class="code">1 2 3</span>)</span> <span class="keyword">:content-type</span> <span class="string">"application/octet-stream"</span></span>)</span></span></code></pre>
+
+<p>When you write a handler for such a request, you should know if you want binary
+or text data. The vanilla class for the server streams looks at the headers, and
+if they look like UTF-8 (as per <a href="implementation.html#HTTP2%2FCORE:IS-UTF8-P%20FUNCTION" title="HTTP2/CORE:IS-UTF8-P FUNCTION"><code>IS-UTF8-P</code></a>), it processes the data as text, if
+not, they are collected as binary vector.</p>
+
+<p>When your client systematically send headers that do not make it <code>TEXT</code> and you
+want to read text, as last resort change class of your streams to include
+<a href="#HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS" title="HTTP2/CORE:FALLBACK-ALL-IS-ASCII CLASS"><code>FALLBACK-ALL-IS-ASCII</code></a> (or improve <code>IS-UTF8-P</code>, or add some other decoding function).</p>
+
+<p>If you do not want to see text at all, change class to NOT include
+<a href="implementation.html#HTTP2%2FCORE:UTF8-PARSER-MIXIN%20CLASS" title="HTTP2/CORE:UTF8-PARSER-MIXIN CLASS"><code>UTF8-PARSER-MIXIN</code></a> or any other conversion mixin.</p>
+
+<p><a id="x-28HTTP2-2FCORE-3AGET-BODY-20-28MGL-PAX-3AACCESSOR-20HTTP2-2FCORE-3ABODY-COLLECTING-MIXIN-29-29"></a>
+<a id="HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[accessor]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:GET-BODY%20%28MGL-PAX:ACCESSOR%20HTTP2%2FCORE:BODY-COLLECTING-MIXIN%29" >GET-BODY</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FCORE:BODY-COLLECTING-MIXIN%20CLASS" title="HTTP2/CORE:BODY-COLLECTING-MIXIN CLASS">BODY-COLLECTING-MIXIN</a> (:BODY)</span></span></p>
+
+<p>Body of the request as an octet vector.</p>
+
+<p>May be empty if some higher priority mixin (e.g., <a href="implementation.html#HTTP2%2FCORE:UTF8-PARSER-MIXIN%20CLASS" title="HTTP2/CORE:UTF8-PARSER-MIXIN CLASS"><code>UTF8-PARSER-MIXIN</code></a>) processed
+the data.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AHTTP-STREAM-TO-STRING-20FUNCTION-29"></a>
+<a id="HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:HTTP-STREAM-TO-STRING%20FUNCTION" >HTTP-STREAM-TO-STRING</a></span></span> <span class="locative-args">HTTP-STREAM</span></span></p>
+
+<p><code>HTTP-STREAM</code> should be a <a href="implementation.html#HTTP2%2FCORE:TEXT-COLLECTING-STREAM%20CLASS" title="HTTP2/CORE:TEXT-COLLECTING-STREAM CLASS"><code>TEXT-COLLECTING-STREAM</code></a>.</p>
+
+<p>HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks.</p></li>
+</ul>
+
+<p><a id="x-28HTTP2-2FCORE-3AFALLBACK-ALL-IS-ASCII-20CLASS-29"></a>
+<a id="HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[class]</span> <span class="reference-object"><a href="#HTTP2%2FCORE:FALLBACK-ALL-IS-ASCII%20CLASS" >FALLBACK-ALL-IS-ASCII</a></span></span></span></p>
+
+<p>Treat all non-binary data input as ASCII, that is, convert octets to a string
+with <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_code_c.htm" title="CODE-CHAR (MGL-PAX:CLHS FUNCTION)"><code>CODE-CHAR</code></a>. It is compatible with <a href="implementation.html#HTTP2%2FCORE:UTF8-PARSER-MIXIN%20CLASS" title="HTTP2/CORE:UTF8-PARSER-MIXIN CLASS"><code>UTF8-PARSER-MIXIN</code></a> if provided after it in
+the list of direct superclasses.</p></li>
+</ul>
+
+<p><a id="x-28-22HTTP2-2FSERVER-22-20PACKAGE-29"></a>
+<a id="%22HTTP2%2FSERVER%22%20PACKAGE"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[package]</span> <span class="reference-object"><a href="#%22HTTP2%2FSERVER%22%20PACKAGE" >&quot;HTTP2/SERVER&quot;</a></span></span> <span class="locative-args">NICKNAMES (&quot;HTTP2/SERVER/SHARED&quot; &quot;HTTP2/SERVER/POLL&quot; &quot;HTTP2/SERVER/THREADED&quot;)</span></span></p>
+
+<p>Contains</p>
+
+<ul>
+<li><p>Functions to start and stop of a HTTP/2 servers,</p></li>
+<li><p>implementations of the servers (threaded and polled version), <code>HTTP2</code> server connections and <code>HTTP2</code> streams,</p></li>
+<li><p>macros to define content for the served pages.</p></li>
+</ul></li>
+</ul>
+
+<p><a id="x-28-22http2-2Fserver-22-20ASDF-2FSYSTEM-3ASYSTEM-29"></a>
+<a id="%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[system]</span> <span class="reference-object"><a href="#%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM" >&quot;http2/server&quot;</a></span></span></span></p>
+
+<ul>
+<li><em>Version:</em> 2.0.3</li>
+<li><em>Description:</em> Asyncronous polling implementations of <code>HTTP2</code> server.</li>
+<li><em>Author:</em> Tomáš Zellerin <a href="m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;">m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;</a></li>
+<li><em>Depends on:</em> http2/server/poll, http2/server/threaded</li>
+</ul></li>
+</ul>
   </div>
 </div>
 <script>$('#page-toc').toc({'selectors': 'h1,h2,h3,h4'});</script>
