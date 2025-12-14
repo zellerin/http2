@@ -19,7 +19,7 @@ to fetch a HTTP/2 resource, and
 #+end_src
 to start an empty TLS server and serve a "Hello world" page.
 
-Check [[https://doc.zellerin.cz/http2/tutorials.html][tutorials]] that show in more detail how to use the client or the server.
+Check [[https://doc.zellerin.cz/http2/#HTTP2:@TUTORIALS%20MGL-PAX:SECTION][tutorials]] that show in more detail how to use the client or the server.
 
 ** Demo pages
 
@@ -32,7 +32,7 @@ different backend. Both provide a ~/test~ page that tests some more tricky parts
 of the backend in the browser.
 
 ** Status
-In quicklisp. Documentation on [[https://docs.zellerin.cz/http2/][separate page]].
+In quicklisp. Documentation on [[https://doc.zellerin.cz/http2/][separate page]].
 
 Implements both thread-per-client and poll-based single threaded server (that may be actually faster).
 
