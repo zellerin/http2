@@ -5,8 +5,7 @@
 (named-readtables:in-readtable
             pythonic-string-reader:pythonic-string-syntax)
 
-(defsection @client
-    (:title "Using built-in HTTP/2 client")
+(defsection @client-api (:title "HTTP/2 client API")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
   (request-headers function)
@@ -246,15 +245,7 @@ Return the new stream."
 
 (defun drakma-style-stream-values (raw-stream &key close-stream)
   "Return values as from DRAKMA:HTTP-REQUEST. Some of the values are meaningless,
-but kept for compatibility purposes.
-
-- body of the reply
-- status code as integer
-- alist of headers
-- the URL the reply came from (bogus value)
-- the connection the reply comes from (not network stream as in Drakma, but same purpose - can be reused for ruther queries.)
-- whether connection is closed (passed as parameter)
-- reason phrase (bogus value)"
+but kept for compatibility purposes."
   (values
    (or (get-body raw-stream) (http-stream-to-string raw-stream))
    (parse-integer (get-status raw-stream))
@@ -311,8 +302,15 @@ Example:
 ==> \"HTTP2 does not provide reason phrases\"
 ```
 
-See DRAKMA-STYLE-STREAM-VALUES for meaning of the individual values.
-"
+The individual values are:
+
+- body of the reply (response data) - string or array
+- status code as integer
+- alist of response headers
+- the URL the reply came from (bogus value for Drakma compatibility)
+- the connection the reply comes from (not network stream as in Drakma, but same purpose - can be reused for ruther queries.)
+- whether connection is closed (passed as parameter)
+- reason phrase (bogus value)"
   ;; parameters are just for documentation purposes
   (declare (ignore method content content-fn
                    content-type charset gzip-content additional-headers))

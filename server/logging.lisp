@@ -3,14 +3,14 @@
 (defsection @logging (:title "Logging support")
   "Server should log some basic information.
 
-Current implementation logs to the *standard-output*. This can be changed with
-*log-stream*. The format is the peer name (see GET-PEER-NAME) and actual message.
+Current implementation logs to the *STANDARD-OUTPUT* via *LOG-STREAM*. The
+format is the peer name (see GET-PEER-NAME) and actual message.
 
 What is logged:
 
 - Client connected - see LOG-SERVER-CONNECTED, separate invocation from the
 - Client disconnected"
-  (log-stream *variable*))
+  (*log-stream* variable))
 
 (defvar *log-stream* (make-synonym-stream '*standard-output*))
 

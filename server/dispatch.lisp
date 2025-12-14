@@ -324,14 +324,25 @@ signalled."
   ())
 
 
-(defsection @server
-    (:title "Starting HTTP/2 server")
-  "Start server on foreground with RUN, or on background with START.
+(defsection @server-start-stop (:title "Starting HTTP/2 server")
+  "Start server on foreground with RUN, or on background with START. You can stop server on background with STOP.
 
 This creates (as of this version) a multithreaded server that serves 404 Not
-found responses on any request."
-  (run function)
+found responses on any request.
+
+```
+(http2/server:start 8443)
+==> #<HTTP2/SERVER:DETACHED-TLS-THREADED-DISPATCHER HTTP/2 server on https://localhost:8443/>
+==> #<PURI:URI https://localhost:8443/>
+;; run curl -k https://localhost:8443/
+127.0.0.1:58565 Connected, using VANILLA-SERVER-CONNECTION
+127.0.0.1:58565 / [#1] - processing
+```
+")
+
+(defsection @server-reference (:title "Server reference")
   (start function)
+  (run function)
   (stop function))
 
 (defvar *servers* nil
@@ -376,7 +387,10 @@ respective parameters try to locate the files."
     (values server (url-from-socket socket host t))))
 
 (defun run (port &rest pars &key certificate-file private-key-file)
-  "Run a default HTTP/2 server on PORT on foreground."
+  "Run a default HTTP/2 server on PORT on foreground.
+
+The dispatcher type is not defined and can change in future. This is a thin
+wrapper over START that cannot be customized."
   (declare (ignore certificate-file private-key-file))
   (apply 'start port :dispatcher 'tls-threaded-dispatcher pars))
 

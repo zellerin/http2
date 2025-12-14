@@ -51,7 +51,8 @@
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
   :components ((:file "client-utils")
-               (:FILE "client")))
+               (:file "client")
+               (:file "tutorials")))
 
 (defsystem "http2/server/shared"
   :description "An example of http/2 server"

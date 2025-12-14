@@ -41,8 +41,12 @@
           #:http2/openssl #:dref #:cffi
           #:http2/tcpip)
   (:nicknames #:http2/server/shared #:http2/server/poll #:http2/server/threaded)
-  (:documentation "HTTP/2 server functions - for example START to start the server and DEFINE-EXACT-HANDLER and
-HANDLER macro to define content to serve."))
+  (:documentation
+   "Contains
+
+- Functions to start and stop of a HTTP/2 servers,
+- implementations of the servers (threaded and polled version), HTTP2 server connections and HTTP2 streams,
+- macros to define content for the served pages."))
 
 #+bil(mgl-pax:define-package #:http2/server/poll
     (:use #:cl #:cffi #:http2/server/shared #:http2/openssl
