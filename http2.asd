@@ -46,7 +46,7 @@
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.3"
+  :version "2.0.4"
   :serial t
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
