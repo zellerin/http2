@@ -295,16 +295,15 @@ stream in Common Lisp sense, so either network stream or even standard io) and
 read frames from it until END-OF-FILE (client closed the underlying stream - or
 maybe we do) or GO-AWAY (client closes connection - or maybe we do) is
 signalled."
-  (let ((connection (or connection
-                        (make-instance connection-class))))
+  (let ((connection (or connection (make-instance connection-class))))
     (restart-case
-      (handler-case
-          (unwind-protect
-               (progn
-                 (setf (get-network-stream connection) stream)
-                 (log-server-connected connection)
+        (handler-case
+            (unwind-protect
+                 (progn
+                   (setf (get-network-stream connection) stream)
+                   (log-server-connected connection)
                  (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+))))
-        (end-of-file ()))
+          (end-of-file (e) (invoke-restart 'close-connection e)))
       (close-connection (error)
         :report "Cleanly close current connection"
         :interactive (lambda () (list "Interactive restart"))
