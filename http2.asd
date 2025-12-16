@@ -37,10 +37,9 @@
   :license  "MIT"
   :serial t
   :depends-on ("http2/core" "bordeaux-threads")
-  :components ((:file "package")
-               (:module "core"
-                :components ((:file "stream-based-connections")
-                             (:file "payload-streams")))))
+  :pathname "core"
+  :components ((:file "stream-based-connections")
+                 (:file "payload-streams")))
 
 (defsystem "http2/client"
   :description "An example of http/2 client"
@@ -129,8 +128,7 @@ Run these patterns against servers."
   :pathname "tls"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
-  :components ((:file "../package")
-               (:cffi-grovel-file "openssl-grovel")
+  :components ((:cffi-grovel-file "openssl-grovel")
                (:file "openssl")))
 
 (asdf:defsystem "http2/server/poll"
@@ -143,7 +141,8 @@ Run these patterns against servers."
                (:file "poll-server")))
 
 (asdf:defsystem "http2/server"
-  :description "Asyncronous polling implementations of HTTP2 server."
+  :description "HTTP/2 server interface. Provides access to an implementation of a HTTP/2 server
+- both for running the server and for defining content."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :version "2.0.3"
   :serial t
@@ -151,7 +150,7 @@ Run these patterns against servers."
   :pathname "server")
 
 (asdf:defsystem "http2/server/demo"
-  :description "Demo content for the server."
+  :description "Demo content for the HTTP/2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :version "2.0.3"
   :serial t
