@@ -26,9 +26,7 @@ For more documentation consult @REFERENCE.")
 part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded."
   (http2/server::@server-start-stop section)
   (http2/server::@server-content section)
-  (http2/server::@request-details section)
-  (http2/server package)
-  (http2/server asdf:system))
+  (http2/server::@request-details section))
 
 (defsection @reference (:title "API documentation")
   (@systems-and-packages section)
@@ -37,7 +35,14 @@ part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded
   (http2/server::@logging section))
 
 (defsection @systems-and-packages (:title "Systems and packages")
-    (http2 asdf:system)
+  "The library is split to several subsystems. Most of them depend on other
+quicklisp-loadable components, see the graph.
+
+![systems](./systems.svg)
+"
+  (http2 asdf:system)
+  (http2/server asdf:system)
+  (http2/server package)
   (http2/client package))
 
 (defsection @implementation
