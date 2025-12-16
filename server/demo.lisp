@@ -3,15 +3,15 @@
 
 (in-package http2/demo)
 
-(define-prefix-handler "/redir" (redirect-handler "/ok"))
+(define-prefix-handler "/demo/redir" (redirect-handler "/demo/ok"))
 
-(define-exact-handler "/ok"
+(define-exact-handler "/demo/ok"
     (send-text-handler "Redirect was OK"
                        :content-type "text/plain; charset=UTF-8"
-                       :additional-headers '(("refresh" "3; url=/"))
+                       :additional-headers '(("refresh" "3; url=/demo/"))
                        :gzip nil))
 
-(define-exact-handler "/"
+(define-exact-handler "/demo"
     (handler (out :utf-8 nil)
       (send-headers
        `((:status "200")
@@ -21,10 +21,10 @@
           (:h1 "Hello World")
           (:p "This server is for testing http2 protocol implementation")
           (:ul
-           (:li (:a :href "/redir" "Redirect test")) " "
-           (:li (:a :href "/long" "Long page test")) " "
-           (:li (:a :href "/test" "A test page") ""))
-          (:form :action "/body" :method "post"
+           (:li (:a :href "/demo/redir" "Redirect test")) " "
+           (:li (:a :href "/demo/long" "Long page test")) " "
+           (:li (:a :href "/demo/test" "A test page") ""))
+          (:form :action "/demo/body" :method "post"
                  (:input :type :submit :name "xxx" :value "POST query test"))
           (:p "UTF8 test: Příliš žluťoučký kůň... 😎")))))
 
@@ -41,14 +41,14 @@
    table,th,td {border: 1px solid black}
    table {border-collapse: collapse}"
 
-  "Rudimental CSS to prettify and colorize the results table in /test.
+  "Rudimental CSS to prettify and colorize the results table in /demo/test.
 
 Padding is needed so that the intermediate yellow text can be longer than PASS
 text and table width changes on fly.")
 
 (defparameter *tests*
   `()
-  "Tests to be executed in the browser on /test page. Each item is test name, test description and test code in Parenscript.")
+  "Tests to be executed in the browser on /demo/test page. Each item is test name, test description and test code in Parenscript.")
 
 (defun print-test-table (out)
   "Print result table for the tests with all fields in TODO state."
@@ -89,7 +89,7 @@ text and table width changes on fly.")
 
   "Helper functions for ")
 
-(define-exact-handler "/test"
+(define-exact-handler "/demo/test"
     (handler (out :utf-8 nil)
       (send-headers
        `((:status "200")
@@ -132,12 +132,12 @@ table otherwise."
 
 (define-simple-server-test "404"
   "Test that the response of not-found is 404"
-  ("GET" "/no-such-page")
+  ("GET" "/demo/no-such-page")
   (unless (= 404 (@ reply status)) (@ reply status)))
 
 (define-simple-server-test "Long"
   "Test that long responses are handled well (streams over http streams)."
-  ("GET" "/long")
+  ("GET" "/demo/long")
   (let ((resp-code (@ reply status))
         (resp-length (length (@ reply response-text))))
     (unless (and
@@ -147,7 +147,7 @@ table otherwise."
 
 (define-simple-server-test "Body passing"
   "Test that body is available to the server."
-  ("POST" "/body" "SAMPLE BODY")
+  ("POST" "/demo/body" "SAMPLE BODY")
   (let ((resp-code (@ reply status))
         (resp-text (@ reply response-text)))
     (unless
@@ -158,7 +158,7 @@ table otherwise."
 
 (define-server-test "Event stream"
   "Test event streams - scheduler and locking."
-  (let ((source (new (-event-source "/event-stream"))))
+  (let ((source (new (-event-source "/demo/event-stream"))))
     (setf (@ source onmessage)
           (lambda (event)
             (setf (@ ((@ document get-element-by-id) "Event stream") text-content)
@@ -192,7 +192,7 @@ table otherwise."
         ((@ req add-event-listener)
          "error"
          (lambda () (set-result "1000 events" "ERROR" "nok")))
-        ((@ req open) "GET" "/")
+        ((@ req open) "GET" "/demo")
         ((@ req send))))))
 
 (defun compute-stream-window-size (stream)
@@ -211,7 +211,7 @@ table otherwise."
 
 (defvar *long-handler-chunk-size* 500 "How many chunks are in one action. Supposedly this helps speed, but test needed.")
 
-(define-exact-handler "/long"
+(define-exact-handler "/demo/long"
     ;; FIXME: put the looping logic to the callbacks
     (http2/server::handler (out :utf-8 nil)
       (send-headers
@@ -232,7 +232,7 @@ table otherwise."
                              (length chunk))))
             (http2/core::long-write stream #'write-chunk (length chunk)))))))
 
-(define-exact-handler "/slow"
+(define-exact-handler "/demo/slow"
     (handler (foo :utf-8 nil)
       (with-open-stream (foo foo)
         (send-headers
@@ -241,12 +241,12 @@ table otherwise."
         (sleep 1)
         (prin1 "Hello World" foo))))
 
-(define-exact-handler "/body"
+(define-exact-handler "/demo/body"
     (handler (foo :utf-8 nil)
       (with-open-stream (foo foo)
         (send-headers
          `((:status "200") ("content-type" "text/plain; charset=utf-8")
-           ("refresh" "3; url=/")))
+           ("refresh" "3; url=/demo")))
         (write-sequence (http2/server:http-stream-to-string stream) foo))))
 
 (defun schedule-repeated-fn (connection stream delay period fn)
@@ -267,7 +267,7 @@ FN is expected to send a data frames(s) to the stream."
     (schedule-task http2/server::*scheduler* delay
                    #'send-event-and-plan-next 'stream)))
 
-(define-exact-handler "/event-stream"
+(define-exact-handler "/demo/event-stream"
     (lambda (connection stream)
       "Output series of events. Use -N (--no-buffer) curl parameter to test."
       (send-headers stream `((:status "200") ("content-type" "text/event-stream")))
