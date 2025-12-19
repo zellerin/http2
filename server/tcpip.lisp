@@ -116,6 +116,8 @@ Otherwise signal an error."
   "See man errno(3). "
   (mem-ref (errno%) :int))
 
+(declaim (ftype (function * integer) errno))
+
 ;;;; Polling stuff
 (defcfun ("poll" poll%) :int "Synchronous I/O multiplexing. Called by POLL."
   (fdset :pointer) (rb :int) (timeout :int))
@@ -339,14 +341,21 @@ follow later (EAGAIN)."
         (values (subseq vector 0 res))))))
 
 (defun fd-to-ip (fd)
+  "Written representation of the peer for a IPv4 socket FD.
+
+Returns Unknown when the FD is already closed."
   (with-foreign-objects ((addr '(:struct sockaddr-in)) (len :int))
     (setf (mem-ref len :int) size-of-sockaddr-in)
-    (checked-syscall #'zerop #'getpeername fd addr len)
-    (assert (= (mem-ref len :int) size-of-sockaddr-in))
-    (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
-      (values (format nil "~a.~a.~a.~a:~a"
-                      (ldb (byte 8 0) sin-addr)
-                      (ldb (byte 8 8) sin-addr)
-                      (ldb (byte 8 16) sin-addr)
-                      (ldb (byte 8 24) sin-addr)
-                      (htons sin-port))))))
+    (handler-case
+        (progn
+          (checked-syscall #'zerop #'getpeername fd addr len)
+          (assert (= (mem-ref len :int) size-of-sockaddr-in))
+          (with-foreign-slots ((sin-family sin-port sin-addr) addr (:struct sockaddr-in))
+            (values (format nil "~a.~a.~a.~a:~a"
+                            (ldb (byte 8 0) sin-addr)
+                            (ldb (byte 8 8) sin-addr)
+                            (ldb (byte 8 16) sin-addr)
+                            (ldb (byte 8 24) sin-addr)
+                            (htons sin-port)))))
+      (syscall-error ()
+        (values "Unknown" 0)))))

@@ -46,21 +46,39 @@
       (aref *error-codes* code)
       (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2/core))))
 
+(defun get-error-description (error-code)
+  (if (<= 0 error-code #xd)
+      (or (documentation (aref  *error-codes* error-code) 'variable) error-code)
+      (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" error-code) 'http2/core)))
+  )
+
 (defsection @errors
     (:title "Errors handlers")
-  (http2-simple-error condition)
-  (http2-simple-warning condition)
-  (connection-error condition)
+  "The library raises errors and conditions. The ones to handle are documented here."
+  (http2-condition condition)
+  (communication-error condition)
+  "Use CONNECTION-ERROR function to signal a CONNECTION-ERROR condition and inform
+peer. It has many subclasses that may change in time.
+ ![Connection errors](./connection-errors.svg)"
   (connection-error function)
+  (connection-error condition)
+
+  "Use HTTP-STREAM-ERROR function to signal a HTTP-STREAM-ERROR condition and
+inform peer. Again, the subclasses may change with time.
+![Stream errors](./stream-errors.svg)"
   (http-stream-error condition)
+  (http-stream-error-received condition)
   (http-stream-error function)
-  (too-big-frame condition)
-  (frame-too-small-for-priority condition)
   (go-away condition)
+  (go-away-no-error condition)
   (do-goaway generic-function)
   (h2-not-supported-by-server condition))
 
-(define-condition go-away (communication-error)
+(define-condition http2-condition ()
+  ()
+  (:documentation "Base class for all HTTP/2 stream and connection related sitations."))
+
+(define-condition go-away (communication-error http2-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code
                    :type symbol)
    (debug-data     :accessor get-debug-data     :initarg :debug-data
@@ -70,21 +88,20 @@
   (:report (lambda (err stream)
              (with-slots (error-code debug-data) err
                (format stream
-                       "~@<Peer sent GO-AWAY frame. Connection can no longer be used.~_Error code ~W - ~W~@[~_Debug data: ~W~]~:>"
-                       (get-medium err) error-code (documentation error-code 'variable)
+                       "~@<~Peer sent us away: ~_~W.~@[~_Debug data: ~W.~]~:>"
+                       (get-medium err) (get-error-description error-code)
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
   (:documentation "Signalled by DO-GOAWAY when go-away frame arrives."))
 
 (define-condition go-away-no-error (go-away)
   ()
   (:report (lambda (err stream)
-             (with-slots (error-code debug-data) err
+             (with-slots (medium error-code debug-data) err
                (format stream
-                       "~@<Peer requested to close connection (not an error).~@[~_Debug data: ~W~]~:>"
-                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data)))))))
-
-(define-condition http2-condition ()
-  ())
+                       "~@<~W closed connection normally. ~@[~_Debug data: ~W.~]~:>"
+                       medium
+                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
+  (:documentation "Signalled when peer closes connection normally."))
 
 (define-condition http2-error (http2-condition error)
   ()
@@ -97,19 +114,21 @@
 (define-condition http2-simple-error (http2-error simple-condition)
   ())
 
-(define-condition connection-error (communication-error)
+(define-condition connection-error (communication-error http2-condition)
   ((medium :accessor get-connection :initarg :connection)
    (code       :accessor get-code       :initarg :code))
   (:documentation
-   "A connection error is signalled when we detect an illegal frame content.
+   "A connection error is signalled when we detect an illegal content from the peer.
 
 Use [CONNECTION-ERROR][function] function to signal it or its
-subclasses. Application must handle it, including closing associated
+subclasses. A server should handle it, including closing the associated
 NETWORK-STREAM."))
 
 (defmethod print-object ((ce connection-error) out)
-  (print-unreadable-object (ce out :type t)
-    (format out "on ~a" (get-connection ce))))
+  (if *print-escape*
+      (print-unreadable-object (ce out :type t)
+        (format out "on ~a" (get-connection ce)))
+      (call-next-method)))
 
 (define-condition protocol-error (connection-error)
   ()
@@ -118,12 +137,11 @@ NETWORK-STREAM."))
 (define-condition client-preface-mismatch (protocol-error)
   ((received :accessor get-received :initarg :received))
   (:documentation "HTTPS server expects a specific sequence of octets at the start of the new
-connection. The client sent something different."))
-
-(defmethod print-object ((err client-preface-mismatch) out)
-  (with-slots (received) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a ~a" received  (map 'string 'code-char received)))))
+connection. The client sent something different.")
+  (:report (lambda (err out)
+             (with-slots (received medium) err
+               (format out "~W did not sent the client preface, but ~W"
+                       medium (map 'string 'code-char received))))))
 
 (define-condition too-big-frame (connection-error)
   ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)
@@ -132,25 +150,40 @@ connection. The client sent something different."))
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
 
+(define-condition incomplete-header (connection-error)
+  ((octets :accessor get-octets :initarg :octets))
+  (:report "The last header in headers frame was not complete.")
+  (:default-initargs :code +compression-error+))
+
+(define-condition decompression-failed (connection-error)
+  ((internal-error :accessor get-internal-error :initarg :internal-error))
+  (:report "Headers frame could not be decompressed.")
+  (:default-initargs :code +compression-error+))
+
 (defmethod print-object ((o too-big-frame) stream)
   (print-unreadable-object (o stream :type t)
     (format stream "Frame size 0x~x, max ~x." (get-frame-size o) (get-max-frame-size o))))
 
 (define-condition too-big-padding (protocol-error)
   ()
-  (:documentation
+  (:report
    "Length of the padding is the length of the frame payload or greater."))
 
 (define-condition frame-too-small-for-priority (protocol-error)
   ()
-  (:documentation
+  (:report
    "Length of the padding is the length of the frame payload or greater."))
 
 (define-condition our-id-created-by-peer (protocol-error)
-  ())
+  ()
+  (:report "We received ID we were not supposed to receive (even/odd)"))
 
 (define-condition frame-type-needs-stream (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
+  (:report (lambda (err out)
+             (declare (special *frame-types*))
+             (format out "~W requires a stream, not the connection."
+                     (aref *frame-types* (get-frame-type err)))))
   (:documentation
    "Frame MUST be associated with a stream. If a frame is received whose
     stream identifier field is 0x0, the recipient MUST respond with a
@@ -158,12 +191,16 @@ connection. The client sent something different."))
 
 (define-condition frame-type-needs-connection (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
+  (:report (lambda (err out)
+             (format out "~W requires the connection, not a stream."
+                     (get-frame-type err))))
   (:documentation
    "Frame type must be applied on connection."))
 
 (define-condition new-stream-id-too-low (protocol-error)
   ((stream-id       :accessor get-stream-id       :initarg :stream-id)
    (max-seen-so-far :accessor get-max-seen-so-far :initarg :max-seen-so-far))
+  (:report "Requested new stream id is lower than previously used id.")
   (:documentation
    "The identifier of a newly established stream MUST be numerically
       greater than all streams that the initiating endpoint has opened or
@@ -179,29 +216,40 @@ connection. The client sent something different."))
 
 (define-condition incorrect-enable-push-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
+  (:report "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
 
 (define-condition incorrect-frame-size-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation
+  (:report
    "Frame size MUST be between the initial value 16384 and the maximum allowed frame
 size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (define-condition incorrect-initial-window-size-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation
+  (:report
    "SETTINGS_INITIAL_WINDOW_SIZE must be below 2^31."))
 
 (define-condition bad-stream-state (connection-error)
   ((allowed   :accessor get-allowed   :initarg :allowed)
    (actual    :accessor get-actual    :initarg :actual)
-   (stream-id :accessor get-stream-id :initarg :stream-id))
-  (:documentation
-   "Frame cannot be applied to stream in particular state"))
+   (stream-id :accessor get-stream-id :initarg :stream-id)
+   (received  :accessor get-received  :initarg :received))
+  (:report (lambda (err out)
+             (with-slots (actual received stream-id) err
+                 (format out
+                         "~a cannot be applied to ~@[stream #~s in ~]state ~a." received stream-id actual)))))
 
-(define-condition http-stream-error (warning)
-  ((code   :accessor get-code   :initarg :code)
-   (stream :accessor get-stream :initarg :stream)))
+(define-condition closed-stream (bad-stream-state)
+  ()
+  (:default-initargs :stream-id nil :code +stream-closed+))
+
+(define-condition http-stream-error (http2-condition error)
+  ((code   :accessor get-code   :initarg :code
+           :reader get-error-code)
+   (stream :accessor get-stream :initarg :stream))
+  (:documentation "HTTP stream error was either detected, or received from the peer.
+
+Base class for more detailed errors."))
 
 (defmethod print-object ((err http-stream-error) out)
   (with-slots (stream code) err
@@ -209,39 +257,47 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
         (print-unreadable-object (err out :type t)
           (format out "~d (~a) on ~s"
                   (get-error-name code)
-                  (documentation (get-error-name code) 'variable)
+                  (or (documentation (class-of err) t)
+                      (documentation (get-error-name code) 'variable))
                   stream))
-        (format out "~a" (documentation (get-error-name code) 'variable)))))
+        (call-next-method))))
+
+(define-condition http-stream-error-received (http-stream-error)
+  ())
+
+(defmethod print-object ((err http-stream-error-received) out)
+  (with-slots (stream code) err
+    (if *print-escape*
+        (call-next-method)
+        (format out "Received error: ~a" (documentation (get-error-name code) 'variable)))))
 
 (define-condition incorrect-frame-size (http-stream-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "A PRIORITY frame with a length other than 5 octets MUST be treated as a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received a PRIORITY frame with a length other than 5 octets (Section 5.4.2)"))
 
 (define-condition incorrect-rst-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "A RST_STREAM frame with a length other than 4 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received a RST_STREAM frame with a length other than 4 octets (Section 5.4.1)"))
 
 (define-condition incorrect-settings-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received a SETTINGS frame with a length other than a multiple of 6 (Section 5.4.1)"))
 
 (define-condition incorrect-ping-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received PING frame with a length field value other than 8 (Section 5.4.1)"))
 
 (define-condition incorrect-window-update-frame-size (connection-error)
   ()
-  (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:default-initargs :code +frame-size-error+))
 
 (define-condition unexpected-continuation-frame (protocol-error)
   ()
@@ -249,22 +305,25 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
    "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that
    observes violation of this rule MUST respond with a connection error (Section
-   5.4.1) of type PROTOCOL_ERROR."))
+   5.4.1) of type PROTOCOL_ERROR.")
+  (:report "Continuation frame received when not expected."))
 
 (define-condition stream-protocol-error (http-stream-error)
   ()
-  (:default-initargs :code +protocol-error+))
+  (:default-initargs :code +protocol-error+)
+  (:report "We detected some kind of protocol error."))
 
 (define-condition header-error (stream-protocol-error)
   ((name :accessor get-name :initarg :name)
-   (value  :accessor get-value  :initarg :value)))
+   (value  :accessor get-value  :initarg :value))
+  (:documentation "Base class for various errors in headers"))
 
 (define-condition incorrect-pseudo-header (header-error)
   ())
 
 (define-condition pseudo-header-after-text-header (header-error)
   ()
-  (:documentation "Pseudo header follows text header."))
+  (:documentation "Peer sent a pseudo header after a text header."))
 
 (define-condition incorrect-response-pseudo-header (header-error)
   ())
@@ -273,17 +332,20 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   ())
 
 (define-condition duplicate-request-header (header-error)
-  ())
+  ()
+  (:report "Header received twice"))
 
 (define-condition lowercase-header-field-name (header-error)
   ()
   (:documentation
    "A request or response containing uppercase header field names MUST be treated
    as malformed. (...) Malformed requests or responses that are detected MUST be
-   treated as a stream error of type PROTOCOL_ERROR."))
+   treated as a stream error of type PROTOCOL_ERROR.")
+  (:report "Header name has an uppercase letter. This is not allowed for HTTP/2."))
 
 (define-condition missing-pseudo-header (header-error)
   ()
+  (:report "Pseudo-header :status is missing.")
   (:documentation
    ":status pseudo-header field MUST be included in all responses.
 

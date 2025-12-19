@@ -90,96 +90,6 @@ The actions are in general indicated by arrows in the diagram:
 (defvar *default-buffer-size* 1500) ; close to socket size
 
 
-(defsection @poll-tls-states (:title "TLS endpoint states")
-  "The actions available for a specific endpoint are kept in STATE.
-
-Each state bit corresponds to one function that can be called."
-  "CAN-READ-PORT is set when there are data available on the input port. This can
-be set by HANDLE-CLIENT-IO after poll, and is cleared by READ-FROM-PEER when there are
-no longer data available. It allows PROCESS-DATA-ON-SOCKET to be called."
-  "CAN-READ-SSL is set when there are data available on SSL to read by the
-application. It is set by PROCESS-DATA-ON-SOCKET, as it indicates that some data
-to decrypt were written, and is cleared by SSL-READ. It triggers
-ON-COMPLETE-SSL-DATA or RUN-USER-CALLBACK."
-  "CAN-WRITE-SSL is set when data can be written to SSL. It is set by
-PROCESS-DATA-ON-SOCKET and cleared by ENCRYPT-SOME. Triggers ENCRYPT-DATA."
-  "CAN-READ-BIO is set when there are probably some data to read from the BIO. It
-is set by ENCRYPT-SOME and PROCESS-DATA-ON-SOCKET and MAYBE-INIT-SSL. It is
-cleared by READ-ENCRYPTED-FROM-OPENSSL.  It triggets MOVE-ENCRYPTED-BYTES."
-  "CAN-WRITE is set when writing to the output socket is possible (which usually
-is). It is set by HANDLE-CLIENT-IO and . It is cleared by SEND-TO-PEER and
-WRITE-DATA-TO-SOCKET. It triggers WRITE-DATA-TO-SOCKET."
-  "HAS-DATA-TO-WRITE is set when the write buffer for output socket is
-non-empty (or, not implemented, has enough data to make sending economical). It
-is set by READ-ENCRYPTED-FROM-OPENSSL and MOVE-ENCRYPTED-BYTES. It is cleared by
-WRITE-DATA-TO-SOCKET and triggers MOVE-ENCRYPTED-BYTES."
-  "NEG-BIO-NEEDS-READ is set by PROCESS-DATA-ON-SOCKET and triggers
-MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
-  "SSL-INIT-NEEDED is maybe not needed?"
-  (state type)
-
-  (select-next-action function)
-  (states-to-string function))
-
-;;;; Async TLS endpoint state
-(eval-when (:load-toplevel :compile-toplevel)
-  (defparameter *states*
-    '(CAN-READ-PORT                     ; ①
-      CAN-READ-SSL                      ; ③
-      CAN-WRITE-SSL                     ; ④
-      CAN-READ-BIO                      ; ⑤
-      CAN-WRITE                         ; ⑥
-      HAS-DATA-TO-WRITE                 ; ⓤ
-      NEG-BIO-NEEDS-READ                ; B
-      SSL-INIT-NEEDED                   ; S
-      )
-    "List of state bits that can a TLS endpoint have."))
-
-(defun states-to-string (state)
-  "Short string describing the state using codes on the diagram."
-  (with-output-to-string (*standard-output*)
-    (loop ;for state in *states*
-          for state-idx from 0
-          for label across "①③④⑤⑥ⓤⒺBSO"
-          do (princ
-              (if (plusp (ldb (byte 1 state-idx) state)) label #\Space)))))
-
-(deftype state ()
-  "Description of actions available to the endpoint."
-  `(unsigned-byte ,(length *states*)))
-
-(defmacro state-idx (state)
-  `(let ((idx (position ,state ',*states*)))
-     (or idx (error "No state ~a" ,state))))
-
-(defun if-state* (client state-idx)
-  (plusp (ldb (byte 1 state-idx)
-              (client-state client))))
-
-(declaim (inline if-state add-state remove-state if-state* test-state*))
-
-(defun if-state (client state)
-  (if-state* client (state-idx state)))
-
-(defun set-state* (client idx value)
-  (declare (bit value)
-           (fixnum  idx))
-  (setf (ldb (byte 1 idx)
-             (client-state client))
-        value))
-
-(defun add-state (client state)
-  (set-state* client (state-idx state) 1))
-
-(defun remove-state (client state)
-  (set-state* client (state-idx state) 0))
-
-(defparameter *initial-state*
-  (loop with state = 0
-        for item in
-        '(CAN-WRITE CAN-WRITE-SSL ssl-init-needed)
-        do (setf (ldb (byte 1 (state-idx item)) state) 1)
-        finally (return state)))
 
 
 (deftype app-callback ()
@@ -207,17 +117,12 @@ MAYBE-INIT-SSL. It is cleared by an error condition in HANDLE-SSL-ERRORS."
    :type (and (simple-array (unsigned-byte 8))))
   (write-buf-size 0 :type fixnum)
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
-   :type (simple-array (unsigned-byte 8))
-   )
+   :type (simple-array (unsigned-byte 8)))
   (io-on-read (constantly nil) :type app-callback)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
   (octets-needed 0 :type fixnum)
   (encrypt-buf-size 0 :type fixnum)
   (start-time (get-internal-real-time) :type fixnum)
-  (state *initial-state* :type state)
-  ;; set of CAN-READ-PORT, CAN-READ-SSL, CAN-WRITE-SSL,
-  ;; CAN-READ-BIO, HAS-DATA-TO-WRITE, CAN-WRITE
-  ;; NEG-BIO-NEEDS-READ SSL-INIT-NEEDED
   (application-data))
 
 (defvar *tls-content-types*
@@ -316,18 +221,8 @@ available. Raise an error on error." vector destination)
       (remove-state client 'CAN-READ-PORT))
     read))
 
-;;;; Read BIO (rbio)
-
-;;; This name is somewhat confusing - it is BIO for SSL reads, so it actually
-;;; gets written to.
-
 (define-writer write-octets-to-decrypt openssl-to-decrypt (client vector from to)
-  (with-pointer-to-vector-data (buffer vector)
-    (let ((written (bio-write (client-rbio client)
-                              (inc-pointer buffer from)
-                              (- to from))))
-      (unless (plusp written) (error "Bio-write failed"))
-      written)))
+  (write-octets-to-decrypt* client vector from to))
 
 (defun decrypt-socket-octets (client vector from to)
   "Send data in the VECTOR between FROM and TO to the ② openssl for decryption ."
@@ -336,38 +231,9 @@ available. Raise an error on error." vector destination)
               #'write-octets-to-decrypt vector from to))
 
 (defun process-data-on-socket (client)
+  ;; Trigger: CAN-READ-PORT &
   "Read data from client socket ① and pass them to the tls buffer ② to decrypt."
-  (pull-once-push-bytes client #'read-from-peer #'decrypt-socket-octets)
-  (add-state client 'CAN-READ-SSL)
-  (add-state client 'can-write-ssl)
-  (unless (if-state client 'neg-bio-needs-read)
-    (add-state client 'neg-BIO-NEEDS-READ)
-    (add-state client 'CAN-READ-BIO)))
-
-;;;; Read SSL
-(defun ssl-read (client vec size)
-   "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
-
-Return 0 when no data are available. Possibly remove CAN-READ-SSL and/or
-NEG-BIO-NEEDS-READ flags."
-   (let ((res
-          (with-pointer-to-vector-data (buffer vec)
-            (ssl-read% (client-ssl client) buffer size))))
-     (handle-ssl-errors client res)
-     (unless (= res size) (remove-state client 'can-read-ssl))
-     (max 0 res)))
-
-(defun ssl-peek (client max-size)
-   "Move up to SIZE octets from the decrypted SSL ③ to the VEC.
-
-Return 0 when no data are available."
-  (unless (null-pointer-p (client-ssl client))
-    (let* ((vec (make-octet-buffer max-size))
-           (res
-             (with-pointer-to-vector-data (buffer vec)
-               (http2/openssl::ssl-peek% (client-ssl client) buffer max-size))))
-      (handle-ssl-errors client res)
-      (values (subseq vec 0 (max 0 res)) res))))
+  (pull-once-push-bytes client #'read-from-peer #'decrypt-socket-octets))
 
 ;;;; Encrypt queue
 (defun add-and-maybe-pass-data (client buffer new-data from to old-size cleaner)
@@ -396,7 +262,7 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
     ;; now the buffer is emptied and we processed some data
     (incf from gap)
     (decf new-data-size gap)
-    (when (< new-data-size max-size) ; actually, it might be a bit less strict check
+    (when (or (< new-data-size max-size)) ; actually, it might be a bit less strict check
       (replace buffer new-data :start2 from)
       (return-from add-and-maybe-pass-data (values new-data-size (+ gap new-data-size))))
     ;; try to send new data as a bulk
@@ -405,7 +271,8 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
         (error "Could not process data. Implement me.")))
     (values 0 (+ gap new-data-size))))
 
-(defun send-unencrypted-bytes (client new-data comment)
+(defun send-unencrypted-bytes (client new-data comment &optional (start 0)
+                                                         (length (length new-data)))
   "Add new data to be encrypted and sent to client.
 
 Data are buffered in the ENCRYPT-BUF of the client and when there is enough of
@@ -416,22 +283,14 @@ NEW-DATA are completely used up (can be dynamic-extent)."
   (multiple-value-bind (new-size processed)
       (add-and-maybe-pass-data client
                                (client-encrypt-buf client)
-                               new-data 0 (length new-data)
+                               new-data start (+ length start)
                                (client-encrypt-buf-size client)
                                #'encrypt-some)
     (setf (client-encrypt-buf-size client) new-size)
     (assert (= processed (length new-data)))))
 
-;;;; Write to SSL
 (define-writer encrypt-some output-ssl (client vector from to)
-  (handler-case
-      (let ((res
-              (encrypt-some* client vector from to)))
-        (when (plusp res)
-          (add-state client 'can-read-bio))
-        res)
-    (ssl-blocked ()
-      (remove-state client 'can-write-ssl))))
+  (encrypt-some* client vector from to))
 
 (defun encrypt-data (client)
   "Encrypt data in client's ENCRYPT-BUF.
@@ -448,18 +307,7 @@ Otherwise, use a temporary vector to write data "
 
 ;;;; Write BIO
 (define-reader read-encrypted-from-openssl bio-out (client vec size)
-  (declare ((simple-array (unsigned-byte 8)) vec)
-           (fixnum size))
-  (with-pointer-to-vector-data (buffer vec)
-    (let ((res (bio-read% (client-wbio client) buffer size)))
-      (cond ((plusp res)
-             (add-state client 'has-data-to-write)
-             res)
-            ((zerop (bio-should-retry  (client-wbio client)))
-             (error "Failed to read from bio, and cant retry"))
-            (t
-             (remove-state client 'can-read-bio)
-             0)))))
+  (read-encrypted-from-openssl* client vec size))
 
 (defun move-encrypted-bytes (client)
   "Move data encrypted by OpenSSL to the socket write queue Ⓔ.
@@ -467,8 +315,7 @@ Otherwise, use a temporary vector to write data "
 This should be called in a way friendly to Nagle algorithm. My understaning is
 this is either when we pipeline a lot of data, or when we send out somethinf
 that expects a response."
-  (pull-push-bytes client #'read-encrypted-from-openssl #'queue-encrypted-bytes)
-  (add-state client 'has-data-to-write))
+  (pull-push-bytes client #'read-encrypted-from-openssl #'queue-encrypted-bytes))
 
 ;;;; TCP write port
 (define-writer send-to-peer peer-out (client vector from to)
@@ -501,7 +348,6 @@ keep what did not fit."
                         #'send-to-peer
                         concated 0 (client-write-buf-size client))))
       (cond ((= written (client-write-buf-size client))
-             (remove-state client 'has-data-to-write)
              (setf (client-write-buf-size client) 0))
             ((plusp written)
              (remove-state client 'can-write)
@@ -536,7 +382,7 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
   (cond
     ((if-state client 'can-read-port) #'process-data-on-socket)
     ((and (if-state client 'ssl-init-needed)
-          (if-state client 'neg-bio-needs-read))
+          (if-state client 'can-read-ssl))
      #'maybe-init-ssl)
     ((if-state client 'can-read-ssl)
      (if (plusp (client-octets-needed client))
@@ -548,7 +394,7 @@ TLS-SERVER/MEASURE::ACTIONS clip on this function."
           (if-state client 'can-write-ssl))
      #'encrypt-data)
     ((if-state client 'can-read-bio) #'move-encrypted-bytes)
-    ((and (if-state client 'has-data-to-write)
+    ((and (plusp (client-write-buf-size client))
           (if-state client 'can-write))
      #'write-data-to-socket)
     (t nil)))
@@ -631,27 +477,6 @@ Repeat on partial write."
              ((zerop written)
               (return from))))))
 
-(defun handle-ssl-errors (client ret)
-  "Check real error after a call to SSL_connect, SSL_accept,
-SSL_do_handshake, SSL_read_ex, SSL_read, SSL_peek_ex, SSL_peek, SSL_shutdown,
-SSL_write_ex or SSL_write.
-
-If the operation was successfully completed, do nothing.
-
-If it is a harmless one (want read or want write), try to process the data.
-
-Raise error otherwise."
-  (handler-case (handle-ssl-errors* client ret)
-    (ssl-wants-read () (remove-state client 'neg-bio-needs-read))))
-
-(defun maybe-init-ssl (client)
-  "If SSL is not initialized yet, initialize it."
-  (cond
-    ((zerop (ssl-is-init-finished (client-ssl client)))
-     (handle-ssl-errors client (ssl-accept (client-ssl client))))
-    (t (remove-state client 'ssl-init-needed)
-       (add-state client 'can-read-bio))))
-
 (defun doubled-buffer (buffer)
   "Return a larger buffer with same initial data as the provided one."
   (let ((new (make-array (* 2 (length buffer))
@@ -695,18 +520,6 @@ Raise error otherwise."
               (client-write-buf client) (client-write-buf-size client)
               (- to from))))))
 
-
-
-(defun concatenate* (vectors)
-  (let* ((len (reduce #'+ vectors :key #'length))
-         (res (make-array len :element-type '(unsigned-byte 8))))
-    (loop for v of-type (simple-array (unsigned-byte 8)) in vectors
-          with i = 0
-          do
-             (setf (subseq res i (+ i (length v))) v)
-             (incf i (length v))
-          finally (return res))))
-
 (defun set-next-action (client action size)
   "Set action for next chunk of received data."
   (setf (client-io-on-read client) action
@@ -715,7 +528,8 @@ Raise error otherwise."
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
 (defclass poll-server-connection (server-http2-connection
-                                   routing-mixin)
+                                   routing-mixin
+                                  logging-connection-mixin)
   ((client :accessor get-client :initarg :client))
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation "The poll server connection has a client object and send data to it."))
@@ -725,6 +539,15 @@ Raise error otherwise."
     (unless (plusp (client-fd client))
       (error 'end-of-file :stream connection))
     (send-unencrypted-bytes client frame nil)))
+
+(defmethod queue-frame-region ((connection poll-server-connection) frame start
+                                           length)
+  (call-next-method)
+  ; this fails due to non-simpleness of arriving
+#+nil  (with-slots (client) connection
+    (unless (plusp (client-fd client))
+      (error 'end-of-file :stream connection))
+    (send-unencrypted-bytes client frame nil start length)))
 
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
@@ -784,8 +607,9 @@ reading of the client hello."
                            (unless (eql #'parse-frame-header (client-io-on-read client))
                              (warn "Poll error for ~a: ~d" client err-or-hup))
                            (signal 'done))
-                         (and (if-state client 'has-data-to-write)
-                              (not (if-state client 'can-write))))))
+                         (and
+                          (plusp (client-write-buf-size client))
+                          (not (if-state client 'can-write))))))
 
 (defun setup-new-connect-pollfd (fdset listening-socket)
   (add-socket-to-fdset% fdset (sb-bsd-sockets:socket-file-descriptor (usocket:socket listening-socket))
@@ -807,7 +631,7 @@ reading of the client hello."
     (when fdset-idx
       (push (make-tls-server-object socket ctx fdset-idx (make-connection-object dispatcher)) (get-clients dispatcher))
       (setup-port socket *nagle*)
-      (log-server-connected (client-application-data (car (get-clients dispatcher)))))))
+      (setup-connection (client-application-data (car (get-clients dispatcher)))))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
@@ -851,7 +675,7 @@ reading of the client hello."
               (communication-error (err) (invoke-restart 'close-connection err)))
           (close-connection (&optional err)
             :report "Close current connection"
-            (log-server-disconnected (client-application-data client) err)
+            (cleanup-connection (client-application-data client) err)
             (unwind-protect
                  (when err
                    (signal 'poll-server-close :client client :dispatch dispatcher
@@ -915,6 +739,14 @@ is not from scheduler)"
      (dolist (client (get-clients ,dispatcher))
        (close-client-connection client dispatcher "End of loop"))))
 
+(defun do-shut-down (dispatcher reason)
+  (log-dispatcher-event dispatcher reason)
+  (dolist (client (get-clients dispatcher))
+    (http2/core::send-go-away-no-error (client-application-data client) reason)
+    (do-available-actions client) ; send go-away if can without waiting
+    (cleanup-connection (client-application-data client) reason)
+    (close-client-connection client dispatcher reason)))
+
 (defun serve-tls (listening-socket dispatcher)
   "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
 
@@ -934,10 +766,18 @@ available), and run scheduled actions."
                             (ftype (function (t t) fixnum) poll))
             (loop
               (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
+                ;; Shutdown check is before poll so that
+                ;; - the time window of race is minimized if set by interrupt-thread,
+                ;; - the handler can set the flag as well
+                (when (get-shut-down dispatcher)
+                  (do-shut-down dispatcher "Shut down requested")
+                  (return))
                 (let*
-                    ((nread (poll dispatcher timeout)))
+                       ((nread (poll dispatcher timeout)))
                   (run-mature-tasks *scheduler*)
-                  (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout :medium "Server poll"))
+                  (when (and (zerop nread) signal)
+                    (do-shut-down dispatcher "Shut down due to timeout")
+                    (return))
                   (process-client-sockets nread dispatcher)
                   (maybe-process-new-client listening-socket ctx dispatcher))))))))))
 
@@ -972,16 +812,24 @@ Timeouts can be specified for polling."))
   (unless  *print-escape*
       (format out " with ~a clients" (length (get-clients dispatcher)))))
 
+(defmethod start-server-on-socket ((dispatcher poll-dispatcher-mixin) listening-socket)
+    (usocket:with-server-socket (socket listening-socket)
+     (do-new-connection listening-socket dispatcher)))
+
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin)
   ()
   (:default-initargs :connection-class 'poll-server-connection))
+
+(defmethod get-connections ((dispatcher poll-dispatcher-mixin))
+  (mapcar 'client-application-data (get-clients dispatcher)))
 
 (defmethod get-no-client-poll-timeout :after ((dispatcher poll-dispatcher))
   (compute-poll-timeout-value (call-next-method)))
 
 (defclass detached-poll-dispatcher (detached-server-mixin poll-dispatcher)
   ()
-  (:documentation "Detached version of the POLL-DISPATCHER."))
+  (:documentation "Detached version of the POLL-DISPATCHER.")
+  (:default-initargs :name "HTTP/2 poll server"))
 
 (defmethod do-new-connection (socket (dispatcher poll-dispatcher-mixin))
   "Handle new connections by adding pollfd to and then polling.
@@ -995,14 +843,20 @@ from C code."
 
   (let ((*nagle* (get-nagle dispatcher))
         (*scheduler* (make-instance 'scheduler)))
-
-    (serve-tls socket dispatcher))
-  ;; there is an outer loop in create-server that we want to skip
-  (invoke-restart 'kill-server))
+    (serve-tls socket dispatcher)))
 
 (defmethod get-peer-name ((connection poll-server-connection))
     (http2/tcpip:fd-to-ip (http2/server/poll::client-fd  (get-client connection))))
 
+(defmethod stop-server ((dispatcher detached-poll-dispatcher))
+  ;; Simply killing the server makes hard to correctly free the ssl.
+  ;; So we just signal and let the dispatcher clean it up.
+  "Flag the dispatcher that it should shut down. Presently does not force the
+dispatcher to wake from possible sleep, so it could not get the message
+immediately. For now, live with that, or set poll timeouts (e.g., in test suites)."
+  (bordeaux-threads:interrupt-thread  (get-thread dispatcher)
+                                      (lambda (dispatcher) (setf (get-shut-down dispatcher) t))
+                                      dispatcher))
 
 
 ;;;; HTTP2 TLS async client
@@ -1015,7 +869,7 @@ upper level. This can be fixed and buffered, but sane peers do not bring this si
 
 (defun on-complete-ssl-data (client)
   "Read number of octets indicated in CLIENT into a vector and then apply client fn on it.
-
+xb
 The code assumes that single client request message is not split across several
 TLS frames. If it does, well, connection error."
   (let* ((octets (client-octets-needed client))

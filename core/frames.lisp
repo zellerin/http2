@@ -2,19 +2,23 @@
 
 (in-package :http2/core)
 
-(defsection @frames-for-classes
-    ()
+(defsection @frames-for-classes ()
   (handle-undefined-frame generic-function)
-  (queue-frame generic-function)
   (stream-based-connection-mixin class)
   (write-buffer-connection-mixin class)
   (get-max-peer-frame-size generic-function)
   (frame-context class)
-  (flush-http2-data generic-function))
+
+
+  (@frame-writes section))
+
+(declaim (ftype (function (t) frame-size) get-max-peer-frame-size))
 
 (defclass frame-context ()
-  ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
-   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))
+  ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size
+                             :type frame-size)
+   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size
+                             :type frame-size))
   (:default-initargs :max-frame-size 16384
                      :max-peer-frame-size 16384))
 
@@ -24,32 +28,53 @@
   (:documentation
    "Callback that is called when a frame of unknown type is received."))
 
+
+(defsection @frame-writes (:title "Writing frames to backend")
+  "There are several backends that the connection can be based on. Each such
+backend must implement QUEUE-FRAME to send data (typically to a buffer) and
+FLUSH-HTTP2-DATA to actually send them (typically to a TLS engine that makes a
+compressed block from it).
+
+The backend may also implement QUEUE-FRAME-REGION to send data from log vectors
+more effectively.
+
+The backend must actually process or copy the data during the call. The caller
+is free to modify the octets vectors later. "
+  (queue-frame generic-function)
+  (queue-frame-region generic-function)
+  (flush-http2-data generic-function)
+  (get-to-write generic-function))
+
 (defclass write-buffer-connection-mixin ()
   ((to-write :accessor get-to-write :initarg :to-write))
   (:default-initargs :to-write
-   (make-array 3 :fill-pointer 0
-                 :adjustable t))
+   (make-array 3 :fill-pointer 0 :adjustable t :element-type '(unsigned-byte 8)))
   (:documentation
    "Stores queued frame in a per-connection write buffer. The internals of the
 buffer are opaque."))
 
-
 (defclass stream-based-connection-mixin ()
-  ((network-stream :accessor get-network-stream :initarg :network-stream))
+  ((network-stream :accessor get-network-stream :initarg :network-stream
+                   :initform nil))
   (:documentation
-   "A mixin for connections that read frames from and write to Common Lisp stream (in
+   "Reads frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
+
+(define-condition cannot-flush (communication-error end-of-file)
+  ((original-error :accessor get-original-error :initarg :original-error))
+  (:report "Cannot flush data on a HTTP/2 connection. Failed flush might be acceptable when
+we flush before reading data and the connection is not writable any more."))
 
 (defgeneric flush-http2-data (connection)
   (:documentation "Send all the pending connection data to the peer.")
   (:method (connection)
-    nil ; maybe nothing needed
+    nil                                 ; maybe nothing needed
     )
   (:method ((connection stream-based-connection-mixin))
     (handler-case
         (force-output (get-network-stream connection))
-      (cl+ssl::ssl-error-syscall ()
-        (error 'end-of-file :stream connection)))))
+      (error (e)
+        (error 'cannot-flush :stream connection :original-error e)))))
 
 (defgeneric queue-frame (connection frame)
   (:documentation "Send or queue FRAME (octet vector) to the connection.
@@ -72,6 +97,16 @@ Existing implementations are for:
   (:method ((connection stream-based-connection-mixin) frame)
     (write-sequence frame (get-network-stream connection))
     frame))
+
+(defgeneric queue-frame-region (connection data start length)
+  (:documentation "Send or queue LENGTH octets of DATA starting at START to the connection
+
+Must use the data immediately.")
+  (:method (connection data start length)
+    "Fallback using QUEUE-FRAME."
+    (queue-frame connection (subseq data start (+ start length))))
+  (:method ((connection stream-based-connection-mixin) frame start length)
+    (write-sequence frame (get-network-stream connection) :start start :end (+ start length))))
 
 (defsection @frames-api
     (:title "API for sending and receiving frames")
@@ -392,6 +427,25 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
+(defun write-vector-frame (http-connection-or-stream type-code keys payload start length)
+  "Optimized version to write frame when the payload is already prepared as an octet vector."
+  (let* ((padded (getf keys :padded))
+         (padded-length (padded-length length padded))
+         (buffer (make-octet-buffer (+ 9 (if padded 1 0))))
+         (connection (get-connection http-connection-or-stream)))
+    (write-frame-header-to-vector buffer 0 padded-length type-code (flags-to-code keys)
+                                  (get-stream-id http-connection-or-stream) nil)
+    (when padded (setf (aref buffer 9) (length padded)))
+    ;; This assumes:
+    ;; - only one thread talks to the connection,
+    ;; - the queue-frame and caller agree on who owns the buffer. Presently, all queue-frame I know about use the payload vector immediately.
+    (queue-frame connection buffer)
+    (queue-frame-region connection payload start length)
+    (when padded (queue-frame connection padded))
+    (when (getf keys :end-stream)
+      (change-state-on-write-end http-connection-or-stream))
+    buffer))
+
 (defun write-frame (http-connection-or-stream length type-code keys
                     writer &rest pars)
   "Universal function to write a frame to a stream and account for possible stream
@@ -402,6 +456,7 @@ frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
 PARS as its parameters."
+  (declare (dynamic-extent pars))
   (let* ((padded (getf keys :padded))
          (padded-length (padded-length length padded))
          (buffer (make-octet-buffer (+ 9 padded-length))))
@@ -443,7 +498,7 @@ PARS as its parameters."
   (declare (type (unsigned-byte 24) length)
            (type (frame-code-type) type)
            (type (unsigned-byte 8) flags)
-           (type (simple-array (unsigned-byte 8)) vector)
+           (type octet-vector vector)
            (type stream-id stream-id))
   (setf (aref vector start) (ldb (byte 8 16) length))
   (setf (aref vector (incf start)) (ldb (byte 8 8) length))
@@ -456,6 +511,9 @@ PARS as its parameters."
   (setf (aref vector (incf start))  (ldb (byte 8 8) stream-id))
   (setf (aref vector (incf start))  (ldb (byte 8 0) stream-id))
   vector)
+
+(defsection @frame-reading ()
+  (process-frames function ))
 
 (defun checked-length (length connection)
   (declare (ftype (function (t) frame-size) get-max-frame-size))
@@ -482,7 +540,7 @@ PARS as its parameters."
 
 This function is primarily factored out to be TRACEd to see arriving frames."
   (declare (optimize speed)
-           ((simple-array (unsigned-byte 8) *) header)
+           (octet-vector header)
            (fixnum start)
            ((simple-array t *) *frame-types*))
   (let* ((length (aref/wide header start 3))
@@ -576,6 +634,8 @@ FIXME: might be also continuation-frame-header"
 
 (defun process-frames (connection data)
   "Process DATA as frames by CONNECTION."
+  (declare (type octet-vector data)
+           (type http2-connection connection))
   (loop
     with start of-type frame-size = 0 and end of-type frame-size = (length data)
     with fn of-type receiver-fn = #'parse-frame-header

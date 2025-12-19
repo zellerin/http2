@@ -9,7 +9,7 @@ requests in parallel using HTTP/2 streams."
 
 (defsection @client-tutorial-simple
     (:title "Using built-in HTTP/2 client")
-  "You can use RETRIEVE-URL to fetch a a web resource.
+  "To simply fetch a web resource, use RETRIEVE-URL.
 
 ```
 (http2/client:retrieve-url \"https://example.com\")
@@ -36,20 +36,16 @@ requests in parallel using HTTP/2 streams."
 ```
 
  It was designed to be similar to DRAKMA:HTTP-REQUEST, but is not completely
-same. See below what the function does, some notable differences are:
+same. Some notable differences are:
 
 - The last parameter (response reason) is no longer relevant in HTTP/2. It is a
   dummy string that might be removed in further releases.
-
 - The path is taken as-is. You cannot provide GET parameters to fill in.
-
 - The redirects are not handled transparently. What is returned is returned.
-
 - It is your responsibility to make sure that the HTTP/2 headers are
   correct (lowercase, order).
-
-- You cannot get stream on output to work with. You get the connection, and you
-  can use it.
+- You cannot get stream on output to work with. However, you get the connection,
+  and if you prevent closing it (:close nil) you can use it for further requests.
 
 Basically, the differences fall into two areas, that it does not (yet) provide
 all the features of Drakma, and HTTP/2 is different.")
@@ -90,8 +86,8 @@ data from it using DRAKMA-STYLE-STREAM-VALUES.
           (drakma-style-stream-values stream)))))
 ```
 
-Sending the request involves creating a new HTTP2 stream with OPEN-HTTP2-STREAM
-and proper parameters.
+To send the request create a new HTTP2 stream by sending headers
+frame (OPEN-HTTP2-STREAM) with headers prepared by REQUEST-HEADERS.
 
 ```
   (defun my-send-client-request (connection url)

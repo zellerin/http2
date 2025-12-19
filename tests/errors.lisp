@@ -1,22 +1,43 @@
-(in-package #:http2)
+(in-package #:http2/core)
 
-(defun connect-to-test-server ()
-  (connect-to-tls-server (puri:uri-host *server-url*)
-                         :port (puri:uri-port *server-url*)))
+(fiasco:defsuite
+    (fiasco-suites::http2/core :bind-to-package #:http2/core
+                               :in http2/tests::http2/tests))
+
+(defsection @test-helpers ()
+  (run-server-with-payload function))
+
+(defsection @test-errors (:title "Test response to errors")
+  "Intentionally incorrect requests raise correct errors."
+  )
+
+(defun run-server-with-payload (dispatcher payload-fn &rest keys)
+  (multiple-value-bind (server url)
+      (apply #'http2/server:start 0 :dispatcher dispatcher keys)
+    (unwind-protect
+         (funcall payload-fn url)
+      (http2/server:stop server))))
+
+(defun connect-to-test-server (url)
+  (http2/client:connect-to-tls-server (puri:uri-host url)
+                                      :port (puri:uri-port url)))
+
+(in-package #:http2/tests/headers)
 
 (defun test-bad-headers (headers)
   "As a client, send (presumably incorrect) HEADERS to server and read the response."
-  (with-test-server ('tls-single-client-dispatcher)
-    (fiasco:signals http-stream-error
-      (with-http2-connection
-          (connection
-           'vanilla-client-connection
-           :network-stream (connect-to-test-server))
-        (loop
-          with stream = (open-http2-stream connection headers)
-          do
-             ;; if it does not signal eventually we lose.
-             (read-frame connection))))))
+  (fiasco:signals http-stream-error
+    (run-server-with-payload 'http2/server:detached-poll-dispatcher
+                             (lambda (url)
+                               (let ((connection (make-instance
+                                                  'http2/client:vanilla-client-connection
+                                                  :network-stream (connect-to-test-server url))))
+                                 (loop
+                                   with stream = (open-http2-stream connection headers)
+                                   do
+                                      (write-goaway-frame connection 1 http2/core::+no-error+ nil)
+                                      ;; if it does not signal eventually we lose.
+                                      (http2/client:process-pending-frames connection)))))))
 
 (fiasco:deftest empty-headers ()
   (test-bad-headers nil))
@@ -28,50 +49,92 @@
 
 (fiasco:deftest uppercase-headers ()
   (test-bad-headers '((:method "GET")
-                      (:path "/")
-                      (:scheme "https")
-                      (:authority "localhost")
-                      ("FOO" "bar"))))
+                         (:path "/")
+                         (:scheme "https")
+                         (:authority "localhost")
+                         ("FOO" "bar"))))
 
-(define-protocol-error-test send-bad-stream-id +protocol-error+
+(fiasco:deftest send-bad-stream-id ()
   "Send request with bad stream ID. Should raise a protocol error."
-  (with-test-server ('tls-single-client-dispatcher)
-    (with-http2-connection
-        (connection
-         'vanilla-client-connection
-         :network-stream (connect-to-test-server)
-         :id-to-use 2)
-      (open-http2-stream connection
-                         '((:method "HEAD")
-                           (:path "/")
-                           (:scheme "https")
-                           (:authority "localhost"))
-                         :end-stream t)
-      (process-pending-frames connection))))
+  (let ((err
+          (fiasco:signals go-away
+            (run-server-with-payload 'http2/server:detached-poll-dispatcher
+                                     (lambda (url)
+                                       (let ((connection
+                                               (make-instance 'http2/client:vanilla-client-connection
+                                                              :network-stream (connect-to-test-server url)
+                                                              :id-to-use 2)))
+                                         (open-http2-stream connection
+                                                            '((:method "HEAD")
+                                                              (:path "/")
+                                                              (:scheme "https")
+                                                              (:authority "localhost"))
+                                                            :end-stream t)
+                                         (http2/client:process-pending-frames connection)))))))
+    (fiasco:is (equal (http2/core::get-error-code err) http2/core::+protocol-error+))
+    (fiasco:is (equal (map 'string 'code-char (http2/core::get-debug-data err)) "OUR-ID-CREATED-BY-PEER"))))
 
-(define-protocol-error-test send-too-low-stream-id/odd +stream-closed+
-  "The low IDs are supposed to be closed when higher number is seen."
-  (with-test-server ('tls-single-client-dispatcher)
-      (with-http2-connection
-          (connection
-           'vanilla-client-connection
-           :network-stream (connect-to-test-server)
-           :id-to-use 7)
-        (http-stream-to-vector
-         (open-http2-stream connection
-                            '((:method "HEAD")
-                              (:path "/")
-                              (:scheme "https")
-                              (:authority "localhost"))
-                            :end-stream t))
-        (setf (get-id-to-use connection) 1)
-        (http-stream-to-vector
-         (open-http2-stream connection
-                            '((:method "HEAD")
-                              (:path "/")
-                              (:scheme "https")
-                              (:authority "localhost"))
-                            :end-stream t)))))
+(fiasco:deftest send-too-low-stream-id/odd ()
+  "Send request with bad stream ID. Should raise a protocol error."
+  (let ((err
+          (fiasco:signals go-away
+            (run-server-with-payload 'http2/server:detached-poll-dispatcher
+                                     (lambda (url)
+                                       (let ((connection
+                                               (make-instance 'http2/client:vanilla-client-connection
+                                                              :network-stream (connect-to-test-server url)
+                                                              :id-to-use 7)))
+                                         (open-http2-stream connection
+                                                            '((:method "HEAD")
+                                                              (:path "/")
+                                                              (:scheme "https")
+                                                              (:authority "localhost"))
+                                                            :end-stream t)
+
+                                         (setf (http2/core::get-id-to-use connection) 1)
+                                         (open-http2-stream connection
+                                                            '((:method "HEAD")
+                                                              (:path "/")
+                                                              (:scheme "https")
+                                                              (:authority "localhost"))
+                                                            :end-stream t)
+                                         ;; prevent bad id error on our side from S7
+                                         (setf (get-id-to-use connection) 9)
+                                         (http2/client:process-pending-frames connection)))))))
+    (fiasco:is (equal (get-error-code err) http2/core::+stream-closed+))
+    (fiasco:is (equal (map 'string 'code-char (get-debug-data err)) "CLOSED-STREAM"))))
+
+#+nil
+(fiasco:deftest send-second-headers-frame ()
+  ;; The idea here was to send a second headers frame to get relevant connection
+  ;; error; unfortunately, second header frame is actually sometimes allowed and
+  ;; more complicated to handle (trailer section) and relevant checks are to be
+  ;; devised.
+  (let ((err
+          (fiasco:signals http-stream-error-received
+            (run-server-with-payload 'http2/server:detached-poll-dispatcher
+                                     (lambda (url)
+                                       (let ((connection
+                                               (make-instance 'http2/client:vanilla-client-connection
+                                                              :network-stream (connect-to-test-server url)
+                                                              :id-to-use 7)))
+                                         (open-http2-stream connection
+                                                            '((:method "HEAD")
+                                                              (:path "/")
+                                                              (:scheme "https")
+                                                              (:authority "localhost"))
+                                                            :end-stream nil)
+
+                                         (setf (get-id-to-use connection) 7)
+                                         (open-http2-stream connection
+                                                            '((:method "HEAD")
+                                                              (:path "/")
+                                                              (:scheme "https")
+                                                              (:authority "localhost"))
+                                                            :end-stream t)
+                                         (http2/client:process-pending-frames connection)))))))
+    (fiasco:is (equal (get-error-code err) +stream-closed+))
+    (fiasco:is (equal (map 'string 'code-char (get-debug-data err)) "BAD-STREAM-STATE"))))
 
 ;; test:
 ;; (let ((*server-domain* "www.example.com")(*server-port* 443)) (send-bad-stream-id))

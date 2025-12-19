@@ -1,0 +1,112 @@
+* ToDo
+- Rewrite TLS-ENDPOINT to adjustable arrays and buffer pool, and check impact on
+  speed/allocations. Possibly merge QUEUE-FRAME-REGION code for buffered connection
+  and for the poll server.
+- Cope with  QUEUE-FRAME-REGION needing simple vectors as input due to CFFI.
+- Use autoload to load stuff on-demand. Both to reduce size and to be able to call non-quicklisped libraries.
+- Design interface for provisional heading and trailers. Check errors in trailers (must close stream, no pseudo headers)
+- Make sure detached poll dispatcher wakes up from sleep when stopped (join-timeout-resignal? Communication socket?)
+- Cleanup up tests even more and make some structure of them.
+- Improve logging
+- Revise experiments
+- HTTP/3 support
+- Show in documentation how to reuse connection returned from FETCH-RESOURCE
+- Many other documentation cleanups
+** Use shut-down flag in the threaded dispatcher as well
+- Promote interrupt-based method to all detached dispatchers,
+- Actually handle stopping in threaded dispatcher thread,
+- Possibly stop the clients of threaded dispatcher
+
+* Changes in 2.1
+
+There might be some incompatible changes.
+
+** Class hierarchy changes
+- HTTP-ERROR-STREAM now inherits from ERROR (used to be WARNING). You may need to adapt your handlers.
+- Both stream and condition errors now inherit HTTP2-CONDITION.
+- New class VANILLA-HTTP2-STREAM to cover data
+
+ See connection hierarchy,  stream hierarchy, dispatcher hierarchy, stream error hierarchy and connection erro hierarchy graphs.
+
+** Server hooks
+- new GF SETUP-CONNECTION is called when new client connects to the server
+- Existing GF CLEANUP-CONNECTION now takes an optional second argument, the error
+
+** New interfaces
+- HTTP2-CONDITION is now exported so that callers can caught all library errors.
+- MAKE-PRIORITY, GET-TO-WRITE and PROCESS-FRAMES is now exported
+
+** Logging to a stream
+There is now
+- *LOG-STREAM* variable that denotes stream to log to,
+- *LOG-EVENT-TYPES* that defines what should be logged,    and
+- LOGGING-STREAM-MIXIN and LOGGING-CONNECTION-MIXIN that log specific events
+
+VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these
+streams. Make your own class, or set *LOG-EVENT-TYPES* to +LOG-NOTHING+, if you
+do not want to see logging.
+
+** Introspection
+- GET-CONNECTIONS :: new generic functions on dispatchers. Intended for monitoring and tracking.
+
+** Efficiency changes
+- Some functions are declared globally to enable optimization
+- Buffer pool is introduced (but not used)  - contributed by John Mallery
+- PROCESS-PENDING-FRAMES now allocates reusable buffer for headers - contributed by John Mallery
+
+** Frames are sent with less consing
+
+- New frame queuing function QUEUE-FRAME-REGION for more efficient data flow.
+- Frame writes now do not merge header and payload; they send both parts independently.
+- Frame writing functions do not return the octet vector now. This was never
+  promised, but some tests were to be modified.
+
+** Window management
+- New function: AVAILABLE-WINDOW-SIZE
+- Window management is now part of HTTP/2 stream class.
+- Reuse MAYBE-GROW-BUFFER
+
+** Printing and reporting
+- Improved error reporting texts.
+- IP address now prints as 'unknown' when FD is already closed
+
+** Documentation
+- Some mixins were converted to standard format ("Does XXX")
+- Better documentation of openssl wrapper, for hpack, for client, ...
+
+** OpenSSL
+- Cleanup server stop to prevent duplicate ssl-free.
+- SSL state was moved to the OPENSSL wrapper.
+- SSL states were cleaned up (merged CAN-READ-SSL and NEG-BIO-NEEDS-READ)
+- Some generic SSL handling code was factored away from the poll server: READ-ENCRYPTED-FROM-OPENSSL*, WRITE-OCTETS-TO-DECRYPT*, MAYBE-INIT-SSL, SSL-READ, SSL-PEEK, HANDLE-SSL-ERRORS*
+
+** Header frames handling
+- Header size of received headers is now checked and can be limited. The limit is by default set now to relatively low value
+- Number of received headers can (but is not by default) limited.
+You get connection error if the limit is reached.
+The max header size from peer is stored in the class, but does not used by the library.
+
+** Tests
+- BUFFERED-OUTPUT/TEST :: Test that buffered streams split the payload as expected
+- Test for SSL were modified to handle changes
+
+** Other
+-- Failure to decompress a header frame now causes specific CONNECTION-ERROR.
+- Ping, reset and goaway frames can be parsed with START!=0.
+- *Stream based connection now ignores errors during flushing before write.*
+- Client http connection now uses QUEUE-DATA-FRAME to send client preface.Previously it wrote directly to a network stream that does not have to exist.
+- Slots of tls-endpoint-core are now invalidated after free.
+- Pseudo-header slots move from server stream to vanilla stream to be able to print them for debuggin purposes.
+- Network streams now have NIL as the stream by default to simplify PRINC.
+- New condition INCOMPLETE-HEADER
+- COMPILE-HEADERS now returns an octet vector
+- Try to proceed with reading data when flush fails.
+- Several conditions now report in a different, hopefully better way.
+
+** Removed internal functions
+concatenate*
+
+
+# Local Variables:
+# org-hide-emphasis-markers: nil
+# END:

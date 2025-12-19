@@ -5,12 +5,13 @@
   (peer-resets-stream generic-function))
 
 (defgeneric peer-resets-stream (stream error-code)
-  (:method ((stram (eql :closed)) error-code))
+  (:method ((stream (eql :closed)) error-code))
   (:method (stream error-code)
     (unwind-protect
          (unless (eq error-code +cancel+)
-           (error 'http-stream-error :stream stream :code error-code))
-      (close-http2-stream stream)))
+           (close-http2-stream stream error-code)
+           (error 'http-stream-error-received :stream stream :code error-code))
+      (close-http2-stream stream 'peer-cancels)))
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
    causes it to enter the \"closed\" state.  After receiving a RST_STREAM
@@ -58,22 +59,25 @@ error was reported.")
     (lambda (connection data http-stream flags)
       "Invoke PEER-RESETS-STREAM callback."
       (assert (zerop flags))
-      (assert (zerop start))
-      (unless (= length 4)
+      (unless (= (- length start) 4)
         (connection-error 'incorrect-rst-frame-size connection))
-      (peer-resets-stream http-stream (aref/wide data 0 4))
+      (peer-resets-stream http-stream (aref/wide data start 4))
       (values #'parse-frame-header 9)))
 
-(defun http-stream-error (e stream &rest args)
-  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise
+(defun http-stream-error (error-class stream &rest args)
+  "Handle error in the incoming stream.
+
+We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise
 appropriate warning in case someone is interested, close affected stream, and
 continue."
-  (let ((e (apply #'make-instance e :stream stream args)))
+  (let ((e (apply #'make-instance error-class :stream stream args)))
+    (declare (http-stream-error e))
+    ;; The error object is created in advance to be able to get its code.
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
-      (flush-http2-data (get-connection stream))
-      (warn e)
-      (close-http2-stream stream))))
+      (flush-http2-data (get-connection stream)))
+    (close-http2-stream stream 'e)
+    (error e)))
 
 (define-frame-type 7 :goaway-frame
     "```
@@ -108,12 +112,10 @@ continue."
     ;; reader
     (lambda (connection data http-stream flags)
       "Invoke DO-GOAWAY callback."
-      (declare (ignore length))
       (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
-      (assert (zerop start))
-      (let ((last-id (aref/wide data 0 4))
-            (error-code (aref/wide data 4 4))
-            (data (subseq data 8)))
+      (let ((last-id (aref/wide data start 4))
+            (error-code (aref/wide data (+ 4 start) 4))
+            (data (subseq data (+ 8 start) length)))
         (do-goaway connection (get-error-name error-code) last-id data)
         (error (if (zerop error-code) 'go-away-no-error 'go-away)
                :last-stream-id last-id
@@ -121,14 +123,22 @@ continue."
                :debug-data data
                :medium connection))))
 
+(defun send-go-away-no-error (connection debug)
+  (write-goaway-frame connection
+                      0             ; fixme: last processed stream
+                      +no-error+
+                      (map 'vector 'char-code debug))
+  (handler-case (flush-http2-data connection)
+    (cannot-flush () nil)))
+
 (defun connection-error (class connection &rest args)
-  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
-NETWORK-STREAM used."
+  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition]."
   (let ((err (apply #'make-condition class :connection connection args)))
     (with-slots (code) err
       (write-goaway-frame connection
                           0             ; fixme: last processed stream
                           code
                           (map 'vector 'char-code (symbol-name class))))
-    (flush-http2-data connection)
+    (handler-case (flush-http2-data connection)
+      (cannot-flush () nil))
     (error err)))

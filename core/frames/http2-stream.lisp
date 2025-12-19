@@ -1,7 +1,6 @@
 (in-package http2/core)
 ;;;; Interface
 
-
 (defsection @streams
     (:title "Streams and connections")
   (get-streams generic-function)
@@ -15,7 +14,8 @@
 (export '(state connection))
 
 (defclass http2-stream-minimal (flow-control-mixin)
-  ((connection       :accessor get-connection       :initarg :connection)
+  ((connection       :accessor get-connection       :initarg :connection
+                     :documentation "Connection of the stream.")
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type stream-id)
    (state            :accessor get-state            :initarg :state
@@ -99,7 +99,7 @@ MAYBE-END-STREAM "
   (create-new-local-stream function)
   (find-http-stream-by-id function)
   (maybe-end-stream function)
-  (close-http2-stream function))
+  (close-http2-stream generic-function))
 
 (defgeneric is-our-stream-id (connection id))
 
@@ -141,7 +141,7 @@ passed to the make-instance"
   (with-slots (state) http-stream
     (ecase state
       (open (setf state 'half-closed/local))
-      (half-closed/remote (close-http2-stream http-stream)))))
+      (half-closed/remote (close-http2-stream http-stream 'completed)))))
 
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
@@ -168,14 +168,14 @@ Also do some checks on the stream id based on the frame type."
         ((and (not our-id) (> id last-id-seen))
          (connection-error 'bad-stream-state connection
                            :actual 'idle
+                           :received (frame-type-name frame-type)
                            :code +protocol-error+
                            :allowed '(not idle)
                            :stream-id id))
         ((frame-type-old-stream-ok frame-type)
          (check-stream-state-ok connection
                                 (find-just-stream-by-id streams id)
-                                (frame-type-old-stream-ok frame-type)
-                                (frame-type-bad-state-error frame-type)))
+                                frame-type))
         (t
          (connection-error 'frame-type-needs-connection connection
                            :frame-type frame-type))))))
@@ -185,7 +185,7 @@ Also do some checks on the stream id based on the frame type."
   (when (get-flag flags :end-stream)
     ;; 20240822 TODO: give specific error instead of ecase
     (ecase (get-state stream)
-      (half-closed/local (close-http2-stream stream))
+      (half-closed/local (close-http2-stream stream 'completed))
       (open (setf (get-state stream) 'half-closed/remote)))
     (peer-ends-http-stream stream)))
 
@@ -206,13 +206,22 @@ stop as soon as we can see lower value. However, we assume the list needed to be
 pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
 
-(defun check-stream-state-ok (connection http-stream ok-states bad-state-error)
+(defun check-stream-state-ok (connection http-stream frame-type)
   "Throw BAD-STATE-ERROR when the stream state is not appropriate for the frame type.
 
 Return the HTTP-STREAM."
-  (unless (member (get-state http-stream) ok-states)
-    (connection-error 'bad-stream-state  connection
-                      :code bad-state-error
-                      :actual (get-state http-stream)
-                      :allowed ok-states))
+  (let ((ok-states (frame-type-old-stream-ok frame-type)))
+    (unless (member (get-state http-stream) ok-states)
+      (if (eql http-stream :closed)
+          (connection-error 'closed-stream  connection
+                            :actual (get-state http-stream)
+                            :received (frame-type-name frame-type)
+                            :allowed ok-states)
+          (connection-error 'bad-stream-state connection
+                            :code (frame-type-bad-state-error frame-type)
+                            :actual (get-state http-stream)
+                            :received (frame-type-name frame-type)
+                            :allowed ok-states
+                            :stream-id (unless (symbolp http-stream) (get-stream-id http-stream))))
+))
   http-stream)

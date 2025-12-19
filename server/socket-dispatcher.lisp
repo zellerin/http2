@@ -29,8 +29,12 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
   (maybe-create-certificate function))
 
 (defclass detached-server-mixin ()
-  ((thread :accessor get-thread :initarg :thread)
-   (name   :accessor get-name   :initarg :name))
+  ((thread    :accessor get-thread    :initarg :thread)
+   (name      :accessor get-name      :initarg :name)
+   (shut-down :accessor get-shut-down :initarg :shut-down
+              :initform nil
+              :documentation
+              "If set, server should shut down as soon as possible."))
   (:default-initargs :name "HTTP/2 server"))
 
 (defmethod print-object ((server detached-server-mixin) out)
@@ -54,7 +58,7 @@ Each dispatching method needs to implement DO-NEW-CONNECTION."
     (with-slots (thread name) dispatcher
       (setf (get-url dispatcher) (url-from-socket socket *vanilla-host* (get-tls dispatcher))
             thread (bordeaux-threads:make-thread
-                    #'call-next-method
+                    (lambda () (log-dispatcher-event dispatcher "starting") (call-next-method))
                     :name name)))
     (values dispatcher socket)))
 

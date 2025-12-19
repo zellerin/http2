@@ -37,9 +37,8 @@
 (defclass utf8-parser-mixin ()
   ((broken-char :accessor get-broken-char :initarg :broken-char :initform nil))
   (:documentation
-   "Defines a method on APPLY-DATA-FRAME that, if CONTENT-TYPE indicates UTF-8,
-reads octets, converts them to UTF-8 text, and calls APPLY-TEXT-DATA-FRAME on
-the stream and the text."))
+   "Converts received UTF-8 data frames to text and calls APPLY-TEXT-DATA-FRAME on
+them when content type is UTF-8."))
 
 (defmethod apply-data-frame ((stream utf8-parser-mixin) payload start end)
   ;; Handle correctly broken (into pieces) multi-octet letters
@@ -97,4 +96,4 @@ the list of direct superclasses."))
 (defmethod apply-data-frame ((stream fallback-all-is-ascii) payload start end)
   (if (is-binary (cdr (assoc "content-type" (get-headers stream) :test 'string-equal)))
       (call-next-method)
-      (http2/core::apply-text-data-frame stream (map 'string #'code-char (subseq payload start end)))))
+      (apply-text-data-frame stream (map 'string #'code-char (subseq payload start end)))))

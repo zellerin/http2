@@ -1,4 +1,4 @@
-(in-package http2/core)
+(in-package http2/tests/frames)
 
 (defvar *custom-headers-code*
   (vector-from-hex-text
@@ -15,7 +15,7 @@ SPLITS sets where the data are split.
            (apply fn stream (subseq data from to) :end-headers (null to) args)))
 
 (fiasco:deftest write-headers-frame/test ()
-  (handler-bind ((no-new-header-action 'muffle-warning))
+  (handler-bind ((http2/core::no-new-header-action 'muffle-warning))
     (test-write-parse-fn #'write-headers-frame
                          '(:HEADERs (("custom-key" . "custom-header")))
                          #(0 0 26 1 0 0 0 0 42 64 10 99 117 115 116 111 109 45
@@ -82,3 +82,31 @@ SPLITS sets where the data are split.
         #(0 0 0 1 0 0 0 0 42 0 0 0 9 0 0 0 0 42 0 0 26 9 4 0 0 0
           42 64 10 99 117 115 116 111 109 45 107 101 121 13 99
           117 115 116 111 109 45 104 101 97 100 101 114))))
+
+
+(in-package #:http2/tests/headers)
+
+(defsection @overview ()
+  "Test handling of hpack errors and well-known bad situations in headers code.")
+
+(defsuite
+    (http2/tests/headers :bind-to-package #:http2/tests/headers
+                       :in http2/tests::http2/tests))
+
+(deftest zero-index ()
+  "Test that zero-entry index gives proper error"
+  (signals http2/core::decompression-failed
+    (http2/tests/support:with-dummy-stream (dummy) (http2/core::read-and-add-headers #(128) dummy 0 1 0 0))))
+
+(deftest authority ()
+  "Header name from indexed without value gives an error. "
+  (signals http2/core::decompression-failed
+    (http2/tests/support:with-dummy-stream (dummy) (http2/core::read-and-add-headers #(129) dummy 0 1 0 0))))
+
+(deftest bad-header ()
+  "Header name from indexed without value gives an error. "
+  (signals http2/core::http-stream-error
+    (http2/tests/support:with-dummy-stream (dummy)
+      (let ((bad-header (http2/hpack::compile-headers '(("Foo" "bar")) nil)))
+        (http2/core::read-and-add-headers bad-header
+                                          dummy 0 (length bad-header) 0 0)))))

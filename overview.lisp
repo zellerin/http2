@@ -28,22 +28,27 @@ part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded
   (http2/server::@server-content section)
   (http2/server::@request-details section))
 
-(defsection @reference (:title "API documentation")
+(defsection @reference (:title "Reference documentation")
+  "This is part of the HTTP/2 documentation that provides reference
+documentation. See also @OVERVIEW and @TUTORIALS."
   (@systems-and-packages section)
   (http2/client::@client-api section)
   (http2/server::@server-reference section)
-  (http2/server::@logging section))
+  (http2/core::@errors section)
+  (http2/stream-overlay::@payload-streams-ref section))
 
 (defsection @systems-and-packages (:title "Systems and packages")
   "The library is split to several subsystems. Most of them depend on other
 quicklisp-loadable components, see the graph.
 
-![systems](./systems.svg)
-"
+![systems](./systems.svg)"
   (http2 asdf:system)
   (http2/server asdf:system)
+  (http2/client asdf:system)
+  (http2/server/demo asdf:system)
   (http2/server package)
-  (http2/client package))
+  (http2/client package)
+  (http2/core package))
 
 (defsection @implementation
     (:title "Implementation details (not part of API)")
@@ -54,7 +59,6 @@ priority, and definitely not a blocker."
   (http2/core::@implementation/overview section)
   (http2/hpack::@hpack-api section)
   (http2/core::@data section)
-  (http2/server::@server-reference section)
   (http2/server/poll::@async-server section))
 
 (defsection @test
@@ -62,10 +66,7 @@ priority, and definitely not a blocker."
   (foobar foobar))
 
 (defun pages ()
-  `(#+nil (:objects ()
-     :uri-fragment "overview.html"
-     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2" :git-version "master"))
-    (:source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+  `((:source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
                                              :git-version "master")
      :uri-fragment "index.html")
 
@@ -81,8 +82,9 @@ priority, and definitely not a blocker."
   "Make package documentation for the release:
 
 - HTML documentation files,
-- README to be distributed with the package
-
-"
-  (mgl-pax:update-asdf-system-readmes @overview "http2")
-  (mgl-pax:update-asdf-system-html-docs @index "http2" :pages (pages)))
+- README to be distributed with the package"
+  (let ((*default-pathname-defaults* (asdf:system-relative-pathname "http2" "doc/")))
+    (mgl-pax:update-asdf-system-readmes @overview "http2")
+    (mgl-pax:update-asdf-system-html-docs @index "http2" :pages (pages))))
+;
+; emacs-lisp: (bind-key

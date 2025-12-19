@@ -36,14 +36,20 @@
   (let ((http2/server:*poll-timeout* 0.5)
         (http2/server:*no-client-poll-timeout* 0.5))
     (dolist (dispatcher-class '(http2/server::detached-poll-dispatcher http2/server::detached-tls-threaded-dispatcher))
-      (multiple-value-bind (response code)
-          (multiple-value-bind (dispatcher url)
-              (start 0 :dispatcher dispatcher-class)
-            (unwind-protect
-                 (retrieve-url (puri:merge-uris "/hello-world" url))
-              (stop dispatcher)))
-        (is (= code 200))
-        (is (search "Hello World, this is random" response))))))
+      (handler-case
+          (multiple-value-bind (response code)
+              (multiple-value-bind (dispatcher url)
+                  (start 0 :dispatcher dispatcher-class)
+                (unwind-protect
+                     (handler-case
+                         (retrieve-url (puri:merge-uris "/hello-world" url))
+                       (cl+ssl::ssl-error-ssl (e) (values (princ-to-string e) 0)))
+                  (handler-bind
+                      ;; server might be dead when stopping
+                      ((SB-THREAD:INTERRUPT-THREAD-ERROR 'continue))
+                    (stop dispatcher))))
+            (is (= code 200))
+            (is (search "Hello World, this is random" response)))))))
 
 (define-exact-handler "/body-and-headers"
   (handler (foo :utf-8 nil)

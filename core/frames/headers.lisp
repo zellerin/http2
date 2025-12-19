@@ -9,22 +9,47 @@
   (header-collecting-mixin class)
   (get-headers (method nil header-collecting-mixin)))
 
-(defclass header-collecting-mixin ()
-  ((headers :accessor get-headers :initarg :headers
-            :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
-  (:default-initargs :headers nil)
-  (:documentation
-   "Mixin to be used to collect all observed headers to a slot."))
+(defvar *max-headers-size* 8192
+  "Maximum allowed size for received headers per stream. Calculated as per RFC. NIL
+is unlimited and not recommended in live environments. It is announced in
+SETTINGS frame.")
+(defvar *max-headers-count* nil
+  "Maximum number of headers per stream. NIL is unlimited.")
 
+(defmethod get-settings append ((connection server-http2-connection))
+  "Advise peer on our limit, for a server."
+  (when *max-headers-size* `((:max-header-list-size . ,*max-headers-size*))))
+
+
+
+(defclass header-collecting-mixin ()
+  ((headers              :accessor get-headers              :initarg :headers
+                         :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc.")
+   (current-header-size  :accessor get-current-header-size  :initarg :current-header-size)
+   (current-header-count :accessor get-current-header-count :initarg :current-header-count))
+  (:default-initargs :headers nil :current-header-size 0)
+  (:documentation
+   "Collects all observed headers (except pseudo-headers)."))
+
+(define-condition header-resources-error (header-error)
+  ())
+
+(define-condition too-large-headers (header-resources-error)
+  ()
+  (:report "Headers are larger than internal limit."))
+
+(define-condition too-many-headers (header-resources-error)
+  ()
+  (:report "Number of headers reaches internal limit."))
 
 (defgeneric add-header (connection stream name value)
   (:method (connection stream name value)
     #+nil    (warn 'no-new-header-action :header name :stream stream))
-    (:method :before (connection stream (name symbol) value)
-      (when (get-seen-text-header stream)
-        (http-stream-error 'pseudo-header-after-text-header stream
-                           :name name
-                           :value value)))
+  (:method :before (connection stream (name symbol) value)
+    (when (get-seen-text-header stream)
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value)))
 
   (:method  (connection (stream server-stream) (name symbol) value)
     (case name
@@ -41,7 +66,20 @@
                           :name name :value value))))
 
   (:method (connection (stream header-collecting-mixin) name value)
-    (push (cons name value) (get-headers stream))))
+    (with-slots (headers current-header-count current-header-size) stream
+      (when *max-headers-size*
+        (incf current-header-size (compute-header-size (list name value)))
+        (when (> current-header-size *max-headers-size*)
+          ;; This can be later invoked stream error, but for now play safe and disconnect the offender
+          (setf headers nil)
+          (connection-error 'too-large-headers connection)))
+      (when *max-headers-count*
+        (incf current-header-count)
+        (when (> current-header-count *max-headers-count*)
+          (setf headers nil)
+          ;; This can be later invoked stream error, but for now play safe and disconnect the offender
+          (connection-error 'too-many-headers connection)))
+      (push (cons name value) headers))))
 
 (defgeneric process-end-headers (connection stream)
 
@@ -63,6 +101,17 @@
     (setf (get-weight stream) weight
           (get-depends-on stream)
           `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+  ;; FIND-JUST-STREAM-BY-ID returns the keyword :CLOSED when the stream-id
+  ;; is no longer in the streams table (already closed and reaped).  RFC 9113
+  ;; sec 5.5 explicitly permits PRIORITY frames on closed streams, and RFC 9218
+  ;; deprecates stream priority entirely, so there is no per-stream state to
+  ;; update.  Without this no-op method, the default method's (setf get-weight)
+  ;; signals "No applicable methods for #<... (SETF GET-WEIGHT) ...> with args
+  ;; (WEIGHT :CLOSED)".  Pattern matches the existing (eql :closed) no-op
+  ;; methods on update-window-size, peer-resets-stream, and get-peer-window-size.
+  (:method ((stream (eql :closed)) exclusive weight stream-dependency)
+    (declare (ignore exclusive weight stream-dependency))
+    nil)
   (:documentation
    "Called when priority frame - or other frame with priority settings set -
 arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
@@ -72,6 +121,9 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
    (decompression-context    :accessor get-decompression-context    :initarg :decompression-context))
   (:default-initargs :compression-context (make-instance 'hpack-context)
                      :decompression-context (make-instance 'hpack-context)))
+
+(defsection @priority ()
+  (make-priority function))
 
 (defstruct priority
   "Structure capturing stream priority parameters." exclusive stream-dependency weight)
@@ -86,17 +138,19 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
             (connection-error 'frame-too-small-for-priority connection)))
         (read-and-add-headers data active-stream start end flags flags))
     (http-stream-error (e)
-      (log-closed-stream active-stream e)
+      (close-http2-stream active-stream e)
       (values #'parse-frame-header 9))))
 
+(defsection @log-streams ()
+  (log-closed-stream function))
+
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
-  (handler-case
-      (read-and-add-headers data (car (get-streams connection)) start end 5 5)
-    (http-stream-error (e)
-      (log-closed-stream (car (get-streams connection)) e)
-      (values #'parse-frame-header 9)))
-  ;; or just
-  #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
+  (let ((stream (car (get-streams connection))))
+    (handler-case
+        (read-and-add-headers data stream start end 5 5)
+      (http-stream-error (e)
+        (log-closed-stream stream e)
+        (values #'parse-frame-header 9)))))
 
 (defun parse-headers-frame  (active-stream flags)
   "Read incoming headers and call ADD-HEADER callback for each header.
@@ -212,20 +266,27 @@ continuation flags, if any, so must be separate."
   (let* ((connection (get-connection http-stream))
          (end-headers (get-flag flags :end-headers))
          (to-backtrace
-           (do-decoded-headers (lambda (name value)
-                                 (add-header connection http-stream name value))
-             (get-decompression-context connection) data start end)))
+           (handler-bind
+               ;; Turn all errors during decompression to decompression
+               ;; errors. The exception is header error, where decompression was
+               ;; fine but there was a higher level issue.
+               ((error (lambda (e)
+                         (unless (typep e 'header-error)
+                           (connection-error 'decompression-failed connection :internal-error e)))))
+             (do-decoded-headers (lambda (name value)
+                                   (when (and (stringp name) (some 'upper-case-p name))
+                                     (http-stream-error 'lowercase-header-field-name
+                                                        http-stream
+                                                        :name name :value value))
+                                   (add-header connection http-stream name value))
+               (get-decompression-context connection) data start end))))
     (cond
       ((and end-headers to-backtrace)
-       ;; 20240718 TODO: make class for this connection error
-       (error "Incomplete headers: ~a" (subseq data to-backtrace end)))
+       (connection-error 'incomplete-header connection :octets (subseq data to-backtrace end)))
       (end-headers
        (process-end-headers connection http-stream)
        (maybe-end-stream header-flags http-stream)
        (values #'parse-frame-header 9))
-#+sameasbelow      (to-backtrace
-       (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
-               9))
       (t
        ;; We read full headers, but we need to read more (continuation frame)
        ;; FIXME: simplify it for this case and write tests for this
@@ -320,7 +381,7 @@ expected, and then it is parsed by a different function."
   (values
    (lambda (connection header &optional (start 0) (end (length header)))
      (declare
-      ((simple-array (unsigned-byte 8) *) header old-data)
+      (octet-vector header old-data)
       ((integer 0 #.array-dimension-limit) start end))
      (assert (= 9 (- end start)))
      (multiple-value-bind (frame-type-object length flags http-stream R)
@@ -356,7 +417,7 @@ expected, and then it is parsed by a different function."
              (t
               (values (lambda (connection data start end)
                         (declare (ignore connection))
-                        (declare ((simple-array (unsigned-byte 8) *) data))
+                        (declare (octet-vector data))
                         (let ((full-data (make-octet-buffer (+ length
                                                                (- old-data-end old-data-start)))))
                           (unless (= old-data-start old-data-end)

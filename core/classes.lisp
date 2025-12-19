@@ -1,13 +1,13 @@
-;;;; Copyright 2022-2024 by Tomáš Zellerin
+;;;; Copyright 2022-2026 by Tomáš Zellerin
 
 (in-package :http2/core)
 
-(defsection @implementation/overview (:title "Overview")
+(defsection @implementation/overview (:title "Overview of HTTP/2 core")
   "There are three core groups of classes:
 
 - @CONNECTIONS, derived from HTTP2-CONNECTION, represent a connection as in the RFC,
 - Streams, derived from HTTP2-STREAM-MINIMAL, represent a HTTP/2 stream as in the RFC,
-- Dispatchers, derived from HTTP2/server/shared:BASE-DISPATCHER, represent a server that may receive and dispatch new connections.
+- Dispatchers, derived from HTTP2/SERVER/SHARED:BASE-DISPATCHER, represent a server that may receive and dispatch new connections.
 
 Dispatcher create new connection instances as they receive requests, and
 connections create new stream instances to serve the streams to the clients.
@@ -18,31 +18,31 @@ Clients do not need dispatchers; they create the connection to the server explic
   (@streams section)
   (@base-classes section)
   (@write-data-handling section)
-  (@data-received section)
-  #+nil  (http2/stream-overlay:process-pending-frames function))
+  (@data-received section))
 
 (defsection @connections (:title "HTTP/2 Connections")
   (http2-connection class)
-  "At any point of time, a HTTP2-CONNECTION expects explicit number of octets as an
+  "The connection has a communication channel that allows to send and receive
+frames of octets to the other side, peer."
+  (get-peer-name generic-function)
+  "Sending of the frames is abstracted in
+QUEUE-FRAME and QUEUE-FRAME-REGION."
+  "The HTTP2-CONNECTION expects at any time explicit number of octets as an
 input, i.e., 9 octets for a header, or frame size octets of the frame
 payload. This information is not stored in the connection (why?), but lexically
 in a loop in functions that make the update, together with a function that acts
 on the connection when the data are available. See
 HTTP2/STREAM-OVERLAY:PROCESS-PENDING-FRAMES that reads the input data
 from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
-#+nil  (http2/stream-overlay:process-pending-frames function)
   (server-http2-connection class)
   (client-http2-connection class)
-  (get-peer-name generic-function)
-  (get-initial-peer-window-size generic-function)
   (@data section))
 
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
   ((acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
-   (stream-class             :accessor get-stream-class             :initarg :stream-class
-                             :documentation "Class for new streams")
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
-   (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size))
+   (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size)
+   (peer-max-headers-size    :accessor get-peer-max-headers-size    :initarg :peer-max-headers-size))
   (:default-initargs :id-to-use 1
                      :last-id-seen 0
                      :streams nil
@@ -53,7 +53,8 @@ from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
                      :stream-class 'http2-stream
                      :initial-peer-window-size 65535
                      :initial-window-size 65535
-                     :peer-window-size 65535)
+                     :peer-window-size 65535
+                     :peer-max-headers-size nil)
 
   (:documentation
    "A simple connection instance reflecting several aspects of the connections:
@@ -90,57 +91,40 @@ The fallback is unescaped print of the object.")
 
 (defmethod get-connection ((c http2-connection))
   "Some frame actions can act both on streams and on connection. In that case,
-pretending that connection of connection is the same connection can be useful."
+pretending that connection of connection is the same connection is useful."
   c)
 
 (defclass client-http2-connection (http2-connection)
   ()
   (:default-initargs :id-to-use 1)
   (:documentation
-   "Client connections initiate odd-numbered streams."))
+   "A client connection. It
+
+- initiates odd-numbered streams, starting with one,
+- sends client preface and settings when created"))
 
 (defclass server-http2-connection (http2-connection)
   ((peer-accepts-push :accessor get-peer-accepts-push :initarg :peer-accepts-push))
   (:default-initargs :id-to-use 2
    :peer-accepts-push t)
-  (:documentation "Server connection initiate even numbered streams."))
-
+  (:documentation "A server connection. It initiates even numbered streams, starting with 2."))
 
 (defsection @streams (:title "HTTP/2 Streams")
   (http2-stream-minimal class)
   (http2-stream class)
   (http2-stream-state type)
   (stream-collection class)
-  (server-stream class))
+  (server-stream class)
+  (vanilla-http2-stream class))
 
-(defclass http2-stream (http2-stream-minimal flow-control-mixin)
+(defclass http2-stream (http2-stream-minimal buffered-stream)
   ((data             :accessor get-data             :initarg :data)
    (weight           :accessor get-weight           :initarg :weight)
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
    (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
                      :documentation
-                     "Set if in the header block a non-pseudo header was already seen."))
-  (:default-initargs :window-size 0
-   ;;   All streams are initially assigned a non-exclusive dependency on
-   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
-   ;;   associated stream.  In both cases, streams are assigned a default
-   ;;   weight of 16.
-                     :weight 16
-                     :depends-on '(:non-exclusive 0)
-                     :seen-text-header nil)
-  (:documentation
-   "Representation of HTTP/2 stream. See RFC7540."))
-
-(defmethod initialize-instance :after ((stream http2-stream) &key connection)
-  "Set the window parameters of new stream from the connection defaults."
-  (with-slots (peer-window-size window-size) stream
-    (unless  (slot-boundp stream 'peer-window-size)
-      (setf peer-window-size (get-initial-peer-window-size connection)))
-    (unless  (slot-boundp stream 'window-size)
-      (setf window-size (get-initial-window-size connection)))))
-
-(defclass server-stream (http2-stream)
-  ((method    :accessor get-method    :initarg :method
+                     "Set when non-pseudo header is received in the header block ")
+   (method    :accessor get-method    :initarg :method
               :documentation
               "The HTTP method ([RFC7231], Section 4)")
    (scheme    :accessor get-scheme    :initarg :scheme
@@ -156,14 +140,44 @@ pretending that connection of connection is the same connection can be useful."
    (path      :accessor get-path      :initarg :path
               :type string
               :documentation "The path and query parts of the target URI"))
-  (:default-initargs :method nil :scheme nil :authority nil :path nil)
+  (:default-initargs :window-size 0
+   ;;   All streams are initially assigned a non-exclusive dependency on
+   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
+   ;;   associated stream.  In both cases, streams are assigned a default
+   ;;   weight of 16.
+                     :weight 16
+                     :depends-on '(:non-exclusive 0)
+                     :seen-text-header nil
+                     :method nil :scheme nil :authority nil :path nil)
+  (:documentation
+   "Represents HTTP/2 stream. Adds request and response information, priority value
+and state to verify response to the HTTP2-STREAM-MINIMAL."))
+
+(defclass vanilla-http2-stream (utf8-parser-mixin gzip-decoding-mixin
+                                header-collecting-mixin text-collecting-stream body-collecting-mixin
+                                http2-stream)
+  ()
+  (:documentation "HTTP stream that collects received headers and body.
+
+The body is decompressed and either binary or decoded UTF-8 text."))
+
+(defmethod initialize-instance :after ((stream http2-stream) &key connection)
+  "Set the window parameters of new stream from the connection defaults."
+  (with-slots (peer-window-size window-size) stream
+    (unless  (slot-boundp stream 'peer-window-size)
+      (setf peer-window-size (get-initial-peer-window-size connection)))
+    (unless  (slot-boundp stream 'window-size)
+      (setf window-size (get-initial-window-size connection)))))
+
+(defclass server-stream (http2-stream)
+  ()
   (:documentation "Server streams need to track attributes from the client headers such as PATH."))
 
-(defmethod print-object ((stream server-stream) out)
+(defmethod print-object ((stream http2-stream) out)
   (if *print-escape*
       (print-unreadable-object (stream out :type t)
-        (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
-      (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
+        (format out "#~d ~s ~a" (get-stream-id stream) (get-path stream) (get-state stream)))
+      (format out "Stream #~d ~a ~s ~a" (get-stream-id stream) (get-method stream) (get-path stream) (get-state stream))))
 
 (defsection @base-classes
     (:title "Classes")
@@ -253,12 +267,9 @@ the first parameter."
   "Open HTTP/2 stream (typically, from client side) by sending headers.
 
 - STREAM-PARS are used as parameters for creating new stream instance.
-
-- HEADERS are headers to be send for the client. You can use REQUEST-HEADERS to
-  get necessary headers.
-
+- HEADERS is an ordered list of headers to be send for the client. You can use
+  HTTP2/CLIENT::REQUEST-HEADERS to get necessary headers.
 - END-HEADERS is aflag to the server that no more headers would be sent; true by default.
-
 - END-STREAM is a flag to the server that there would be no payload."
   (send-headers (create-new-local-stream connection stream-pars)
                 headers
@@ -294,8 +305,8 @@ argument implicit and only HEADERS and key parameters are to be provided."
    "This should be called on push promise (FIXME: and maybe it is not, and maybe
 the parameters should be different anyway). By default throws an error."))
 
-(defun close-http2-stream (stream)
-  "Close the http2 stream.
+(defgeneric close-http2-stream (stream reason)
+  (:documentation "Close the http2 stream.
 
 It marks the stream as closed, which is maybe unnecessary, as the stream is
 immediately removed from the list of streams of its connection. This is
@@ -308,11 +319,12 @@ other solution would be to send go-away after the number of streams is too high;
 however some clients (e.g., h2load) do not retry when they receive this.
 
 This stream removal should be done with lock on the appropriate stream when in
-multiple threads."
-  (with-slots (connection) stream
-    (with-slots (streams) connection
-      (setf streams (remove stream streams :test 'eq)
-            (get-state stream) 'closed))))
+multiple threads.")
+  (:method ((stream http2-stream-minimal) reason)
+    (with-slots (connection) stream
+      (with-slots (streams) connection
+        (setf streams (remove stream streams :test 'eq)
+              (get-state stream) 'closed)))))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)
@@ -339,7 +351,12 @@ multiple threads."
       (:header-table-size .
                           ,(get-dynamic-table-size (get-decompression-context connection)))))
   (:method append ((connection client-http2-connection))
-    `((:enable-push . 0))))
+    `((:enable-push . 0)))
+  (:documentation "Settings of the connection. Used to provide data for initial settings frame when
+connection is established.
+
+Feel free to add additional methods for your classes. The method combination is
+APPEND which should make things simpler."))
 
 (defmethod print-object ((o http2-stream) out)
   (if *print-escape*
@@ -405,8 +422,7 @@ Then write the initial settings frame, and expect normal frame. Actually, this s
    The client connection preface starts with a sequence of 24 octets.  This
    sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be
    empty."
-  ;; 20240708 TODO: This should go to client, or at least not depend on network stream
-  (write-sequence +client-preface-start+ (get-network-stream connection))
+  (queue-frame connection +client-preface-start+)
   (write-settings-frame connection (get-settings connection)))
 
 

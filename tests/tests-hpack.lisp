@@ -15,7 +15,7 @@
 
   (fiasco:is
       (= 1337
-         (get-integer-from-octet #x1f 5  #(154 10) 0 0))
+         (get-integer-from-octet #x1f 5  #(154 10) 0 2))
       "C.1.2.  Example 2: Encoding 1337 Using a 5-Bit Prefix")
   (fiasco:is (equalp (integer-to-array 1337 5 0) #(31 154 10))
       "C.1.2 incorrect number of bytes")
@@ -249,3 +249,22 @@ C.2.  Header Field Representation Examples ; ;
                          "88c16196d07abe941054d444a8200595040b8166e084a62d1bffc05a839bd9ab77ad94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007"
                          '(:status "cache-control" "date" "location" "content-encoding" "set-cookie")
                          '("200" "private" "Mon, 21 Oct 2013 20:13:22 GMT" "https://www.example.com" "gzip" "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"))))
+
+;; Test limits
+(defun verify-decoder-error (text)
+  (fiasco:signals decode-error
+    (do-decoded-headers (constantly nil) (make-instance 'hpack-context) (vector-from-hex-text text))))
+
+(fiasco:deftest test-header-too-big-string ()
+  "If the signalled size of a encoded string exceeds limit, do not make that
+string."
+  (verify-decoder-error "00FFD4D18C6318C6318C6318"))
+
+(fiasco:deftest test-header-neg-index ()
+  "Would build a too big string"
+  (verify-decoder-error "0FFD4D18C6318C6318C63180"))
+
+(fiasco:deftest test-header-zero-index ()
+  "Try to get index zero of static page")
+
+;;;; Can we test a long huffman padding?
