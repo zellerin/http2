@@ -199,7 +199,7 @@ be used for  HTTP/2. The helper function here is <code>CONNECT-TO-TLS-SERVER</co
 connection of class <code>VANILLA-CLIENT-CONNECTION</code> over it, send client request, and
 then <code>PROCESS-PENDING-FRAMES</code> until server fully sends the response. That invokes
 restart <code>FINISH-STREAM</code> with the processed stream that we handle. We can get the
-data from it using <code>DRAKMA-STYLE-STREAM-VALUES</code>.</p>
+data from it using <a href="reference.html#HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION" title="HTTP2/CLIENT:DRAKMA-STYLE-STREAM-VALUES FUNCTION"><code>DRAKMA-STYLE-STREAM-VALUES</code></a>.</p>
 
 <pre><code><span class="code">  <span class="paren1">(<span class="code"><i><span class="symbol">defun</span></i> my-retrieve-url-using-network-stream <span class="paren2">(<span class="code">lisp-stream url</span>)</span>
     <span class="paren2">(<span class="code"><i><span class="symbol">with-http2-connection</span></i> <span class="paren3">(<span class="code">connection 'vanilla-client-connection lisp-stream</span>)</span>
@@ -225,7 +225,7 @@ and proper parameters.</p>
 
 <h3><a href="#HTTP2:@SERVER-TUTORIALS%20MGL-PAX:SECTION">2.2 Server tutorials</a></h3>
 
-<p>Server related interfaces are exported from the <a href="#%22HTTP2%2FSERVER%22%20PACKAGE" title="&quot;HTTP2/SERVER&quot; PACKAGE"><code>HTTP2/SERVER</code></a> package and are
+<p>Server related interfaces are exported from the <a href="reference.html#%22HTTP2%2FSERVER%22%20PACKAGE" title="&quot;HTTP2/SERVER&quot; PACKAGE"><code>HTTP2/SERVER</code></a> package and are
 part of the <code>HTTP2/SERVER</code> system. This system is also loaded when <code>HTTP2</code> is loaded.</p>
 
 <p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-START-STOP-20MGL-PAX-3ASECTION-29"></a>
@@ -520,35 +520,6 @@ the data.</p></li>
 <p>Treat all non-binary data input as ASCII, that is, convert octets to a string
 with <a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_code_c.htm" title="CODE-CHAR (MGL-PAX:CLHS FUNCTION)"><code>CODE-CHAR</code></a>. It is compatible with <a href="implementation.html#HTTP2%2FCORE:UTF8-PARSER-MIXIN%20CLASS" title="HTTP2/CORE:UTF8-PARSER-MIXIN CLASS"><code>UTF8-PARSER-MIXIN</code></a> if provided after it in
 the list of direct superclasses.</p></li>
-</ul>
-
-<p><a id="x-28-22HTTP2-2FSERVER-22-20PACKAGE-29"></a>
-<a id="%22HTTP2%2FSERVER%22%20PACKAGE"></a></p>
-
-<ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[package]</span> <span class="reference-object"><a href="#%22HTTP2%2FSERVER%22%20PACKAGE" >&quot;HTTP2/SERVER&quot;</a></span></span> <span class="locative-args">NICKNAMES (&quot;HTTP2/SERVER/SHARED&quot; &quot;HTTP2/SERVER/POLL&quot; &quot;HTTP2/SERVER/THREADED&quot;)</span></span></p>
-
-<p>Contains</p>
-
-<ul>
-<li><p>Functions to start and stop of a HTTP/2 servers,</p></li>
-<li><p>implementations of the servers (threaded and polled version), <code>HTTP2</code> server connections and <code>HTTP2</code> streams,</p></li>
-<li><p>macros to define content for the served pages.</p></li>
-</ul></li>
-</ul>
-
-<p><a id="x-28-22http2-2Fserver-22-20ASDF-2FSYSTEM-3ASYSTEM-29"></a>
-<a id="%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM"></a></p>
-
-<ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[system]</span> <span class="reference-object"><a href="#%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM" >&quot;http2/server&quot;</a></span></span></span></p>
-
-<ul>
-<li><em>Version:</em> 2.0.3</li>
-<li><em>Description:</em> Asyncronous polling implementations of <code>HTTP2</code> server.</li>
-<li><em>Author:</em> Tomáš Zellerin <a href="m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;">m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;</a></li>
-<li><em>Depends on:</em> http2/server/poll, http2/server/threaded</li>
-</ul></li>
 </ul>
   </div>
 </div>

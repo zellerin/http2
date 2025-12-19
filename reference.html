@@ -21,29 +21,67 @@
 <p><a id="x-28HTTP2-3A-40REFERENCE-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2:@REFERENCE%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="index.html#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8594;</a> <a href="reference.html" title="API documentation">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/overview.lisp#L39">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="index.html#HTTP2%2FSERVER:@REQUEST-BODY%20MGL-PAX:SECTION" title="Body of the request">&#8592;</a> <a href="index.html" title="`HTTP2` in Common Lisp">&#8593;</a> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8594;</a> <a href="reference.html" title="API documentation">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/overview.lisp#L31">&#955;</a></span></span></p>
 
 <h2><a href="reference.html">3 API documentation</a></h2>
 
 <p><a id="x-28HTTP2-3A-40SYSTEMS-AND-PACKAGES-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="reference.html" title="API documentation">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8594;</a> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/overview.lisp#L43">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="reference.html" title="API documentation">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8594;</a> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/overview.lisp#L37">&#955;</a></span></span></p>
 
 <h3><a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION">3.1 Systems and packages</a></h3>
+
+<p>The library is split to several subsystems. Most of them depend on other
+quicklisp-loadable components, see the graph.</p>
+
+<p><img src="./systems.svg" alt="systems" /></p>
 
 <p><a id="x-28-22http2-22-20ASDF-2FSYSTEM-3ASYSTEM-29"></a>
 <a id="%22http2%22%20ASDF%2FSYSTEM:SYSTEM"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/http2.asd#L1">[system]</a></span> <span class="reference-object"><a href="#%22http2%22%20ASDF%2FSYSTEM:SYSTEM" >&quot;http2&quot;</a></span></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/http2.asd#L1">[system]</a></span> <span class="reference-object"><a href="#%22http2%22%20ASDF%2FSYSTEM:SYSTEM" >&quot;http2&quot;</a></span></span></span></p>
 
 <ul>
 <li><p><em>Version:</em> 2.0.3</p></li>
 <li><p><em>Description:</em> HTTP/2 library, including a sample client and server.</p>
 
 <p>The system also supports TEST-OP to run the test suite.</p></li>
-<li><p><em>Depends on:</em> http2/client, <a href="index.html#%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM" title="&quot;http2/server&quot; ASDF/SYSTEM:SYSTEM">http2/server</a>, http2/server/poll</p></li>
+<li><p><em>Depends on:</em> http2/client, <a href="#%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM" title="&quot;http2/server&quot; ASDF/SYSTEM:SYSTEM">http2/server</a>, http2/server/poll</p></li>
+</ul></li>
+</ul>
+
+<p><a id="x-28-22http2-2Fserver-22-20ASDF-2FSYSTEM-3ASYSTEM-29"></a>
+<a id="%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/http2.asd#L1">[system]</a></span> <span class="reference-object"><a href="#%22http2%2Fserver%22%20ASDF%2FSYSTEM:SYSTEM" >&quot;http2/server&quot;</a></span></span></span></p>
+
+<ul>
+<li><em>Version:</em> 2.0.3</li>
+<li><em>Description:</em> HTTP/2 server interface. Provides access to an implementation of a HTTP/2 server
+
+<ul>
+<li>both for running the server and for defining content.</li>
+</ul></li>
+<li><em>Author:</em> Tomáš Zellerin <a href="m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;">m&#x61;&#105;l&#x74;&#111;:&#x74;&#111;m&#x61;&#115;@&#x7A;&#101;l&#x6C;&#101;r&#x69;&#110;.&#x63;&#122;</a></li>
+<li><em>Depends on:</em> http2/server/poll, http2/server/threaded</li>
+</ul></li>
+</ul>
+
+<p><a id="x-28-22HTTP2-2FSERVER-22-20PACKAGE-29"></a>
+<a id="%22HTTP2%2FSERVER%22%20PACKAGE"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/package.lisp#L39">[package]</a></span> <span class="reference-object"><a href="#%22HTTP2%2FSERVER%22%20PACKAGE" >&quot;HTTP2/SERVER&quot;</a></span></span> <span class="locative-args">NICKNAMES (&quot;HTTP2/SERVER/SHARED&quot; &quot;HTTP2/SERVER/POLL&quot; &quot;HTTP2/SERVER/THREADED&quot;)</span></span></p>
+
+<p>Contains</p>
+
+<ul>
+<li><p>Functions to start and stop of a HTTP/2 servers,</p></li>
+<li><p>implementations of the servers (threaded and polled version), <code>HTTP2</code> server connections and <code>HTTP2</code> streams,</p></li>
+<li><p>macros to define content for the served pages.</p></li>
 </ul></li>
 </ul>
 
@@ -51,7 +89,7 @@
 <a id="%22HTTP2%2FCLIENT%22%20PACKAGE"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/package.lisp#L33">[package]</a></span> <span class="reference-object"><a href="#%22HTTP2%2FCLIENT%22%20PACKAGE" >&quot;HTTP2/CLIENT&quot;</a></span></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/package.lisp#L33">[package]</a></span> <span class="reference-object"><a href="#%22HTTP2%2FCLIENT%22%20PACKAGE" >&quot;HTTP2/CLIENT&quot;</a></span></span></span></p>
 
 <p>HTTP/2 client functions, in particular, <a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" title="HTTP2/CLIENT:RETRIEVE-URL FUNCTION"><code>RETRIEVE-URL</code></a>.</p></li>
 </ul>
@@ -59,7 +97,7 @@
 <p><a id="x-28HTTP2-2FCLIENT-3A-40CLIENT-API-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8634;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION" title="Systems and packages">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8594;</a> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/client/client.lisp#L8">&#955;</a></span></span></p>
 
 <h3><a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION">3.2 HTTP/2 client API</a></h3>
 
@@ -71,7 +109,7 @@
 <a id="HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type">[function]</span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" >RETRIEVE-URL</a></span></span> <span class="locative-args">URL &amp;REST PARS &amp;KEY METHOD CONTENT CONTENT-FN ADDITIONAL-HEADERS CONTENT-TYPE CHARSET GZIP-CONTENT &amp;ALLOW-OTHER-KEYS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/client/client.lisp#L270">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:RETRIEVE-URL%20FUNCTION" >RETRIEVE-URL</a></span></span> <span class="locative-args">URL &amp;REST PARS &amp;KEY METHOD CONTENT CONTENT-FN ADDITIONAL-HEADERS CONTENT-TYPE CHARSET GZIP-CONTENT &amp;ALLOW-OTHER-KEYS</span></span></p>
 
 <p>Retrieve <code>URL</code> (a string) through HTTP/2 over TLS.</p>
 
@@ -118,17 +156,27 @@
 <a id="HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/client/client.lisp#L80">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION" >REQUEST-HEADERS</a></span></span> <span class="locative-args">METHOD PATH AUTHORITY &amp;KEY (SCHEME &quot;https&quot;) CONTENT-TYPE GZIP-CONTENT ADDITIONAL-HEADERS</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/client/client.lisp#L14">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:REQUEST-HEADERS%20FUNCTION" >REQUEST-HEADERS</a></span></span> <span class="locative-args">METHOD PATH AUTHORITY &amp;KEY (SCHEME &quot;https&quot;) CONTENT-TYPE GZIP-CONTENT ADDITIONAL-HEADERS</span></span></p>
 
 <p>Encode standard request headers. The obligatory headers are passed as the
 positional arguments. <code>ADDITIONAL-HEADERS</code> are a list of conses, each containing
 header name and value.</p></li>
 </ul>
 
+<p><a id="x-28HTTP2-2FCLIENT-3ADRAKMA-STYLE-STREAM-VALUES-20FUNCTION-29"></a>
+<a id="HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION"></a></p>
+
+<ul>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/client/client.lisp#L246">[function]</a></span> <span class="reference-object"><a href="#HTTP2%2FCLIENT:DRAKMA-STYLE-STREAM-VALUES%20FUNCTION" >DRAKMA-STYLE-STREAM-VALUES</a></span></span> <span class="locative-args">RAW-STREAM &amp;KEY CLOSE-STREAM</span></span></p>
+
+<p>Return values as from <code>DRAKMA:HTTP-REQUEST</code>. Some of the values are meaningless,
+but kept for compatibility purposes.</p></li>
+</ul>
+
 <p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-REFERENCE-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L416">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="#HTTP2%2FCLIENT:@CLIENT-API%20MGL-PAX:SECTION" title="HTTP/2 client API">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L416">&#955;</a></span></span></p>
 
 <h3><a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION">3.3 Server API reference</a></h3>
 
@@ -137,7 +185,7 @@ header name and value.</p></li>
 <p><a id="x-28HTTP2-2FSERVER-3A-40DISPATCHERS-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8592;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L420">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8592;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-REFERENCE%20MGL-PAX:SECTION" title="Server API reference">&#8593;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L420">&#955;</a></span></span></p>
 
 <h4><a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION">3.3.1 Server classes</a></h4>
 
@@ -158,14 +206,14 @@ specified as a parameter to the <code>START</code> function.</p>
 <a id="HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/poll-server.lisp#L974">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" >POLL-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER-MIXIN CLASS">POLL-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/poll-server.lisp#L975">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" >POLL-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER-MIXIN CLASS">POLL-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3ADETACHED-POLL-DISPATCHER-20CLASS-29"></a>
 <a id="HTTP2%2FSERVER:DETACHED-POLL-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/poll-server.lisp#L981">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-POLL-DISPATCHER%20CLASS" >DETACHED-POLL-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER CLASS">POLL-DISPATCHER</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/poll-server.lisp#L982">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-POLL-DISPATCHER%20CLASS" >DETACHED-POLL-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER CLASS">POLL-DISPATCHER</a></span></span></p>
 
 <p>Detached version of the <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER CLASS"><code>POLL-DISPATCHER</code></a>.</p></li>
 </ul>
@@ -174,35 +222,35 @@ specified as a parameter to the <code>START</code> function.</p>
 <a id="HTTP2%2FSERVER:DETACHED-TLS-THREADED-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/threaded.lisp#L11">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-TLS-THREADED-DISPATCHER%20CLASS" >DETACHED-TLS-THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-THREADED-DISPATCHER CLASS">TLS-THREADED-DISPATCHER</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/threaded.lisp#L11">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-TLS-THREADED-DISPATCHER%20CLASS" >DETACHED-TLS-THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-THREADED-DISPATCHER CLASS">TLS-THREADED-DISPATCHER</a></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3ATLS-THREADED-DISPATCHER-20CLASS-29"></a>
 <a id="HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/threaded.lisp#L8">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS" >TLS-THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:THREADED-DISPATCHER CLASS">THREADED-DISPATCHER</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/threaded.lisp#L8">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-THREADED-DISPATCHER%20CLASS" >TLS-THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:THREADED-DISPATCHER CLASS">THREADED-DISPATCHER</a></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3ATLS-SINGLE-CLIENT-DISPATCHER-20CLASS-29"></a>
 <a id="HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L319">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" >TLS-SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:SINGLE-CLIENT-DISPATCHER CLASS">SINGLE-CLIENT-DISPATCHER</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L319">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" >TLS-SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" title="HTTP2/SERVER:TLS-DISPATCHER-MIXIN CLASS">TLS-DISPATCHER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:SINGLE-CLIENT-DISPATCHER CLASS">SINGLE-CLIENT-DISPATCHER</a></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3ADETACHED-TLS-SINGLE-CLIENT-DISPATCHER-20CLASS-29"></a>
 <a id="HTTP2%2FSERVER:DETACHED-TLS-SINGLE-CLIENT-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L322">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" >DETACHED-TLS-SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-SINGLE-CLIENT-DISPATCHER CLASS">TLS-SINGLE-CLIENT-DISPATCHER</a></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L322">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" >DETACHED-TLS-SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" title="HTTP2/SERVER:DETACHED-SERVER-MIXIN CLASS">DETACHED-SERVER-MIXIN</a> <a href="implementation.html#HTTP2%2FSERVER:TLS-SINGLE-CLIENT-DISPATCHER%20CLASS" title="HTTP2/SERVER:TLS-SINGLE-CLIENT-DISPATCHER CLASS">TLS-SINGLE-CLIENT-DISPATCHER</a></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3A-2AVANILLA-SERVER-DISPATCHER-2A-20VARIABLE-29"></a>
 <a id="HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/socket-dispatcher.lisp#L61">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" >*VANILLA-SERVER-DISPATCHER*</a></span></span> <span class="locative-args">NIL</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/socket-dispatcher.lisp#L61">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:*VANILLA-SERVER-DISPATCHER*%20VARIABLE" >*VANILLA-SERVER-DISPATCHER*</a></span></span> <span class="locative-args">NIL</span></span></p>
 
 <p>Default value of the server dispatcher. One of <a href="implementation.html#HTTP2%2FSERVER:DETACHED-TLS-THREADED-DISPATCHER%20CLASS" title="HTTP2/SERVER:DETACHED-TLS-THREADED-DISPATCHER CLASS"><code>DETACHED-TLS-THREADED-DISPATCHER</code></a>
 ot <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="HTTP2/SERVER:POLL-DISPATCHER CLASS"><code>POLL-DISPATCHER</code></a></p></li>
@@ -211,7 +259,7 @@ ot <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="H
 <p><a id="x-28HTTP2-2FSERVER-3A-40SERVER-MIXINS-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8592;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8593;</a> <a href="#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION" title="Logging support">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L440">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8592;</a> <a href="implementation.html#HTTP2%2FSERVER:@DISPATCHERS%20MGL-PAX:SECTION" title="Server classes">&#8593;</a> <a href="#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION" title="Logging support">&#8594;</a> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L440">&#955;</a></span></span></p>
 
 <h5><a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION">Server mixins and component classes</a></h5>
 
@@ -219,14 +267,14 @@ ot <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="H
 <a id="HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/socket-dispatcher.lisp#L174">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" >BASE-DISPATCHER</a></span></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/socket-dispatcher.lisp#L174">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" >BASE-DISPATCHER</a></span></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3ATHREADED-DISPATCHER-20CLASS-29"></a>
 <a id="HTTP2%2FSERVER:THREADED-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/threaded.lisp#L3">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:THREADED-DISPATCHER%20CLASS" >THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/threaded.lisp#L3">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:THREADED-DISPATCHER%20CLASS" >THREADED-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
 
 <p>Specialize <code>DO-NEW-CONNECTION</code> to process new connections each in a separate thread. </p></li>
 </ul>
@@ -235,7 +283,7 @@ ot <a href="implementation.html#HTTP2%2FSERVER:POLL-DISPATCHER%20CLASS" title="H
 <a id="HTTP2%2FSERVER:POLL-DISPATCHER-MIXIN%20CLASS"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/poll-server.lisp#L950">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:POLL-DISPATCHER-MIXIN%20CLASS" >POLL-DISPATCHER-MIXIN</a></span></span> <span class="locative-args">FDSET-MANAGER</span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/poll-server.lisp#L951">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:POLL-DISPATCHER-MIXIN%20CLASS" >POLL-DISPATCHER-MIXIN</a></span></span> <span class="locative-args">FDSET-MANAGER</span></span></p>
 
 <p>Uses poll to listen to a set of clients and handle arriving packets in a single
 thread.</p>
@@ -250,7 +298,7 @@ thread.</p>
 <a id="HTTP2%2FSERVER:SINGLE-CLIENT-DISPATCHER%20CLASS"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/socket-dispatcher.lisp#L190">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SINGLE-CLIENT-DISPATCHER%20CLASS" >SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/socket-dispatcher.lisp#L190">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:SINGLE-CLIENT-DISPATCHER%20CLASS" >SINGLE-CLIENT-DISPATCHER</a></span></span> <span class="locative-args"><a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
 
 <p>Handle the connection while doing nothing else.</p>
 
@@ -266,7 +314,7 @@ for one client and in ideal conditions (especially with request pilelining).</p>
 <a id="HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS"></a></p>
 
 <ul>
-<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/dispatch.lisp#L457">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" >TLS-DISPATCHER-MIXIN</a></span></span> <span class="locative-args">EASY-CERTIFICATED-CONTEXT-MIXIN H2-SERVER-CONTEXT-MIXIN <a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
+<li><p><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/dispatch.lisp#L457">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:TLS-DISPATCHER-MIXIN%20CLASS" >TLS-DISPATCHER-MIXIN</a></span></span> <span class="locative-args">EASY-CERTIFICATED-CONTEXT-MIXIN H2-SERVER-CONTEXT-MIXIN <a href="implementation.html#HTTP2%2FSERVER:BASE-DISPATCHER%20CLASS" title="HTTP2/SERVER:BASE-DISPATCHER CLASS">BASE-DISPATCHER</a></span></span></p>
 
 <p>Specializes <code>SERVER-SOCKET-STREAM</code> to add <code>TLS</code> layer to the created sockets,
 and <code>START-SERVER-ON-SOCKET</code> to use a context created by MAKE-HTTP2-TLS-CONTEXT.</p></li>
@@ -276,13 +324,13 @@ and <code>START-SERVER-ON-SOCKET</code> to use a context created by MAKE-HTTP2-T
 <a id="HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/socket-dispatcher.lisp#L31">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" >DETACHED-SERVER-MIXIN</a></span></span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/socket-dispatcher.lisp#L31">[class]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:DETACHED-SERVER-MIXIN%20CLASS" >DETACHED-SERVER-MIXIN</a></span></span></span></li>
 </ul>
 
 <p><a id="x-28HTTP2-2FSERVER-3A-40LOGGING-20MGL-PAX-3ASECTION-29"></a>
 <a id="HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION"></a></p>
 
-<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html" title="Implementation details (not part of API)">&#8594;</a> <a href="#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION" title="Logging support">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/logging.lisp#L3">&#955;</a></span></span></p>
+<p><span class="outer-navigation"><span class="navigation"> <a href="implementation.html#HTTP2%2FSERVER:@SERVER-MIXINS%20MGL-PAX:SECTION" title="Server mixins and component classes">&#8592;</a> <a href="reference.html" title="API documentation">&#8593;</a> <a href="implementation.html" title="Implementation details (not part of API)">&#8594;</a> <a href="#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION" title="Logging support">&#8634;</a> <a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/logging.lisp#L3">&#955;</a></span></span></p>
 
 <h3><a href="#HTTP2%2FSERVER:@LOGGING%20MGL-PAX:SECTION">3.4 Logging support</a></h3>
 
@@ -304,7 +352,7 @@ format is the peer name (see <a href="implementation.html#HTTP2%2FCORE:GET-PEER-
 <a id="HTTP2%2FSERVER:*LOG-STREAM*%20VARIABLE"></a></p>
 
 <ul>
-<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/7dc55f6b57e83b9964f890cc77e8493e13283c19/server/logging.lisp#L15">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:*LOG-STREAM*%20VARIABLE" >*LOG-STREAM*</a></span></span> <span class="locative-args">#&lt;SYNONYM-STREAM :SYMBOL *STANDARD-OUTPUT* {7005D04413}&gt;</span></span></li>
+<li><span class=reference-bullet><span class=reference><span class="locative-type"><a href="https://github.com/zellerin/http2/blob/f3622dd5d435b8027c0535e259c623ada5ecb512/server/logging.lisp#L15">[variable]</a></span> <span class="reference-object"><a href="#HTTP2%2FSERVER:*LOG-STREAM*%20VARIABLE" >*LOG-STREAM*</a></span></span> <span class="locative-args">#&lt;SYNONYM-STREAM :SYMBOL *STANDARD-OUTPUT* {700664BA93}&gt;</span></span></li>
 </ul>
   </div>
 </div>
