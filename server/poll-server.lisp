@@ -743,8 +743,9 @@ The read and write buffers are intitialized to new "
     client))
 
 (defun make-client (&rest args) (apply #'make-tls-endpoint args))
+#+sbcl
 (declaim (sb-ext:deprecated :early ("http2" "2.0.3")
-                     (function make-client :replacement make-tls-endpoint)))
+                            (function make-client :replacement make-tls-endpoint)))
 
 (defmacro with-tls-endpoint ((name context &key (fd -1) application-data (fdset-idx -1))
                              &body body)

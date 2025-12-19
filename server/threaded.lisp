@@ -84,6 +84,7 @@ events)."))
 ;  (sb-bsd-sockets::socket-peerstring object)
   )
 
+#+sbcl
 (defmethod get-peer-name ((object sb-sys:fd-stream))
   (http2/tcpip:fd-to-ip (sb-sys::fd-stream-fd object)))
 

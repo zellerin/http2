@@ -559,6 +559,7 @@ FIXME: might be also continuation-frame-header"
         when (get-flag flags flag-name)
           collect flag-name))
 
+#+sbcl
 (defun trace-frames ()
   "Trace incoming and outgoing frames on a generic level. Example:
 ```
@@ -569,9 +570,9 @@ FIXME: might be also continuation-frame-header"
                  (& 0)  (& 1)  (get-flag-keywords (& 0) (& 2))
                  (when (plusp (sb-debug:arg 3)) (& 3)) (plusp (& 4))))
   (trace-object write-frame-header-to-vector 0
-      ("Writing ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
-       (aref *frame-types* (& 3))  (& 4) (get-flag-keywords (& 3) (& 2))
-       (when (plusp (sb-debug:arg 5)) (& 5)) (& 6))))
+                ("Writing ~A, size ~d~@[, flags ~{~a~^,~}~]~@[, stream ~a~]~@[ reserved bit set~]"
+                 (aref *frame-types* (& 3))  (& 4) (get-flag-keywords (& 3) (& 2))
+                 (when (plusp (sb-debug:arg 5)) (& 5)) (& 6))))
 
 (defun process-frames (connection data)
   "Process DATA as frames by CONNECTION."

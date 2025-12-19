@@ -246,6 +246,7 @@ We should also limit allowed ciphers, but we do not.")
   "Do not use that. Changed name, as not http2 specific (use proper mixins for it)."
   (make-tls-context dispatcher))
 
+#+sbcl
 (declaim (sb-ext:deprecated :early ("http2" "2.0.3")
                             (function make-http2-tls-context :replacement make-tls-context)))
 
