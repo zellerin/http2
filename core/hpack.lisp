@@ -2,6 +2,8 @@
 
 (in-package :http2/hpack)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @hpack-api
     (:title "HPACK - RFC7541 implementation.")
   "HTTP2 headers can be compressed - and implementation needs to be able to decompress - by two (or maybe three) ways:

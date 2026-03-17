@@ -1,5 +1,7 @@
 (in-package http2/stream-overlay)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 ;;;; What does "stream" mean here?
 ;;;;
 ;;;; 1. we have TCP socket (usocket) and possibly stream as well

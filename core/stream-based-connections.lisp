@@ -1,5 +1,7 @@
 (in-package http2/stream-overlay)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (mgl-pax:defsection @stream-based-connection
     (:title "Connections using CL streams")
   (stream-based-connection-mixin class)

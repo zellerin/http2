@@ -2,6 +2,8 @@
 
 (in-package :http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @implementation/overview (:title "Overview")
   "There are three core groups of classes:
 

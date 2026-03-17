@@ -1,5 +1,7 @@
 (in-package http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defgeneric peer-expects-settings-ack (connection)
   (:documentation
    "Called when settings-frame without ACK is received, after individual

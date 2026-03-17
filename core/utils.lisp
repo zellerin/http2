@@ -2,6 +2,8 @@
 
 (in-package :http2/utils)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @utils (:title "Utilities")
   (find-setting-code function)
   (find-setting-by-id function)
