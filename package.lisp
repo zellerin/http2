@@ -21,7 +21,13 @@
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term)
   (:import-from :alexandria
-                #:read-stream-content-into-string #:read-stream-content-into-byte-vector))
+                #:read-stream-content-into-string #:read-stream-content-into-byte-vector)
+  ;; Slot names referenced by with-slots in http2/stream-overlay
+  ;; (payload-streams.lisp).  Without this export, :use only inherits
+  ;; exported symbols per ANSI CL, and with-slots would intern fresh
+  ;; symbols that don't match the actual slot names.
+  (:export #:connection #:peer-window-size #:window-size #:state
+           #:output-buffer #:network-stream))
 
 (mgl-pax:define-package #:http2/cl+ssl
   (:use #:cl #:http2/core #:cl+ssl #:mgl-pax #:http2/openssl))
