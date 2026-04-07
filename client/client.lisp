@@ -208,11 +208,7 @@ falling back to *DEFAULT-CLIENT-CONNECTION-CLASS*. ARGS are passed to the MAKE-I
                       :network-stream network-stream
                       args)))
       (fetch-resource connection request args)
-      (handler-case
-          (process-pending-frames connection)
-        (http-stream-error (e)
-          ;; promote stream error that is usually just warning to an error
-          (error e)))))
+      (process-pending-frames connection)))
 
   (:method ((connection client-http2-connection) (request generic-request) args)
     "Open the new stream by sending headers frame to the server.
