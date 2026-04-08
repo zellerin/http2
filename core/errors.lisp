@@ -71,17 +71,18 @@
   (:report (lambda (err stream)
              (with-slots (error-code debug-data) err
                (format stream
-                       "~@<Peer sent GO-AWAY frame. Connection can no longer be used.~_Error code ~W - ~W~@[~_Debug data: ~W~]~:>"
-                       (get-medium err) error-code (documentation error-code 'variable)
+                       "~@<~a closed connection with an error. Connection can no longer be used. ~_~W.~@[~_Debug data: ~W.~]~:>"
+                       (get-medium err) (or (documentation error-code 'variable) error-code)
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
   (:documentation "Signalled by DO-GOAWAY when go-away frame arrives."))
 
 (define-condition go-away-no-error (go-away)
   ()
   (:report (lambda (err stream)
-             (with-slots (error-code debug-data) err
+             (with-slots (medium error-code debug-data) err
                (format stream
-                       "~@<Peer requested to close connection (not an error).~@[~_Debug data: ~W~]~:>"
+                       "~@<~W closed connection normally. ~@[~_Debug data: ~W.~]~:>"
+                       medium
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data)))))))
 
 (define-condition http2-condition ()
@@ -123,8 +124,9 @@ NETWORK-STREAM."))
   (:documentation "HTTPS server expects a specific sequence of octets at the start of the new
 connection. The client sent something different.")
   (:report (lambda (err out)
-             (with-slots (received) err
-               (format out "Client did not sent the client preface, but ~a"  (map 'string 'code-char received))))))
+             (with-slots (received medium) err
+               (format out "~W did not sent the client preface, but ~W"
+                       medium (map 'string 'code-char received))))))
 
 (define-condition too-big-frame (connection-error)
   ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)
@@ -139,12 +141,12 @@ connection. The client sent something different.")
 
 (define-condition too-big-padding (protocol-error)
   ()
-  (:documentation
+  (:report
    "Length of the padding is the length of the frame payload or greater."))
 
 (define-condition frame-too-small-for-priority (protocol-error)
   ()
-  (:documentation
+  (:report
    "Length of the padding is the length of the frame payload or greater."))
 
 (define-condition our-id-created-by-peer (protocol-error)
@@ -152,6 +154,9 @@ connection. The client sent something different.")
 
 (define-condition frame-type-needs-stream (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
+  (:report (lambda (err out)
+             (format out "~W requires a stream, not the connection."
+                     (aref *frame-types* (get-frame-type err)))))
   (:documentation
    "Frame MUST be associated with a stream. If a frame is received whose
     stream identifier field is 0x0, the recipient MUST respond with a
@@ -159,12 +164,16 @@ connection. The client sent something different.")
 
 (define-condition frame-type-needs-connection (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
+  (:report (lambda (err out)
+             (format out "~W requires the connection, not a stream."
+                     (aref *frame-types* (get-frame-type err)))))
   (:documentation
    "Frame type must be applied on connection."))
 
 (define-condition new-stream-id-too-low (protocol-error)
   ((stream-id       :accessor get-stream-id       :initarg :stream-id)
    (max-seen-so-far :accessor get-max-seen-so-far :initarg :max-seen-so-far))
+  (:report "Requested new stream id is lower than previously used id.")
   (:documentation
    "The identifier of a newly established stream MUST be numerically
       greater than all streams that the initiating endpoint has opened or
@@ -180,24 +189,24 @@ connection. The client sent something different.")
 
 (define-condition incorrect-enable-push-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
+  (:report "Client must have ENABLE-PUSH 0 or 1. Server must have ENABLE-PUSH 0."))
 
 (define-condition incorrect-frame-size-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation
+  (:report
    "Frame size MUST be between the initial value 16384 and the maximum allowed frame
 size (2^24-1 or 16,777,215 octets), inclusive."))
 
 (define-condition incorrect-initial-window-size-value (protocol-error)
   ((value :accessor get-value :initarg :value))
-  (:documentation
+  (:report
    "SETTINGS_INITIAL_WINDOW_SIZE must be below 2^31."))
 
 (define-condition bad-stream-state (connection-error)
   ((allowed   :accessor get-allowed   :initarg :allowed)
    (actual    :accessor get-actual    :initarg :actual)
    (stream-id :accessor get-stream-id :initarg :stream-id))
-  (:documentation
+  (:report
    "Frame cannot be applied to stream in particular state"))
 
 (define-condition http-stream-error (error)
@@ -242,13 +251,13 @@ Base class for more detailed errors."))
 (define-condition incorrect-settings-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
+  (:report
    "We received a SETTINGS frame with a length other than a multiple of 6 (Section 5.4.1)"))
 
 (define-condition incorrect-ping-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
+  (:report
    "We received PING frame with a length field value other than 8 (Section 5.4.1)"))
 
 (define-condition incorrect-window-update-frame-size (connection-error)
@@ -288,7 +297,8 @@ Base class for more detailed errors."))
   ())
 
 (define-condition duplicate-request-header (header-error)
-  ())
+  ()
+  (:report "Header received twice"))
 
 (define-condition lowercase-header-field-name (header-error)
   ()

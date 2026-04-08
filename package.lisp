@@ -76,5 +76,6 @@
   (medium unspecified))
 
 (define-condition communication-error (serious-condition)
-  ((medium :accessor get-medium :initarg :medium))
+  ((medium :accessor get-medium :initarg :medium
+           :initform nil))
   (:documentation "Something happens that prevents communication from going on, unless handled."))
