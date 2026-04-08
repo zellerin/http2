@@ -90,21 +90,23 @@ The fallback is unescaped print of the object.")
 
 (defmethod get-connection ((c http2-connection))
   "Some frame actions can act both on streams and on connection. In that case,
-pretending that connection of connection is the same connection can be useful."
+pretending that connection of connection is the same connection is useful."
   c)
 
 (defclass client-http2-connection (http2-connection)
   ()
   (:default-initargs :id-to-use 1)
   (:documentation
-   "Client connections initiate odd-numbered streams."))
+   "A client connection. It
+
+- initiates odd-numbered streams, starting with one,
+- sends client preface and settings when created"))
 
 (defclass server-http2-connection (http2-connection)
   ((peer-accepts-push :accessor get-peer-accepts-push :initarg :peer-accepts-push))
   (:default-initargs :id-to-use 2
    :peer-accepts-push t)
-  (:documentation "Server connection initiate even numbered streams."))
-
+  (:documentation "A server connection. It initiates even numbered streams, starting with 2."))
 
 (defsection @streams (:title "HTTP/2 Streams")
   (http2-stream-minimal class)
@@ -119,7 +121,7 @@ pretending that connection of connection is the same connection can be useful."
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
    (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
                      :documentation
-                     "Set if in the header block a non-pseudo header was already seen."))
+                     "Set when non-pseudo header is received in the header block "))
   (:default-initargs :window-size 0
    ;;   All streams are initially assigned a non-exclusive dependency on
    ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
