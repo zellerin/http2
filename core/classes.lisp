@@ -405,8 +405,7 @@ Then write the initial settings frame, and expect normal frame. Actually, this s
    The client connection preface starts with a sequence of 24 octets.  This
    sequence MUST be followed by a SETTINGS frame (Section 6.5), which MAY be
    empty."
-  ;; 20240708 TODO: This should go to client, or at least not depend on network stream
-  (write-sequence +client-preface-start+ (get-network-stream connection))
+  (queue-frame connection +client-preface-start+)
   (write-settings-frame connection (get-settings connection)))
 
 
