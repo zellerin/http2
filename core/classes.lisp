@@ -2,12 +2,12 @@
 
 (in-package :http2/core)
 
-(defsection @implementation/overview (:title "Overview")
+(defsection @implementation/overview (:title "Overview of HTTP/2 core")
   "There are three core groups of classes:
 
 - @CONNECTIONS, derived from HTTP2-CONNECTION, represent a connection as in the RFC,
 - Streams, derived from HTTP2-STREAM-MINIMAL, represent a HTTP/2 stream as in the RFC,
-- Dispatchers, derived from HTTP2/server/shared:BASE-DISPATCHER, represent a server that may receive and dispatch new connections.
+- Dispatchers, derived from HTTP2/SERVER/SHARED:BASE-DISPATCHER, represent a server that may receive and dispatch new connections.
 
 Dispatcher create new connection instances as they receive requests, and
 connections create new stream instances to serve the streams to the clients.
@@ -18,29 +18,28 @@ Clients do not need dispatchers; they create the connection to the server explic
   (@streams section)
   (@base-classes section)
   (@write-data-handling section)
-  (@data-received section)
-  #+nil  (http2/stream-overlay:process-pending-frames function))
+  (@data-received section))
 
 (defsection @connections (:title "HTTP/2 Connections")
   (http2-connection class)
-  "At any point of time, a HTTP2-CONNECTION expects explicit number of octets as an
+  "The connection has a communication channel that allows to send and receive
+frames of octets to the other side, peer."
+  (get-peer-name generic-function)
+  "Sending of the frames is abstracted in
+QUEUE-FRAME and QUEUE-FRAME-REGION."
+  "The HTTP2-CONNECTION expects at any time explicit number of octets as an
 input, i.e., 9 octets for a header, or frame size octets of the frame
 payload. This information is not stored in the connection (why?), but lexically
 in a loop in functions that make the update, together with a function that acts
 on the connection when the data are available. See
 HTTP2/STREAM-OVERLAY:PROCESS-PENDING-FRAMES that reads the input data
 from (Common Lisp) binary STREAM as one example. See @DATA-RECEIVED."
-#+nil  (http2/stream-overlay:process-pending-frames function)
   (server-http2-connection class)
   (client-http2-connection class)
-  (get-peer-name generic-function)
-  (get-initial-peer-window-size generic-function)
   (@data section))
 
 (defclass http2-connection (frame-context stream-collection flow-control-mixin hpack-endpoint)
   ((acked-settings           :accessor get-acked-settings           :initarg :acked-settings)
-   (stream-class             :accessor get-stream-class             :initarg :stream-class
-                             :documentation "Class for new streams")
    (initial-window-size      :accessor get-initial-window-size      :initarg :initial-window-size)
    (initial-peer-window-size :accessor get-initial-peer-window-size :initarg :initial-peer-window-size))
   (:default-initargs :id-to-use 1
