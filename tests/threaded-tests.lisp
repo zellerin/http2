@@ -1,12 +1,16 @@
 (in-package :http2)
 
+(fiasco:defsuite
+    (http2 :bind-to-package #:http2
+                 :in http2/tests::http2/tests))
+
 (defsection @tests
     (:title "Tests overview")
   (@test-server section))
 
 (defsection @test-server
     (:title "Tests server")
-  "For tests, there is a test server running in a separate thread *TEST-SERVER-THREAD* on urkl *SERVER-URL*."
+  "For tests, there is a test server running in a separate thread *TEST-SERVER-THREAD* on url *SERVER-URL*."
   (with-test-server macro)
   (*test-server-thread* variable)
   (*server-url* variable)
@@ -26,7 +30,7 @@
 
 (defvar *test-webs-internal*
   '(("/foo" "Not found" 404)
-    ("/ok" "OK" 200)))
+    ("/demo/ok" "OK" 200)))
 
 (defun to-srv-port (fragment)
   (puri:merge-uris fragment *server-url*))
@@ -42,82 +46,53 @@
              (fiasco:is (equal code status)
                  "Page ~a does not have status ~a, but ~a" page code status))))
 
-(defun call-with-test-server (dispatcher fn)
+(defun call-with-test-server (fn)
   (setq *server-url* nil)
-  (let ((*test-server-thread*
-          (bt:make-thread
-           (lambda ()
-             (handler-bind ((warning 'muffle-warning)
-                            (error (lambda (e)
-                                     (declare (ignore e))
-                                     (when (find-restart 'close-connection)
-                                       (invoke-restart 'close-connection)))))
-               (http2/server-example:maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
-               (http2:create-server 0 dispatcher
-                                    :announce-url-callback (lambda (a)
-                                                             (setf *server-url* a)
-                                                             t))))
-           :name "HTTP2 server")))
-    #+sbcl(sb-ext:wait-for *server-url* :timeout 5)
-    #-sbcl (loop for i from 0 to 50
-                 until *server-url*
-                 dooo (sleep 0.1))
+  (multiple-value-bind (server *server-url*)
+      (http2/server:start 0)
     (unwind-protect
          (restart-bind
              ((break-in-server (lambda ()
                                  (bt:interrupt-thread *test-server-thread* #'break))))
            (funcall fn))
-      (bt:interrupt-thread *test-server-thread* #'invoke-restart 'kill-server)
+      (http2/server:stop server)
       (setf *server-url* nil *test-server-thread* nil))))
 
-(defmacro with-test-server (server-parameters &body body)
-  `(call-with-test-server (make-instance ,@server-parameters)
-                          (lambda () ,@body)))
+(defmacro with-test-server  (&body body)
+  `(call-with-test-server (lambda () ,@body)))
 
 (fiasco:deftest test-self-compatible ()
-  (with-test-server ('tls-single-client-dispatcher)
+  (with-test-server
     (test-webs *test-webs-internal*)))
 
 (defun test-curl (url content)
   (fiasco:is (search content (uiop:run-program `("/usr/bin/curl" ,(puri:render-uri (puri:merge-uris url *server-url*) nil) "-k") :output :string))))
 
 (fiasco:deftest test-curl-access ()
-  (with-test-server ('tls-single-client-dispatcher)
+  (with-test-server
     (test-curl "/ok" "Redirect was OK")))
 
 (fiasco:deftest test-post ()
-  (with-test-server ('tls-single-client-dispatcher)
+  (with-test-server
     (fiasco:is (equal "AB" (http2/client:retrieve-url
-                            (to-srv-port "/body")
+                            (to-srv-port "/demo/body")
                             :method "POST"
                             :content #(65 66)
                             :content-type "binary/something")))
     (fiasco:is (equal "AB" (http2/client:retrieve-url
-                            (to-srv-port "/body")
+                            (to-srv-port "/demo/body")
                             :method "POST"
                             :content "AB")))
     (fiasco:is (equal "AB" (http2/client:retrieve-url
-                            (to-srv-port "/body")
+                            (to-srv-port "/demo/body")
                             :method "POST"
                             :content "AB"
                             :gzip-content t)))
     (fiasco:is (equal "AB"
                       (http2/client:retrieve-url
-                       (to-srv-port "/body")
+                       (to-srv-port "/demo/body")
                        :method "POST"
                        :additional-headers '(("content-type" . "text/plain; charset=UTF-8"))
                        :content-fn
                        (lambda (out)
                          (write-sequence "AB" out)))))))
-
-(fiasco:deftest test-post-2 ()
-)
-
-(fiasco:deftest test-ping ()
-  (with-test-server ('tls-single-client-dispatcher)
-    (flet ((test-ping-returns (&rest pars)
-             (fiasco:is (search "Ping time:"
-                                (with-output-to-string (*standard-output*)
-                                  (apply #'http2/client:retrieve-url pars))))))
-      (test-ping-returns (to-srv-port "/ok") :ping 3)
-      (test-ping-returns (to-srv-port "/ok") :ping t))))

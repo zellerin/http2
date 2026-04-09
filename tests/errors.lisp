@@ -1,12 +1,16 @@
 (in-package #:http2)
 
+(defsection @test-errors (:title "Test response to errors")
+  "We test response of a server to intentionally incorrect requests."
+  )
+
 (defun connect-to-test-server ()
   (connect-to-tls-server (puri:uri-host *server-url*)
                          :port (puri:uri-port *server-url*)))
 
 (defun test-bad-headers (headers)
   "As a client, send (presumably incorrect) HEADERS to server and read the response."
-  (with-test-server ('tls-single-client-dispatcher)
+  (with-test-server
     (fiasco:signals http-stream-error
       (with-http2-connection
           (connection
