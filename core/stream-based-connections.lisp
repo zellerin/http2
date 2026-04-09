@@ -61,7 +61,7 @@ May block."
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
       (error 'end-of-file :stream (get-network-stream connection)))
-    (connection-error (ce)
+#+nil    (connection-error (ce)
       (format t "-> We close connection due to ~a~%" ce)
       (invoke-restart 'http2/server::close-connection))))
 
