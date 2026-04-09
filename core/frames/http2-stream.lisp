@@ -15,7 +15,8 @@
 (export '(state connection))
 
 (defclass http2-stream-minimal (flow-control-mixin)
-  ((connection       :accessor get-connection       :initarg :connection)
+  ((connection       :accessor get-connection       :initarg :connection
+                     :documentation "Connection of the stream.")
    (stream-id        :accessor get-stream-id        :initarg :stream-id
                      :type stream-id)
    (state            :accessor get-state            :initarg :state
