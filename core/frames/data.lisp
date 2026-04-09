@@ -253,7 +253,7 @@ Do not check whether write is possible."
   (decf (get-peer-window-size stream) length))
 
 (defsection @data (:title "Data and flow control")
-  "HTTP streams can receive some data (content, body). We can see treat in
+  "HTTP streams can receive some data (content, body). We can treat in
 several ways:
 
 - we can collect the data till all is received (end of stream from the peer) and
