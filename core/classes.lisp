@@ -119,28 +119,13 @@ pretending that connection of connection is the same connection can be useful."
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
    (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
                      :documentation
-                     "Set if in the header block a non-pseudo header was already seen."))
-  (:default-initargs :window-size 0
-   ;;   All streams are initially assigned a non-exclusive dependency on
-   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
-   ;;   associated stream.  In both cases, streams are assigned a default
-   ;;   weight of 16.
-                     :weight 16
-                     :depends-on '(:non-exclusive 0)
-                     :seen-text-header nil)
-  (:documentation
-   "Representation of HTTP/2 stream. See RFC7540."))
-
-(defmethod initialize-instance :after ((stream http2-stream) &key connection)
-  "Set the window parameters of new stream from the connection defaults."
-  (with-slots (peer-window-size window-size) stream
-    (unless  (slot-boundp stream 'peer-window-size)
-      (setf peer-window-size (get-initial-peer-window-size connection)))
-    (unless  (slot-boundp stream 'window-size)
-      (setf window-size (get-initial-window-size connection)))))
-
-(defclass server-stream (http2-stream)
-  ((method    :accessor get-method    :initarg :method
+                     "Set if in the header block a non-pseudo header was already seen.")
+   ;; Request pseudo-header slots.  Server streams populate these from
+   ;; incoming client request headers; client streams may carry them for
+   ;; diagnostics (log-closed-stream, print-object).  Shared here so that
+   ;; code handling either side uniformly can access them via the same
+   ;; accessor generic functions.
+   (method    :accessor get-method    :initarg :method
               :documentation
               "The HTTP method ([RFC7231], Section 4)")
    (scheme    :accessor get-scheme    :initarg :scheme
@@ -154,10 +139,32 @@ pretending that connection of connection is the same connection can be useful."
               :documentation
               "The authority portion of the target URI ([RFC3986], Section 3.2)")
    (path      :accessor get-path      :initarg :path
-              :type string
+              :type (or null string)
               :documentation "The path and query parts of the target URI"))
-  (:default-initargs :method nil :scheme nil :authority nil :path nil)
-  (:documentation "Server streams need to track attributes from the client headers such as PATH."))
+  (:default-initargs :window-size 0
+   ;;   All streams are initially assigned a non-exclusive dependency on
+   ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
+   ;;   associated stream.  In both cases, streams are assigned a default
+   ;;   weight of 16.
+                     :weight 16
+                     :depends-on '(:non-exclusive 0)
+                     :seen-text-header nil
+                     :method nil :scheme nil :authority nil :path nil)
+  (:documentation
+   "Representation of HTTP/2 stream. See RFC7540."))
+
+(defmethod initialize-instance :after ((stream http2-stream) &key connection)
+  "Set the window parameters of new stream from the connection defaults."
+  (with-slots (peer-window-size window-size) stream
+    (unless  (slot-boundp stream 'peer-window-size)
+      (setf peer-window-size (get-initial-peer-window-size connection)))
+    (unless  (slot-boundp stream 'window-size)
+      (setf window-size (get-initial-window-size connection)))))
+
+(defclass server-stream (http2-stream)
+  ()
+  (:documentation "Server streams track the request pseudo-headers (method,
+scheme, authority, path) inherited from http2-stream."))
 
 (defmethod print-object ((stream server-stream) out)
   (if *print-escape*
