@@ -112,7 +112,8 @@ pretending that connection of connection is the same connection is useful."
   (http2-stream class)
   (http2-stream-state type)
   (stream-collection class)
-  (server-stream class))
+  (server-stream class)
+  (vanilla-http2-stream class))
 
 (defclass http2-stream (http2-stream-minimal buffered-stream)
   ((data             :accessor get-data             :initarg :data)
@@ -131,6 +132,10 @@ pretending that connection of connection is the same connection is useful."
                      :seen-text-header nil)
   (:documentation
    "Representation of HTTP/2 stream. See RFC7540."))
+
+(defclass vanilla-http2-stream (utf8-parser-mixin gzip-decoding-mixin http2-stream
+                                header-collecting-mixin text-collecting-stream body-collecting-mixin)
+  ())
 
 (defmethod initialize-instance :after ((stream http2-stream) &key connection)
   "Set the window parameters of new stream from the connection defaults."

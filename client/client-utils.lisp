@@ -76,8 +76,7 @@ protocol (H2 by default)."
    VANILLA-CLIENT-STREAM. Behaves as client, can send pings to measure roundtrip
    time and optionally prints history. See individual superclasses for details."))
 
-(defclass vanilla-client-stream (utf8-parser-mixin gzip-decoding-mixin client-stream
-                                 header-collecting-mixin text-collecting-stream body-collecting-mixin)
+(defclass vanilla-client-stream (client-stream vanilla-http2-stream)
   ((end-headers-fn :accessor get-end-headers-fn :initarg :end-headers-fn))
   (:default-initargs :end-headers-fn (constantly nil))
   (:documentation

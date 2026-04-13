@@ -255,10 +255,8 @@ optionally provides CONTENT with CONTENT-TYPE."
 new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
-(defclass vanilla-server-stream (server-stream
-                                 utf8-parser-mixin fallback-all-is-ascii  text-collecting-stream
-                                 http2/core::header-collecting-mixin
-                                 body-collecting-mixin)
+(defclass vanilla-server-stream (server-stream vanilla-http2-stream
+                                 fallback-all-is-ascii)
   ()
   (:documentation
    "A server-side stream that can be used as a binary output stream, optionally
