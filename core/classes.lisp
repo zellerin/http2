@@ -121,7 +121,23 @@ pretending that connection of connection is the same connection is useful."
    (depends-on       :accessor get-depends-on       :initarg :depends-on)
    (seen-text-header :accessor get-seen-text-header :initarg :seen-text-header
                      :documentation
-                     "Set when non-pseudo header is received in the header block "))
+                     "Set when non-pseudo header is received in the header block ")
+   (method    :accessor get-method    :initarg :method
+              :documentation
+              "The HTTP method ([RFC7231], Section 4)")
+   (scheme    :accessor get-scheme    :initarg :scheme
+              :documentation
+              "Scheme portion of the target URI ([RFC3986], Section 3.1).
+
+               Not restricted to \"http\" and \"https\" schemed URIs.
+               A proxy or gateway can translate requests for non-HTTP schemes,
+               enabling the use of HTTP to interact with non-HTTP services")
+   (authority :accessor get-authority :initarg :authority
+              :documentation
+              "The authority portion of the target URI ([RFC3986], Section 3.2)")
+   (path      :accessor get-path      :initarg :path
+              :type string
+              :documentation "The path and query parts of the target URI"))
   (:default-initargs :window-size 0
    ;;   All streams are initially assigned a non-exclusive dependency on
    ;;   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
@@ -129,10 +145,11 @@ pretending that connection of connection is the same connection is useful."
    ;;   weight of 16.
                      :weight 16
                      :depends-on '(:non-exclusive 0)
-                     :seen-text-header nil)
+                     :seen-text-header nil
+                     :method nil :scheme nil :authority nil :path nil)
   (:documentation
-   "Represents HTTP/2 stream. Adds priority information and state to verify response
-to the HTTP2-STREAM-MINIMAL."))
+   "Represents HTTP/2 stream. Adds request and response information, priority value
+and state to verify response to the HTTP2-STREAM-MINIMAL."))
 
 (defclass vanilla-http2-stream (utf8-parser-mixin gzip-decoding-mixin
                                 header-collecting-mixin text-collecting-stream body-collecting-mixin
@@ -151,23 +168,7 @@ The body is decompressed and either binary or decoded UTF-8 text."))
       (setf window-size (get-initial-window-size connection)))))
 
 (defclass server-stream (http2-stream)
-  ((method    :accessor get-method    :initarg :method
-              :documentation
-              "The HTTP method ([RFC7231], Section 4)")
-   (scheme    :accessor get-scheme    :initarg :scheme
-              :documentation
-              "Scheme portion of the target URI ([RFC3986], Section 3.1).
-
-               Not restricted to \"http\" and \"https\" schemed URIs.
-               A proxy or gateway can translate requests for non-HTTP schemes,
-               enabling the use of HTTP to interact with non-HTTP services")
-   (authority :accessor get-authority :initarg :authority
-              :documentation
-              "The authority portion of the target URI ([RFC3986], Section 3.2)")
-   (path      :accessor get-path      :initarg :path
-              :type string
-              :documentation "The path and query parts of the target URI"))
-  (:default-initargs :method nil :scheme nil :authority nil :path nil)
+  ()
   (:documentation "Server streams need to track attributes from the client headers such as PATH."))
 
 (defmethod print-object ((stream server-stream) out)
