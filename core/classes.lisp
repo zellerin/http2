@@ -131,11 +131,16 @@ pretending that connection of connection is the same connection is useful."
                      :depends-on '(:non-exclusive 0)
                      :seen-text-header nil)
   (:documentation
-   "Representation of HTTP/2 stream. See RFC7540."))
+   "Represents HTTP/2 stream. Adds priority information and state to verify response
+to the HTTP2-STREAM-MINIMAL."))
 
-(defclass vanilla-http2-stream (utf8-parser-mixin gzip-decoding-mixin http2-stream
-                                header-collecting-mixin text-collecting-stream body-collecting-mixin)
-  ())
+(defclass vanilla-http2-stream (utf8-parser-mixin gzip-decoding-mixin
+                                header-collecting-mixin text-collecting-stream body-collecting-mixin
+                                http2-stream)
+  ()
+  (:documentation "HTTP stream that collects received headers and body.
+
+The body is decompressed and either binary or decoded UTF-8 text."))
 
 (defmethod initialize-instance :after ((stream http2-stream) &key connection)
   "Set the window parameters of new stream from the connection defaults."

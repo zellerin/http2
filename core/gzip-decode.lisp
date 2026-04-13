@@ -1,7 +1,8 @@
 (in-package http2/core)
 
 (defclass gzip-decoding-mixin ()
-  ((dstate :accessor get-dstate :initarg :dstate)))
+  ((dstate :accessor get-dstate :initarg :dstate))
+  (:documentation "Decompresses received gzip data when appropriate."))
 
 ;; FIXME: store dstate only if needed --- 20240607
 (defmethod process-end-headers :after (connection (stream gzip-decoding-mixin))

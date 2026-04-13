@@ -312,13 +312,13 @@ May be empty if some higher priority mixin (e.g., UTF8-PARSER-MIXIN) processed
 the data."))
   (:default-initargs :body nil)
   (:documentation
-   "Mixin to collect all payload parts to one string."))
+   "Collects all data payloads parts to one octet array (unless diverted)."))
 
 (defclass text-collecting-stream ()
   ((text :accessor get-text :initarg :text))
   (:default-initargs :text nil)
   (:documentation
-   "Mixin that collect all the received body (possibly unzipped data frames
+   "Collects all the received text body (possibly unzipped data frames
 converted to proper encoding) into its TEXT slot."))
 
 (defun http-stream-to-string (http-stream)

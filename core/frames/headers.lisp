@@ -14,7 +14,7 @@
             :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
   (:default-initargs :headers nil)
   (:documentation
-   "Mixin to be used to collect all observed headers to a slot."))
+   "Collects all observed headers (except pseudo-headers)."))
 
 
 (defgeneric add-header (connection stream name value)
