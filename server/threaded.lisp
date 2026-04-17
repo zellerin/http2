@@ -1,9 +1,16 @@
 (in-package #:http2/server/threaded)
 
 (defclass threaded-dispatcher (base-dispatcher)
-  ()
+  ((connections :accessor get-connections :initarg :connections))
   (:documentation
-   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. "))
+   "Specialize DO-NEW-CONNECTION to process new connections each in a separate thread. ")
+  (:default-initargs :connections (make-array 10 :fill-pointer 0 :adjustable t)))
+
+(defun track-connection (dispatcher connection)
+  (with-slots (connections) dispatcher
+    (let ((empty (position nil connections)))
+      (if empty (setf (aref connections empty) connection)
+          (vector-push-extend connection connections)))))
 
 (defclass tls-threaded-dispatcher (tls-dispatcher-mixin threaded-dispatcher)
   ())
@@ -19,17 +26,21 @@
 (defmethod do-new-connection (listening-socket (dispatcher threaded-dispatcher))
   (let ((socket (usocket:socket-accept listening-socket
                                        :element-type '(unsigned-byte 8)))
-        (context cl+ssl::*ssl-global-context*))
+        (context cl+ssl::*ssl-global-context*)
+        (connection (make-connection-object dispatcher)))
+    (track-connection dispatcher connection)
     (bt:make-thread
      (lambda ()
        (cl+ssl:with-global-context (context)
-         (with-standard-handlers ()
-           (restart-case
-               (with-open-stream (stream (server-socket-stream socket dispatcher))
-                 (http2/server::process-server-stream stream
-                                                      :connection (make-connection-object dispatcher)
-))
-             (kill-client-connection () nil))))) ; FIXME:
+         (unwind-protect
+              (with-standard-handlers ()
+                (restart-case
+                    (with-open-stream (stream (server-socket-stream socket dispatcher))
+                      (http2/server::process-server-stream stream
+                                                           :connection connection))
+                  (kill-client-connection () nil)))
+           (setf (aref (get-connections dispatcher) (position connection (get-connections dispatcher)))
+                 nil)))) ; FIXME:
      ;; TODO: peer IP and port to name?
      :name "HTTP2 server thread for connection" )))
 
