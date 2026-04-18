@@ -39,7 +39,8 @@ buffer are opaque."))
 
 
 (defclass stream-based-connection-mixin ()
-  ((network-stream :accessor get-network-stream :initarg :network-stream))
+  ((network-stream :accessor get-network-stream :initarg :network-stream
+                   :initform nil))
   (:documentation
    "A mixin for connections that read frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
