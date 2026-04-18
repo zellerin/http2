@@ -6,7 +6,6 @@
 ;;;; Let us define few data samples that can be used to test an implementation -
 ;;;; either this one or remote one
 
-
 (defvar *payloads* (make-hash-table))
 
 (defstruct (payload (:print-object (lambda (object stream) (format stream "<Payload: ~a>" (get-first-line (payload-documentation object))))))
@@ -21,8 +20,28 @@
   (with-input-from-string (in text)
     (read-line in)))
 
+(defclass dummy-client-connection (client-http2-connection dummy-connection)
+  ())
+
+(defclass dummy-server-connection (server-http2-connection dummy-connection)
+  ())
+
+(defun run-maybe-with-dummy-client-connection (fn)
+  "Apply FN on a dummy client connection, and return what would be written to the
+underlying connection, without client preface and options."
+  (let ((connection (make-instance 'dummy-client-connection)))
+    (setf (fill-pointer (get-to-write connection)) 0)
+    (funcall fn connection)
+    (get-to-write connection)))
+
 (defmacro define-static-test-payload (name (&optional (connection-name) (error-name name))
                                       &body body)
+  "Register a PAYLOAD object with static payload (an octet vector).
+
+If CONNECTION-NAME is set, it would be bound to a client stream during
+evaluation, and payload is what the BODY writes to it.
+
+If CONNECTION-NAME is NIL, payload is value of the last form in BODY."
   `(setf (gethash ',name *payloads* )
          (make-payload
           :documentation ,(if (stringp (car body)) (pop body) "N/A")
@@ -30,10 +49,10 @@
           :code
           (lambda (conn)
             (declare (ignore conn))
-            (let ,(when connection-name
-                    `((,connection-name (make-instance 'http2/client:vanilla-client-connection
-                                                       :network-stream (make-broadcast-stream)))))
-              ,@body)))))
+            ,(if connection-name
+                 `(run-maybe-with-dummy-client-connection
+                   (lambda (,connection-name) ,@body))
+                 `(progn ,@body))))))
 
 (defmacro define-test-payload (name (&optional (connection-name))
                                &body body)

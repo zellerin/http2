@@ -31,8 +31,7 @@
 (defclass write-buffer-connection-mixin ()
   ((to-write :accessor get-to-write :initarg :to-write))
   (:default-initargs :to-write
-   (make-array 3 :fill-pointer 0
-                 :adjustable t))
+   (make-array 3 :fill-pointer 0 :adjustable t :element-type '(unsigned-byte 8)))
   (:documentation
    "Stores queued frame in a per-connection write buffer. The internals of the
 buffer are opaque."))

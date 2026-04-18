@@ -99,7 +99,7 @@
 (define-condition http2-simple-error (http2-error simple-condition)
   ())
 
-(define-condition connection-error (communication-error)
+(define-condition connection-error (communication-error http2-condition)
   ((medium :accessor get-connection :initarg :connection)
    (code       :accessor get-code       :initarg :code))
   (:documentation
@@ -209,7 +209,7 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   (:report
    "Frame cannot be applied to stream in particular state"))
 
-(define-condition http-stream-error (error)
+(define-condition http-stream-error (http2-condition error)
   ((code   :accessor get-code   :initarg :code)
    (stream :accessor get-stream :initarg :stream))
   (:documentation "HTTP stream error was either detected, or received from the peer.
