@@ -97,8 +97,11 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 some reason..
 
 This is to be bound to HTTP-STREAM-ERROR"
-  (format *log-stream* "~&~A ~@<~A [#~d] ~a ~:>~%"
-          (get-peer-name (get-connection stream)) (get-path stream)
+  (format *log-stream* "~&~A ~@<~@[~A://~]~@[~A~]~@[~A~] [#~d] ~a ~:>~%"
+          (get-peer-name (get-connection stream))
+          (get-scheme stream)
+          (get-authority stream)
+          (get-path stream)
           (get-stream-id stream) e)
   (force-output *log-stream*))
 
