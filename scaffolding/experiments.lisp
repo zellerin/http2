@@ -134,6 +134,18 @@ the server."
       (cl-who:with-html-output (foo)
         (:h1 "Hello World"))))
 
+(defun run-client-test (url iterations threads clients)
+  (with-saved-warnings
+    (setf *result*
+          (list
+           (unwind-protect
+                (uiop:run-program
+                 `("h2load" ,url
+                            "-n" ,(princ-to-string iterations)
+                            "-m" ,(princ-to-string threads)
+                            "-c" ,(princ-to-string clients))
+                 :output :string))))))
+
 (define-simulator h2load-test
   :description
   "Run the h2load test on the URL.
@@ -147,12 +159,10 @@ Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
                             (list
                              (unwind-protect
                                   (uiop:run-program
-                                   (destructuring-bind (iterations threads clients)
-                                       iterations-threads-clients
-                                     `("h2load" ,url
-                                                "-n" ,(princ-to-string iterations)
-                                                "-m" ,(princ-to-string threads)
-                                                "-c" ,(princ-to-string clients)))
+                                   `("h2load" ,url
+                                              "-n" ,(princ-to-string iterations)
+                                              "-m" ,(princ-to-string threads)
+                                              "-c" ,(princ-to-string clients))
                                    :output :string)))))
                   #+nil                  (error (e)
                                            (push e *warnings*)
@@ -167,16 +177,18 @@ Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
     (unless val (error "Not proper result: ~a" (car *result*)))
     (apply 'values (map 'list 'read-from-string val))))
 
-(define-experiment h2load-on-url (url-list n-m-c-list version)
+(define-experiment h2load-on-url (url-list iterations)
   :simulator h2load-test
-  :system-version (identity version)
+;  :system-version (identity version)
   :variables ((url in url-list)
-              (iterations-threads-clients in n-m-c-list))
+              (threads in '(1 2 5 10 50 100 200))
+              (clients from 1 to 9))
 
   :instrumentation (h2load-req/s warnings real-time)
   :after-trial (write-current-experiment-data))
 
 ;;; e.g., (run-experiment 'h2load-on-url :args '(("https://www.example.com") ((5 1 1)) 'dummy) :output-file "/tmp/ex.clasp")
+(run-experiment 'h2load-on-url :args '(("https://localhost:9999/") 10000) :output-file "/tmp/loc.clasp")
 
 (defun test-servers (port)
   "For each of tested server classes, open server on a random PORT (could be 0 for
@@ -213,5 +225,4 @@ Endpoints are defined to cover some situations:
 (ignore-errors(delete-file "/tmp/real-life-targets.clasp"))
 
 (run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
-(maybe-create-certificate "certs/server.key" "certs/server.crt" :system "http2")
 (test-servers 0)
