@@ -263,7 +263,7 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
     ;; now the buffer is emptied and we processed some data
     (incf from gap)
     (decf new-data-size gap)
-    (when (< new-data-size max-size) ; actually, it might be a bit less strict check
+    (when (or (< new-data-size max-size)) ; actually, it might be a bit less strict check
       (replace buffer new-data :start2 from)
       (return-from add-and-maybe-pass-data (values new-data-size (+ gap new-data-size))))
     ;; try to send new data as a bulk
@@ -272,7 +272,8 @@ The NEW-DATA vector is not stored (can be dynamic-extent)."
         (error "Could not process data. Implement me.")))
     (values 0 (+ gap new-data-size))))
 
-(defun send-unencrypted-bytes (client new-data comment)
+(defun send-unencrypted-bytes (client new-data comment &optional (start 0)
+                                                         (length (length new-data)))
   "Add new data to be encrypted and sent to client.
 
 Data are buffered in the ENCRYPT-BUF of the client and when there is enough of
@@ -283,7 +284,7 @@ NEW-DATA are completely used up (can be dynamic-extent)."
   (multiple-value-bind (new-size processed)
       (add-and-maybe-pass-data client
                                (client-encrypt-buf client)
-                               new-data 0 (length new-data)
+                               new-data start (+ length start)
                                (client-encrypt-buf-size client)
                                #'encrypt-some)
     (setf (client-encrypt-buf-size client) new-size)
@@ -550,6 +551,15 @@ Repeat on partial write."
     (unless (plusp (client-fd client))
       (error 'end-of-file :stream connection))
     (send-unencrypted-bytes client frame nil)))
+
+(defmethod http2/core::queue-frame-region ((connection poll-server-connection) frame start
+                                           length)
+#+nil  (call-next-method)
+  ; this fails due to non-simpleness of arriving
+  (with-slots (client) connection
+    (unless (plusp (client-fd client))
+      (error 'end-of-file :stream connection))
+    (send-unencrypted-bytes client frame nil start length)))
 
 (defmethod flush-http2-data ((connection poll-server-connection))
   (encrypt-and-send (get-client connection)))
@@ -841,7 +851,7 @@ upper level. This can be fixed and buffered, but sane peers do not bring this si
 
 (defun on-complete-ssl-data (client)
   "Read number of octets indicated in CLIENT into a vector and then apply client fn on it.
-
+xb
 The code assumes that single client request message is not split across several
 TLS frames. If it does, well, connection error."
   (let* ((octets (client-octets-needed client))
