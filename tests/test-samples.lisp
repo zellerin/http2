@@ -8,7 +8,11 @@
 
 (defvar *payloads* (make-hash-table))
 
-(defstruct (payload (:print-object (lambda (object stream) (format stream "<Payload: ~a>" (get-first-line (payload-documentation object))))))
+(defstruct (payload
+            (:print-object (lambda (object stream)
+                             (format stream "<Payload: ~a>"
+                                     (get-first-line (payload-documentation object))))))
+  "Represents a test to be perfomed on a peer and expected error."
   (documentation "N/A" :type string)
   (code (make-octet-buffer 0) :type (or octet-vector compiled-function))
   (test (constantly nil) :type compiled-function))
