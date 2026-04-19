@@ -61,7 +61,9 @@ May block."
     (cl+ssl::ssl-error ()
       ;; peer may close connection and strange things happen
       (error 'end-of-file :stream (get-network-stream connection)))
-#+nil    (connection-error (ce)
+    (connection-error (ce)
+      :test (lambda () (find-restart 'http2/server::close-connection))
+      (warn "Please handle the CONNECTION-ERROR condition instead of establishing restart")
       (format t "-> We close connection due to ~a~%" ce)
       (invoke-restart 'http2/server::close-connection))))
 
