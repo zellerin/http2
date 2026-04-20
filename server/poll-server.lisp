@@ -117,8 +117,7 @@ The actions are in general indicated by arrows in the diagram:
    :type (and (simple-array (unsigned-byte 8))))
   (write-buf-size 0 :type fixnum)
   (encrypt-buf (make-array *encrypt-buf-size* :element-type '(unsigned-byte 8))
-   :type (simple-array (unsigned-byte 8))
-   )
+   :type (simple-array (unsigned-byte 8)))
   (io-on-read (constantly nil) :type app-callback)
   (fdset-idx 0 :type fixnum :read-only nil) ; could be RO, but...
   (octets-needed 0 :type fixnum)
@@ -521,18 +520,6 @@ Repeat on partial write."
               (client-write-buf client) (client-write-buf-size client)
               (- to from))))))
 
-
-
-(defun concatenate* (vectors)
-  (let* ((len (reduce #'+ vectors :key #'length))
-         (res (make-array len :element-type '(unsigned-byte 8))))
-    (loop for v of-type (simple-array (unsigned-byte 8)) in vectors
-          with i = 0
-          do
-             (setf (subseq res i (+ i (length v))) v)
-             (incf i (length v))
-          finally (return res))))
-
 (defun set-next-action (client action size)
   "Set action for next chunk of received data."
   (setf (client-io-on-read client) action
@@ -552,7 +539,7 @@ Repeat on partial write."
       (error 'end-of-file :stream connection))
     (send-unencrypted-bytes client frame nil)))
 
-(defmethod http2/core::queue-frame-region ((connection poll-server-connection) frame start
+(defmethod queue-frame-region ((connection poll-server-connection) frame start
                                            length)
 #+nil  (call-next-method)
   ; this fails due to non-simpleness of arriving
