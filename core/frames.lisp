@@ -2,15 +2,15 @@
 
 (in-package :http2/core)
 
-(defsection @frames-for-classes
-    ()
+(defsection @frames-for-classes ()
   (handle-undefined-frame generic-function)
-  (queue-frame generic-function)
   (stream-based-connection-mixin class)
   (write-buffer-connection-mixin class)
   (get-max-peer-frame-size generic-function)
   (frame-context class)
-  (flush-http2-data generic-function))
+
+
+  (@frame-writes section))
 
 (declaim (ftype (function (t) frame-size) get-max-peer-frame-size))
 
@@ -37,6 +37,21 @@
 buffer are opaque."))
 
 
+(defsection @frame-writes (:title "Writing frames to backend")
+  "There are several backends that the connection can be based on. Each such
+backend must implement QUEUE-FRAME to send data (typically to a buffer) and
+FLUSH-HTTP2-DATA to actually send them (typically to a TLS engine that makes a
+compressed block from it).
+
+The backend may also implement QUEUE-FRAME-REGION to send data from log vectors
+more effectively.
+
+The backend must actually process or copy the data during the call. The caller
+is free to modify the octets vectors later. "
+  (queue-frame generic-function)
+  (queue-frame-region generic-function)
+  (flush-http2-data generic-function))
+
 (defclass stream-based-connection-mixin ()
   ((network-stream :accessor get-network-stream :initarg :network-stream
                    :initform nil))
