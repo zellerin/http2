@@ -2,23 +2,26 @@
 
 (defclass gzip-decoding-mixin ()
   ((dstate :accessor get-dstate :initarg :dstate))
-  (:documentation "Decompresses received gzip data when appropriate."))
+  (:documentation "Decompresses received gzip data when appropriate.")
+  (:default-initargs :dstate nil))
 
-;; FIXME: store dstate only if needed --- 20240607
+(defun gzip-header-present (stream)
+  "Check whether Content-encoding: gzip is in the headers."
+  (equal (cdr (assoc "content-encoding" (get-headers stream) :test 'equal)) "gzip"))
+
 (defmethod process-end-headers :after (connection (stream gzip-decoding-mixin))
-  (setf (get-dstate stream) (chipz:make-dstate 'chipz:gzip)))
+  (when (gzip-header-present stream)
+    (setf (get-dstate stream) (chipz:make-dstate 'chipz:gzip))))
 
 (defvar *zip-buffer-size* 4096)
+
 (defmethod apply-data-frame :around ((stream gzip-decoding-mixin) payload start end)
   "When there is a `Content-Encoding: gzip` header, decompress the data and call next
 APPLY-DATA-FRAME methods."
   ;; 20240607 TODO: Window update should go elsewhere
-
   (write-window-update-frame (get-connection stream) (- end start))
   (write-window-update-frame stream (- end start))
-  ;; 20240607 TODO: test on dstate, not on header
-
-  (if (equal (cdr (assoc "content-encoding" (get-headers stream) :test 'equal)) "gzip")
+  (if (get-dstate stream)
       (let* ((buffer (make-array *zip-buffer-size* :element-type '(unsigned-byte 8))))
         (loop
           (multiple-value-bind (consumed produced)
