@@ -54,9 +54,8 @@ data and signals further."
   (flush-stream-buffer function)
   (send-available-data function))
 
-(defvar *default-stream-buffer-size* 65536
-  "Buffer size for buffers. Default is chosen same as the default initial frame
-size for buffers, which is 65536.")
+(defvar *default-stream-buffer-size* 64
+  "Buffer size for buffers. Default is very small to prevent excessive allocation.")
 
 (declaim (ftype (function (t) (integer 0 #.array-dimension-limit)) get-flush-mark)
          (ftype (function (t) octet-vector) get-output-buffer))
