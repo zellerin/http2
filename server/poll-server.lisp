@@ -541,9 +541,9 @@ Repeat on partial write."
 
 (defmethod queue-frame-region ((connection poll-server-connection) frame start
                                            length)
-#+nil  (call-next-method)
+  (call-next-method)
   ; this fails due to non-simpleness of arriving
-  (with-slots (client) connection
+#+nil  (with-slots (client) connection
     (unless (plusp (client-fd client))
       (error 'end-of-file :stream connection))
     (send-unencrypted-bytes client frame nil start length)))
