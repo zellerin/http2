@@ -10,7 +10,34 @@ What is logged:
 
 - Client connected - see LOG-SERVER-CONNECTED, separate invocation from the
 - Client disconnected"
-  (*log-stream* variable))
+  (*log-stream* variable)
+  (*logged-events* variable))
+
+(defvar *log-stream* (make-synonym-stream '*standard-output*)
+  "The stream used for generic logging. ")
+
+(defconstant +log-connect+ 0)
+(defconstant +log-disconnect+ 1)
+(defconstant +log-process-data+ 2)
+(defconstant +log-stream-error+ 3)
+
+(defun log-event (old event)
+  (setf (ldb (byte 1 event) old) 1)
+  old)
+
+(define-modify-macro set-log-event (event) log-event)
+
+(defvar *logged-events*
+  (let ((val 0))
+    (set-log-event val +log-connect+)
+    (set-log-event val +log-disconnect+)
+    (set-log-event val +log-stream-error+)
+    (set-log-event val +log-process-data+)
+    val))
+
+(defmacro when-logging (event &body body)
+  `(when (plusp (ldb (byte 1 ,event) *logged-events*))
+     ,@body))
 
 (defclass logging-stream-mixin ()
   ()
@@ -32,7 +59,8 @@ This is to be bound to HTTP-STREAM-ERROR"
   (force-output *log-stream*))
 
 (defmethod peer-ends-http-stream :before ((stream logging-stream-mixin))
-  (log-closed-stream stream "- processing"))
+  (when-logging +log-process-data+
+    (log-closed-stream stream "- processing")))
 
 (defclass logging-connection-mixin ()
   ()
@@ -40,11 +68,13 @@ This is to be bound to HTTP-STREAM-ERROR"
 
 (defmethod setup-connection :after ((connection logging-connection-mixin))
   "Log connection established."
-  (format *log-stream* "~&~A Connected, using ~A~%"
-          (get-peer-name connection) connection)
-  (force-output *log-stream*))
+  (when-logging +log-connect+
+    (format *log-stream* "~&~A Connected, using ~A~%"
+            (get-peer-name connection) connection)
+    (force-output *log-stream*)))
 
 (defmethod cleanup-connection :before ((connection logging-connection-mixin) &optional error)
-  (format *log-stream* "~&~A Disconnected ~a~%"
-          (get-peer-name connection) error)
-  (force-output *log-stream*))
+  (when-logging +log-disconnect+
+    (format *log-stream* "~&~A Disconnected ~a~%"
+            (get-peer-name connection) error)
+    (force-output *log-stream*)))

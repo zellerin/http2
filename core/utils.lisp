@@ -370,6 +370,3 @@ reading)."))
 
 (defsection @log-basics ()
   (*log-stream* variable))
-
-(defvar *log-stream* (make-synonym-stream '*standard-output*)
-  "The stream used for generic logging. ")
