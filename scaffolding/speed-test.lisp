@@ -19,17 +19,22 @@
 (start 1238 :dispatcher 'http2/server::detached-threaded-dispatcher)
 (start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
-(setf hunchentoot:*log-lisp-backtraces-p* nil)
+(setf hunchentoot:*log-lisp-backtraces-p* nil
+      http2/core::*log-stream* (make-broadcast-stream)
+      *error-output* http2/core::*log-stream*)
 
 (bt:make-thread
  (lambda ()
-   (woo:run
-    (lambda (env)
-      (declare (ignore env))
-      '(200 (:content-type "text/plain") ("Hello, World")))
-    :port 1239)))
+   (handler-case
+       (woo:run
+        (lambda (env)
+          (declare (ignore env))
+          '(200 (:content-type "text/plain") ("Hello, World")))
+        :port 1239
+        :debug nil)
+     (woo::woo-error ()))))
 
-(maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
+(http2/utils::maybe-create-certificate  "/tmp/server.key" "/tmp/server.crt")
 (hunchentoot:start (make-instance 'hunchentoot:easy-ssl-acceptor
                                   :port 1235
                                   :ssl-privatekey-file "/tmp/server.key"
@@ -49,7 +54,9 @@
                        (when base (floor (/ val-as-num base 0.01))))
                val-as-num)))))
 
-  (let ((base (scan-port nil "Hunchetoot over https" "https://localhost:1235")))
+  (let ((base (scan-port nil "Hunchetoot over https" "https://localhost:1235"))
+        (*error-output* (make-concatenated-stream))
+        (*terminal-io* *error-output*))
     (scan-port base "HTTP/2 over TLS" "https://localhost:1237")
     (scan-port base "HTTP/2 over plain socket" "http://localhost:1238")
     (scan-port base "Hunchentoot on plain socket" "http://localhost:1236" "-p" "http/1.1")
