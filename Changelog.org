@@ -1,6 +1,6 @@
 
 * ToDo
-- Factor out logging to a separate classxf
+- Factor out logging to a separate class
 - Rewrite TLS-ENDPOINT to adjustable arrays and buffer pool, and check impact on
   speed/allocations. Possibly merge QUEUE-FRAME-REGION code for buffered connection
   and for the poll server.
@@ -9,15 +9,20 @@
 - Make condition class for [[file:core/frames/headers.lisp::;; 20240718 TODO: make class for this connection error][incomplete header]] and for R being set.
 
 * Implemented
-
 ** Class hierarchy changes
 - HTTP-ERROR-STREAM now inherits from ERROR (used to be WARNING). You may need to adapt your handlers.
 - Both stream and condition errors now inherit HTTP2-CONDITION.
 - New class VANILLA-HTTP2-STREAM to cover data
+** Server hooks
+- new GF SETUP-CONNECTION is called when new client connects to the server
+- Existing GF CLEANUP-CONNECTION now takes an optional second argument, the error
 
-** Logging
-- *log-stream* :: moved variable
-- log-closed-stream :: moved function
+** Logging to a stream
+There is now
+- *LOG-STREAM* variable that denotes stream to log to, and
+- LOGGING-STREAM-MIXIN and LOGGING-CONNECTION-MIXIN that log specific events
+
+VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these streams.
 
 ** Introspection
 - GET-CONNECTIONS :: new generic functions on dispatchers. Intended for monitoring and tracking.
@@ -41,6 +46,7 @@
 
 ** Printing and reporting
 - Improved error reporting texts.
+- IP address now prints as 'unknown' when FD is already closed
 
 ** Documentation
 - Some mixins were converted to standard format ("Does XXX")

@@ -59,7 +59,7 @@ events)."))
   (bt:with-lock-held ((get-lock server))
     (call-next-method)))
 
-(defmethod cleanup-connection :after ((connection threaded-server-mixin))
+(defmethod cleanup-connection :after ((connection threaded-server-mixin) &optional error)
     (stop-scheduler-in-thread (get-scheduler connection)))
 
 (defmethod http2/server::server-socket-stream (socket (dispatcher tls-dispatcher-mixin))

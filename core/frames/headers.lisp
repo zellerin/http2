@@ -92,27 +92,12 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
 (defsection @log-streams ()
   (log-closed-stream function))
 
-(defun log-closed-stream (stream e)
-  "Log request information when peer sends all headers or when the request errs for
-some reason..
-
-This is to be bound to HTTP-STREAM-ERROR"
-  (format *log-stream* "~&~A ~@<~@[~A://~]~@[~A~]~@[~A~] [#~d] ~a ~:>~%"
-          (get-peer-name (get-connection stream))
-          (get-scheme stream)
-          (get-authority stream)
-          (get-path stream)
-          (get-stream-id stream) e)
-  (force-output *log-stream*))
-
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
   (handler-case
       (read-and-add-headers data (car (get-streams connection)) start end 5 5)
     (http-stream-error (e)
       (log-closed-stream (car (get-streams connection)) e)
-      (values #'parse-frame-header 9)))
-  ;; or just
-  #+nil (parse-header-frame* (car (get-streams connection)) data connection 5 start length))
+      (values #'parse-frame-header 9))))
 
 (defun parse-headers-frame  (active-stream flags)
   "Read incoming headers and call ADD-HEADER callback for each header.

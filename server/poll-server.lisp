@@ -630,7 +630,7 @@ reading of the client hello."
     (when fdset-idx
       (push (make-tls-server-object socket ctx fdset-idx (make-connection-object dispatcher)) (get-clients dispatcher))
       (setup-port socket *nagle*)
-      (log-server-connected (client-application-data (car (get-clients dispatcher)))))))
+      (setup-connection (client-application-data (car (get-clients dispatcher)))))))
 
 (defun maybe-process-new-client (listening-socket ctx dispatcher)
   "Add new client: accept connection, create client and add it to pollfd and to *clients*."
@@ -674,7 +674,7 @@ reading of the client hello."
               (communication-error (err) (invoke-restart 'close-connection err)))
           (close-connection (&optional err)
             :report "Close current connection"
-            (log-server-disconnected (client-application-data client) err)
+            (cleanup-connection (client-application-data client) err)
             (unwind-protect
                  (when err
                    (signal 'poll-server-close :client client :dispatch dispatcher

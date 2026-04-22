@@ -290,15 +290,21 @@ CONNECTION."
 
 (defmethod peer-ends-http-stream ((stream vanilla-server-stream))
   "Send appropriate payload, or an error page."
-  (log-closed-stream stream "- processing")
   (let ((connection (http2/core::get-connection stream)))
     (funcall (find-matching-handler (get-path stream) connection) connection stream)))
 
-(defgeneric cleanup-connection (connection)
-  (:method (connection) nil)
+(defgeneric cleanup-connection (connection &optional error)
+  (:method (connection &optional error) nil)
   (:documentation
-   "Remove resources associated with a server connection. Called after connection is
-closed."))
+   "Called after connection is closed.
+
+Specialized to clean up per-connection timers, and to log disconnect."))
+
+(defgeneric setup-connection (connection)
+  (:documentation "Called when connection is listening.
+
+Specialized to log access.")
+  (:method (connection) nil))
 
 (defun process-server-stream (stream &key (connection-class 'vanilla-server-connection)
                                        connection)
@@ -310,17 +316,16 @@ signalled."
   (let ((connection (or connection (make-instance connection-class))))
     (restart-case
         (handler-case
-            (unwind-protect
-                 (progn
-                   (setf (get-network-stream connection) stream)
-                   (log-server-connected connection)
-                 (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+))))
+            (progn
+              (setf (get-network-stream connection) stream)
+              (setup-connection connection)
+              (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+))
+              (cleanup-connection connection))
           (end-of-file (e) (invoke-restart 'close-connection e)))
       (close-connection (error)
         :report "Cleanly close current connection"
         :interactive (lambda () (list "Interactive restart"))
-        (log-server-disconnected connection error)
-        (cleanup-connection connection)))))
+        (cleanup-connection connection error)))))
 
 (defsection @dispatchers
     ()
@@ -354,7 +359,9 @@ found responses on any request.
 (defsection @server-reference (:title "Server reference")
   (start function)
   (run function)
-  (stop function))
+  (stop function)
+  (setup-connection generic-function)
+  (cleanup-connection generic-function))
 
 (defvar *servers* nil
   "List of started servers")
