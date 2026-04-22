@@ -341,6 +341,9 @@ follow later (EAGAIN)."
         (values (subseq vector 0 res))))))
 
 (defun fd-to-ip (fd)
+  "Written representation of the peer for a IPv4 socket FD.
+
+Returns Unknown when the FD is already closed."
   (with-foreign-objects ((addr '(:struct sockaddr-in)) (len :int))
     (setf (mem-ref len :int) size-of-sockaddr-in)
     (handler-case
@@ -354,5 +357,5 @@ follow later (EAGAIN)."
                             (ldb (byte 8 16) sin-addr)
                             (ldb (byte 8 24) sin-addr)
                             (htons sin-port)))))
-      (error ()
+      (syscall-error ()
         (values "Unknown" 0)))))
