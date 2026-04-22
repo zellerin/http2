@@ -150,7 +150,7 @@ Lock-free via CAS (Treiber stack pop)."
 ;;; ALLOCATE / DEALLOCATE
 ;;;
 
-(defun allocate-buffer (size)
+(defun allocate-buffer (size &optional (fill-pointer size))
   "Allocate an octet buffer for at least SIZE bytes with fill-pointer
 set to SIZE.  Returns a pooled buffer if available, otherwise allocates
 fresh.  The fill-pointer controls (LENGTH buffer) so callers see exactly
@@ -164,15 +164,15 @@ Lock-free.  Oversized buffers (>16384) are allocated directly."
              (cond (found-p
                     (decf (sc-free-count sc))
                     (incf (sc-total-recycled sc))
-                    (setf (fill-pointer buf) size)
+                    (setf (fill-pointer buf) fill-pointer)
                     buf)
                    (t
                     (incf (sc-total-allocated sc))
                     (make-array (sc-size sc)
                                 :element-type '(unsigned-byte 8)
-                                :fill-pointer size)))))
+                                :fill-pointer fill-pointer)))))
           (t (make-array size :element-type '(unsigned-byte 8)
-                              :fill-pointer size)))))
+                              :fill-pointer fill-pointer)))))
 
 (defun deallocate-buffer (buffer)
   "Return BUFFER to the global pool.  Lock-free.
