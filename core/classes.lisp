@@ -306,8 +306,8 @@ argument implicit and only HEADERS and key parameters are to be provided."
    "This should be called on push promise (FIXME: and maybe it is not, and maybe
 the parameters should be different anyway). By default throws an error."))
 
-(defun close-http2-stream (stream)
-  "Close the http2 stream.
+(defgeneric close-http2-stream (stream)
+  (:documentation "Close the http2 stream.
 
 It marks the stream as closed, which is maybe unnecessary, as the stream is
 immediately removed from the list of streams of its connection. This is
@@ -320,11 +320,12 @@ other solution would be to send go-away after the number of streams is too high;
 however some clients (e.g., h2load) do not retry when they receive this.
 
 This stream removal should be done with lock on the appropriate stream when in
-multiple threads."
-  (with-slots (connection) stream
-    (with-slots (streams) connection
-      (setf streams (remove stream streams :test 'eq)
-            (get-state stream) 'closed))))
+multiple threads.")
+  (:method ((stream http2-stream-minimal))
+    (with-slots (connection) stream
+      (with-slots (streams) connection
+        (setf streams (remove stream streams :test 'eq)
+              (get-state stream) 'closed)))))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)
