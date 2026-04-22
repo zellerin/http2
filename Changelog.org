@@ -7,6 +7,7 @@
 - Use autoload to load stuff on-demand. Both to reduce size and to be able to call non-quicklisped libraries.
 - Fix:  QUEUE-FRAME-REGION needs simple vectors as login.
 - Make condition class for [[file:core/frames/headers.lisp::;; 20240718 TODO: make class for this connection error][incomplete header]] and for R being set.
+- Revise experiments
 
 * Implemented
 ** Class hierarchy changes
@@ -19,7 +20,8 @@
 
 ** Logging to a stream
 There is now
-- *LOG-STREAM* variable that denotes stream to log to, and
+- *LOG-STREAM* variable that denotes stream to log to,
+- *LOG-EVENT-TYPES* that defines what should be logged,    and
 - LOGGING-STREAM-MIXIN and LOGGING-CONNECTION-MIXIN that log specific events
 
 VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these streams.
