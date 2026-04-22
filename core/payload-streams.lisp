@@ -62,6 +62,7 @@ stream, but not for the server."
 the output-buffer, until it is big enough to send the data as a data frame on
 the underlying stream."))
 
+#+nil
 (defmacro with-output-payload-slots (stream &body body)
   `(with-slots (base-http2-stream) ,stream
      (with-slots (connection peer-window-size state output-buffer) base-http2-stream
