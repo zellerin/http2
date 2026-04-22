@@ -243,11 +243,11 @@ optionally provides CONTENT with CONTENT-TYPE."
       (when content
         (princ content out)))))
 
-;;;; Sample server with constant payload
 (defclass vanilla-server-connection (server-http2-connection
                                      routing-mixin
                                      threaded-server-mixin
-                                     stream-based-connection-mixin)
+                                     stream-based-connection-mixin
+                                     logging-connection-mixin)
   ()
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation
@@ -256,7 +256,8 @@ new stream is requested, allows scheduled or other asynchronous writes, and
 optionally prints activities."))
 
 (defclass vanilla-server-stream (server-stream vanilla-http2-stream
-                                 fallback-all-is-ascii)
+                                 fallback-all-is-ascii
+                                 logging-stream-mixin)
   ()
   (:documentation
    "A server-side stream that can be used as a binary output stream, optionally

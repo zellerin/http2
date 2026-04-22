@@ -528,7 +528,8 @@ Repeat on partial write."
 (defconstant +client-preface-length+ (length http2/core:+client-preface-start+))
 
 (defclass poll-server-connection (server-http2-connection
-                                   routing-mixin)
+                                   routing-mixin
+                                  logging-connection-mixin)
   ((client :accessor get-client :initarg :client))
   (:default-initargs :stream-class 'vanilla-server-stream)
   (:documentation "The poll server connection has a client object and send data to it."))
