@@ -61,14 +61,14 @@ extent. This uses CLIP package that is not in Quicklisp."
                    (muffle-warning w))))
     ,@code))
 
-(defclip warnings ()
+(clip:defclip warnings ()
   "List of collected warnings and errors raised by the client."
   (:reset-function (setf *warnings* nil))
   (mapcar 'prin1-to-string (remove-duplicates *warnings* :test 'equal)))
 
 (defvar *last-real-time*)
 
-(defclip real-time ()
+(clip:defclip real-time ()
   "Real time in ms since enabling or reset of the clip"
   (:enable-function (setf *last-real-time* (get-internal-real-time))
    :reset-function  (setf *last-real-time* (get-internal-real-time))
@@ -140,7 +140,7 @@ the server."
           (list
            (unwind-protect
                 (uiop:run-program
-                 `("h2load" ,url
+                 `("h2load" ,(princ-to-string url)
                             "-n" ,(princ-to-string iterations)
                             "-m" ,(princ-to-string threads)
                             "-c" ,(princ-to-string clients))
@@ -169,7 +169,7 @@ Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
                                            (setf *result* (list ""))
                                            (shutdown-and-run-next-trial))) )
 
-(defclip h2load-req/s ()
+(clip:defclip h2load-req/s ()
   (:components (min-req/s max-req/s mean-req/s))
   (multiple-value-bind (match val)
       (cl-ppcre:scan-to-strings "req/s[ :]*([0-9\\.]+)[ ]*([0-9\\.]+)[ ]*([0-9\\.]+)" (car *result*))
@@ -226,3 +226,53 @@ Endpoints are defined to cover some situations:
 
 (run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
 (test-servers 0)
+
+(defclass measured-dispatcher ()
+  ((profile-mode :accessor get-profile-mode :initarg :profile-mode))
+  (:default-initargs :profile-mode :alloc))
+
+(require 'sb-sprof)
+(defmethod start-server-on-socket ((dispatcher measured-dispatcher) socket)
+  (unwind-protect
+       (sb-sprof:with-profiling (:mode (get-profile-mode dispatcher) :threads (list sb-thread:*current-thread*))
+         (call-next-method))
+    (sb-sprof:report)))
+
+
+(defclass measured-detached-poll-dispatcher (detached-server-mixin measured-dispatcher poll-dispatcher)
+  ())
+
+(defun run-h2load (url iterations clients threads)
+  (uiop:run-program `("h2load" ,(princ-to-string url) "-n" ,(princ-to-string iterations)
+                               "-m"
+                               ,(princ-to-string threads)
+                               "-c"
+                               ,(princ-to-string clients))))
+
+(defun run-server-with-payload (dispatcher payload-fn &key (mode :alloc))
+  (multiple-value-bind (server url)
+      (http2/server:start 0 :dispatcher dispatcher :profile-mode mode)
+    (funcall payload-fn url)
+    (http2/server:stop server)))
+
+(clip:define-simulator server-with-payload
+  :description
+  "Run a server and apply PAYLOAD-FN on it."
+  :system-name "HTTP/2 server"
+  :start-system (run-server-with-payload 'measured-detached-poll-dispatcher payload-fn))
+
+(clip:define-experiment vary-buffer-size ()
+  "RETRIEVE-URL from defined list of URLs.
+
+This can be used both to test the client (with known good servers) as well as
+the server."
+  :variables ((buffer-size in '(1 10 100 1000 50000))
+              (path in '("/" "/demo/long")))
+  :instrumentation (h2load-req/s warnings real-time)
+  :start-system (progv '(bt:*default-special-bindings*)
+                    `(((http2/core::*default-stream-buffer-size* . ,buffer-size)))
+                  (time (run-server-with-payload 'measured-detached-poll-dispatcher
+                                                 (lambda (url) (run-client-test (puri:merge-uris url path) 10000 100 1)))))
+  :after-trial (clip:write-current-experiment-data))
+
+(clip:run-experiment 'vary-buffer-size :output-file "/tmp/buffer-sizes.clasp")
