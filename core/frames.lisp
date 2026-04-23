@@ -28,14 +28,6 @@
   (:documentation
    "Callback that is called when a frame of unknown type is received."))
 
-(defclass write-buffer-connection-mixin ()
-  ((to-write :accessor get-to-write :initarg :to-write))
-  (:default-initargs :to-write
-   (make-array 3 :fill-pointer 0 :adjustable t :element-type '(unsigned-byte 8)))
-  (:documentation
-   "Stores queued frame in a per-connection write buffer. The internals of the
-buffer are opaque."))
-
 
 (defsection @frame-writes (:title "Writing frames to backend")
   "There are several backends that the connection can be based on. Each such
@@ -52,11 +44,19 @@ is free to modify the octets vectors later. "
   (queue-frame-region generic-function)
   (flush-http2-data generic-function))
 
+(defclass write-buffer-connection-mixin ()
+  ((to-write :accessor get-to-write :initarg :to-write))
+  (:default-initargs :to-write
+   (make-array 3 :fill-pointer 0 :adjustable t :element-type '(unsigned-byte 8)))
+  (:documentation
+   "Stores queued frame in a per-connection write buffer. The internals of the
+buffer are opaque."))
+
 (defclass stream-based-connection-mixin ()
   ((network-stream :accessor get-network-stream :initarg :network-stream
                    :initform nil))
   (:documentation
-   "A mixin for connections that read frames from and write to Common Lisp stream (in
+   "Reads frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
 
 (defgeneric flush-http2-data (connection)
