@@ -171,11 +171,11 @@ The body is decompressed and either binary or decoded UTF-8 text."))
   ()
   (:documentation "Server streams need to track attributes from the client headers such as PATH."))
 
-(defmethod print-object ((stream server-stream) out)
+(defmethod print-object ((stream http2-stream) out)
   (if *print-escape*
       (print-unreadable-object (stream out :type t)
-        (format out "#~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream)))
-      (format out "Stream #~d ~s ~s" (get-stream-id stream) (get-path stream) (get-state stream))))
+        (format out "#~d ~s ~a" (get-stream-id stream) (get-path stream) (get-state stream)))
+      (format out "Stream #~d ~a ~s ~a" (get-stream-id stream) (get-method stream) (get-path stream) (get-state stream))))
 
 (defsection @base-classes
     (:title "Classes")

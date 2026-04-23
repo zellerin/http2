@@ -83,17 +83,10 @@ relevant generic functions, filtering with WHEN-LOGGING."
 
 (defun log-closed-stream (stream e)
   "Log request information when peer sends all headers or when the request errs for
-some reason..
-
-This is to be bound to HTTP-STREAM-ERROR"
-  (format *log-stream* "~&~A ~<~A~:> ~A"
-          (get-peer-name (get-connection stream)) stream e)
-  #+nil(format *log-stream* "~&~A ~@<~@[~A://~]~@[~A~]~@[~A~] [#~d] ~a ~:>~%"
-          (get-peer-name (get-connection stream))
-          (get-scheme stream)
-          (get-authority stream)
-          (get-path stream)
-          (get-stream-id stream) e)
+some reason."
+  (let ((*print-escape* nil))
+    (format *log-stream* "~&~A ~<~A~:> ~A"
+            (get-peer-name (get-connection stream)) stream e))
   (force-output *log-stream*))
 
 (defmethod peer-ends-http-stream :before ((stream logging-stream-mixin))
