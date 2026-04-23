@@ -74,9 +74,9 @@ variable.
   "Here are listed function that allow to access request parameters."
   (get-path generic-function)
   (get-headers (method (HTTP2/core::header-collecting-mixin)))
-  (get-method (method (server-stream)))
-  (get-scheme (method (server-stream)))
-  (get-authority (method (server-stream)))
+  (get-method (method (http2-stream)))
+  (get-scheme (method (http2-stream)))
+  (get-authority (method (http2-stream)))
   (get-body (method (body-collecting-mixin)))
   (http-stream-to-string function)
   (http2/client::fallback-all-is-ascii class))
