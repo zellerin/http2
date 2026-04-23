@@ -20,7 +20,7 @@
 (start 1255 :dispatcher 'http2/server::detached-single-client-dispatcher)
 
 (setf hunchentoot:*log-lisp-backtraces-p* nil
-      http2/core::*log-stream* (make-broadcast-stream)
+      http2/server:*logged-events* +log-nothing+
       *error-output* http2/core::*log-stream*)
 
 (bt:make-thread
