@@ -86,7 +86,7 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
             (connection-error 'frame-too-small-for-priority connection)))
         (read-and-add-headers data active-stream start end flags flags))
     (http-stream-error (e)
-      (log-closed-stream active-stream e)
+      (close-http2-stream active-stream e)
       (values #'parse-frame-header 9))))
 
 (defsection @log-streams ()

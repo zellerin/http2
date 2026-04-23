@@ -142,7 +142,7 @@ passed to the make-instance"
   (with-slots (state) http-stream
     (ecase state
       (open (setf state 'half-closed/local))
-      (half-closed/remote (close-http2-stream http-stream)))))
+      (half-closed/remote (close-http2-stream http-stream 'completed)))))
 
 (defun find-http-stream-by-id (connection id frame-type)
   "Find HTTP stream in the connection.
@@ -186,7 +186,7 @@ Also do some checks on the stream id based on the frame type."
   (when (get-flag flags :end-stream)
     ;; 20240822 TODO: give specific error instead of ecase
     (ecase (get-state stream)
-      (half-closed/local (close-http2-stream stream))
+      (half-closed/local (close-http2-stream stream 'completed))
       (open (setf (get-state stream) 'half-closed/remote)))
     (peer-ends-http-stream stream)))
 

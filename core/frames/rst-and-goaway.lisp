@@ -5,12 +5,13 @@
   (peer-resets-stream generic-function))
 
 (defgeneric peer-resets-stream (stream error-code)
-  (:method ((stram (eql :closed)) error-code))
+  (:method ((stream (eql :closed)) error-code))
   (:method (stream error-code)
     (unwind-protect
          (unless (eq error-code +cancel+)
+           (close-http2-stream stream error-code)
            (error 'http-stream-error :stream stream :code error-code))
-      (close-http2-stream stream)))
+      (close-http2-stream stream 'peer-cancels)))
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
    causes it to enter the \"closed\" state.  After receiving a RST_STREAM
@@ -76,7 +77,7 @@ continue."
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
       (flush-http2-data (get-connection stream)))
-    (close-http2-stream stream)
+    (close-http2-stream stream 'e)
     (error e)))
 
 (define-frame-type 7 :goaway-frame
