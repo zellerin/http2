@@ -100,7 +100,7 @@ MAYBE-END-STREAM "
   (create-new-local-stream function)
   (find-http-stream-by-id function)
   (maybe-end-stream function)
-  (close-http2-stream function))
+  (close-http2-stream generic-function))
 
 (defgeneric is-our-stream-id (connection id))
 
