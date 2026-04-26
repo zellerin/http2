@@ -1,19 +1,20 @@
-
 * ToDo
-- Factor out logging to a separate class
 - Rewrite TLS-ENDPOINT to adjustable arrays and buffer pool, and check impact on
   speed/allocations. Possibly merge QUEUE-FRAME-REGION code for buffered connection
   and for the poll server.
+- Cope with  QUEUE-FRAME-REGION needing simple vectors as input dute to CFFI+.
 - Use autoload to load stuff on-demand. Both to reduce size and to be able to call non-quicklisped libraries.
-- Fix:  QUEUE-FRAME-REGION needs simple vectors as login.
-- Make condition class for [[file:core/frames/headers.lisp::;; 20240718 TODO: make class for this connection error][incomplete header]] and for R being set.
+- Make condition class for [[file:core/frames/headers.lisp::;; 20240718 TODO: make class for this connection error][incomplete header]].
 - Revise experiments
-
+- Design interface for provisional heading and trailers. Check errors in trailers (must close stream, no pseudo headers)
 * Implemented
 ** Class hierarchy changes
 - HTTP-ERROR-STREAM now inherits from ERROR (used to be WARNING). You may need to adapt your handlers.
 - Both stream and condition errors now inherit HTTP2-CONDITION.
 - New class VANILLA-HTTP2-STREAM to cover data
+
+ See connection hierarchy,  stream hierarchy, dispatcher hierarchy, stream error hierarchy and connection erro hierarchy graphs.
+
 ** Server hooks
 - new GF SETUP-CONNECTION is called when new client connects to the server
 - Existing GF CLEANUP-CONNECTION now takes an optional second argument, the error
@@ -47,7 +48,7 @@ VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these stream
 - Reuse MAYBE-GROW-BUFFER
 
 ** Printing and reporting
-- Improved error reporting texts.
+- Improved error reporting texts.q
 - IP address now prints as 'unknown' when FD is already closed
 
 ** Documentation
@@ -69,7 +70,10 @@ VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these stream
 - Slots of tls-endpoint-core are now invalidated after free.
 - Pseudo-header slots move from server stream to vanilla stream to be able to print them for debuggin purposes.
 - Network streams now have NIL as the stream by default to simplify PRINC.
-
+- New condition INCOMPLETE-HEADER
+- COMPILE-HEADERS now returns an octet vector
+- Try to proceed with reading data when flush fails.
+- FIND-HTTP-STREAM-BY-ID reports better errors.
 ** Removed internal functions
 concatenate*
 # Local Variables:
