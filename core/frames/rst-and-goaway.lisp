@@ -10,7 +10,7 @@
     (unwind-protect
          (unless (eq error-code +cancel+)
            (close-http2-stream stream error-code)
-           (error 'http-stream-error :stream stream :code error-code))
+           (error 'http-stream-error-received :stream stream :code error-code))
       (close-http2-stream stream 'peer-cancels)))
   (:documentation
    "The RST_STREAM frame fully terminates the referenced stream and
