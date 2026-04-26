@@ -214,6 +214,10 @@ continuation flags, if any, so must be separate."
          (end-headers (get-flag flags :end-headers))
          (to-backtrace
            (do-decoded-headers (lambda (name value)
+                                 (when (and (stringp name) (some 'upper-case-p name))
+                                   (http-stream-error 'lowercase-header-field-name
+                                                       http-stream
+                                                       :name name :value value))
                                  (add-header connection http-stream name value))
              (get-decompression-context connection) data start end)))
     (cond
