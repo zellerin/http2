@@ -800,6 +800,9 @@ Timeouts can be specified for polling."))
   ()
   (:default-initargs :connection-class 'poll-server-connection))
 
+(defmethod get-connections ((dispatcher poll-dispatcher-mixin))
+  (mapcar 'client-application-data (get-clients dispatcher)))
+
 (defmethod get-no-client-poll-timeout :after ((dispatcher poll-dispatcher))
   (compute-poll-timeout-value (call-next-method)))
 
