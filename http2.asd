@@ -105,6 +105,7 @@ Run these patterns against servers."
                (:file "tcpip")
                (:file "utils")
                (:file "test-samples")
+               (:file "errors")
                (:file "errors-lowlevel")
                (:file "high-level")
                (:file "tests-hpack")
