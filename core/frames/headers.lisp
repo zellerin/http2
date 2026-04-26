@@ -222,8 +222,7 @@ continuation flags, if any, so must be separate."
              (get-decompression-context connection) data start end)))
     (cond
       ((and end-headers to-backtrace)
-       ;; 20240718 TODO: make class for this connection error
-       (error "Incomplete headers: ~a" (subseq data to-backtrace end)))
+       (connection-error 'incomplete-header connection :octets (subseq data to-backtrace end)))
       (end-headers
        (process-end-headers connection http-stream)
        (maybe-end-stream header-flags http-stream)
