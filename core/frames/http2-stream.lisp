@@ -169,14 +169,14 @@ Also do some checks on the stream id based on the frame type."
         ((and (not our-id) (> id last-id-seen))
          (connection-error 'bad-stream-state connection
                            :actual 'idle
+                           :received (frame-type-name frame-type)
                            :code +protocol-error+
                            :allowed '(not idle)
                            :stream-id id))
         ((frame-type-old-stream-ok frame-type)
          (check-stream-state-ok connection
                                 (find-just-stream-by-id streams id)
-                                (frame-type-old-stream-ok frame-type)
-                                (frame-type-bad-state-error frame-type)))
+                                frame-type))
         (t
          (connection-error 'frame-type-needs-connection connection
                            :frame-type frame-type))))))
@@ -207,13 +207,22 @@ stop as soon as we can see lower value. However, we assume the list needed to be
 pretty short so we do not care."
   (or (find id streams :test #'= :key #'get-stream-id) :closed))
 
-(defun check-stream-state-ok (connection http-stream ok-states bad-state-error)
+(defun check-stream-state-ok (connection http-stream frame-type)
   "Throw BAD-STATE-ERROR when the stream state is not appropriate for the frame type.
 
 Return the HTTP-STREAM."
-  (unless (member (get-state http-stream) ok-states)
-    (connection-error 'bad-stream-state  connection
-                      :code bad-state-error
-                      :actual (get-state http-stream)
-                      :allowed ok-states))
+  (let ((ok-states (frame-type-old-stream-ok frame-type)))
+    (unless (member (get-state http-stream) ok-states)
+      (if (eql http-stream :closed)
+          (connection-error 'closed-stream  connection
+                            :actual (get-state http-stream)
+                            :received (frame-type-name frame-type)
+                            :allowed ok-states)
+          (connection-error 'bad-stream-state connection
+                            :code (frame-type-bad-state-error frame-type)
+                            :actual (get-state http-stream)
+                            :received (frame-type-name frame-type)
+                            :allowed ok-states
+                            :stream-id (unless (symbolp http-stream) (get-stream-id http-stream))))
+))
   http-stream)
