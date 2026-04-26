@@ -306,7 +306,7 @@ Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
 - HUFFMAN to use huffman encoding"
   (declare (type (or null hpack-context) context))
   (loop
-    with res = (make-array 0 :fill-pointer 0 :adjustable t)
+    with res = (make-array 0 :fill-pointer 0 :adjustable t :element-type '(unsigned-byte 8))
     initially (when context
                 (compute-update-dynamic-size-codes
                  res (get-updates-needed context)))
