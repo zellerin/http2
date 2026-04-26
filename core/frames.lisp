@@ -59,16 +59,20 @@ buffer are opaque."))
    "Reads frames from and write to Common Lisp stream (in
 slot NETWORK-STREAM)."))
 
+(define-condition cannot-flush (communication-error end-of-file)
+  ()
+  (:report "Cannot flush data on a HTTP/2 connection."))
+
 (defgeneric flush-http2-data (connection)
   (:documentation "Send all the pending connection data to the peer.")
   (:method (connection)
-    nil ; maybe nothing needed
+    nil                                 ; maybe nothing needed
     )
   (:method ((connection stream-based-connection-mixin))
     (handler-case
         (force-output (get-network-stream connection))
       (cl+ssl::ssl-error-syscall ()
-        (error 'end-of-file :stream connection)))))
+        (error 'cannot-flush :stream connection)))))
 
 (defgeneric queue-frame (connection frame)
   (:documentation "Send or queue FRAME (octet vector) to the connection.

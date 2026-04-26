@@ -135,5 +135,6 @@ NETWORK-STREAM used."
                           0             ; fixme: last processed stream
                           code
                           (map 'vector 'char-code (symbol-name class))))
-    (flush-http2-data connection)
+    (handler-case (flush-http2-data connection)
+      (cannot-flush () nil))
     (error err)))
