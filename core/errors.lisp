@@ -71,8 +71,8 @@
   (:report (lambda (err stream)
              (with-slots (error-code debug-data) err
                (format stream
-                       "~@<~a closed connection with an error. Connection can no longer be used. ~_~W.~@[~_Debug data: ~W.~]~:>"
-                       (get-medium err) (or (documentation error-code 'variable) error-code)
+                       "~@<~Peer sent us away: ~_~W.~@[~_Debug data: ~W.~]~:>"
+                       (get-medium err) (or (documentation (aref  *error-codes* error-code) 'variable) error-code)
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
   (:documentation "Signalled by DO-GOAWAY when go-away frame arrives."))
 
@@ -135,6 +135,11 @@ connection. The client sent something different.")
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
 
+(define-condition incomplete-header (connection-error)
+  ((octets :accessor get-octets :initarg :octets))
+  (:report "The last header in headers frame was not complete.")
+  (:default-initargs :code +compression-error+))
+
 (defmethod print-object ((o too-big-frame) stream)
   (print-unreadable-object (o stream :type t)
     (format stream "Frame size 0x~x, max ~x." (get-frame-size o) (get-max-frame-size o))))
@@ -150,7 +155,8 @@ connection. The client sent something different.")
    "Length of the padding is the length of the frame payload or greater."))
 
 (define-condition our-id-created-by-peer (protocol-error)
-  ())
+  ()
+  (:report "We received ID we were not supposed to receive (even/odd)"))
 
 (define-condition frame-type-needs-stream (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
@@ -205,12 +211,20 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
 (define-condition bad-stream-state (connection-error)
   ((allowed   :accessor get-allowed   :initarg :allowed)
    (actual    :accessor get-actual    :initarg :actual)
-   (stream-id :accessor get-stream-id :initarg :stream-id))
-  (:report
-   "Frame cannot be applied to stream in particular state"))
+   (stream-id :accessor get-stream-id :initarg :stream-id)
+   (received  :accessor get-received  :initarg :received))
+  (:report (lambda (err out)
+             (with-slots (actual received stream-id) err
+                 (format out
+                         "~a cannot be applied to ~@[stream #~s in ~]state ~a." received stream-id actual)))))
+
+(define-condition closed-stream (bad-stream-state)
+  ()
+  (:default-initargs :stream-id nil :code +stream-closed+))
 
 (define-condition http-stream-error (http2-condition error)
-  ((code   :accessor get-code   :initarg :code)
+  ((code   :accessor get-code   :initarg :code
+           :reader get-error-code)
    (stream :accessor get-stream :initarg :stream))
   (:documentation "HTTP stream error was either detected, or received from the peer.
 
@@ -305,10 +319,12 @@ Base class for more detailed errors."))
   (:documentation
    "A request or response containing uppercase header field names MUST be treated
    as malformed. (...) Malformed requests or responses that are detected MUST be
-   treated as a stream error of type PROTOCOL_ERROR."))
+   treated as a stream error of type PROTOCOL_ERROR.")
+  (:report "Header name has an uppercase"))
 
 (define-condition missing-pseudo-header (header-error)
   ()
+  (:report "Pseudo-header :status is missing.")
   (:documentation
    ":status pseudo-header field MUST be included in all responses.
 
