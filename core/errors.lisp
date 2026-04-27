@@ -168,6 +168,7 @@ connection. The client sent something different.")
 (define-condition frame-type-needs-stream (protocol-error)
   ((frame-type :accessor get-frame-type :initarg :frame-type))
   (:report (lambda (err out)
+             (declare (special *frame-types*))
              (format out "~W requires a stream, not the connection."
                      (aref *frame-types* (get-frame-type err)))))
   (:documentation

@@ -1,4 +1,4 @@
-(in-package http2/core)
+(in-package http2/tests/frames)
 
 (defvar *custom-headers-code*
   (vector-from-hex-text
@@ -15,7 +15,7 @@ SPLITS sets where the data are split.
            (apply fn stream (subseq data from to) :end-headers (null to) args)))
 
 (fiasco:deftest write-headers-frame/test ()
-  (handler-bind ((no-new-header-action 'muffle-warning))
+  (handler-bind ((http2/core::no-new-header-action 'muffle-warning))
     (test-write-parse-fn #'write-headers-frame
                          '(:HEADERs (("custom-key" . "custom-header")))
                          #(0 0 26 1 0 0 0 0 42 64 10 99 117 115 116 111 109 45

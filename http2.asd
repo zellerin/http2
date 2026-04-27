@@ -101,7 +101,8 @@ Run these patterns against servers."
   :pathname "tests"
   :perform (test-op (o s)
                     (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
-  :components ((:file "tests")
+  :components ((:file "support")
+               (:file "tests")
                (:file "tcpip")
                (:file "utils")
                (:file "test-samples")
@@ -113,7 +114,8 @@ Run these patterns against servers."
                (:file "poll-server")
                (:file "frames")
                (:file "frames/headers")
-               (:file "frames/data")))
+               (:file "frames/data")
+               (:file "test")))
 
 (defsystem "http2/tcpip"
   ;; note: it has to depend on cl+ssl

@@ -1,4 +1,4 @@
-(in-package :http2/core)
+(in-package :http2/tests/frames)
 
 (fiasco:defsuite
     (http2/tests/core :bind-to-package #:http2/core

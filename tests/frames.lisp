@@ -1,24 +1,14 @@
-(in-package http2/core)
+(in-package #:http2/tests/frames)
 
-(defclass dummy-connection (http2-connection write-buffer-connection-mixin) ())
-(defclass dummy-stream (http2-stream header-collecting-mixin body-collecting-mixin)
-  ()
-  (:default-initargs
-   :connection (make-instance 'dummy-connection)
-   :stream-id 42))
+(defsection @overview (:title "")
+  "Test frame reading and writing functions defined in frames.lisp."
+  )
 
-(defmethod is-our-stream-id ((conn dummy-connection) id) (= id 17))
+;;;; FIXME: this seems very similar to test.lisp, content-wise.
 
-(defun make-dummies (&rest pars)
-  (let ((stream (apply 'make-instance 'dummy-stream pars)))
-    (setf (get-streams (get-connection stream)) (list stream))
-    stream))
-
-(defvar *dummy-stream* (make-dummies))
-
-(defmacro with-dummy-stream ((name &rest pars) &body body)
-  `(let ((,name (make-dummies ,@pars)))
-    ,@body))
+(defsuite
+    (http2/tests/frames :bind-to-package #:http2/tests/frames
+                        :in http2/tests::http2/tests))
 
 (defun test-write-parse-fn (write-fn expected octets &rest pars)
   "Run WRITE-FN on the dummy stream and get the generated octets. Compare them with OCTETS.
@@ -30,14 +20,15 @@ Test that
   (with-dummy-stream (stream :state 'open)
     (with-dummy-stream (stream-out :state 'open)
       (let ((connection (get-connection stream-out)))
-        (setf (get-last-id-seen (get-connection stream)) 42)
+        (setf (http2/core::get-last-id-seen (get-connection stream)) 42)
         (apply write-fn stream-out pars)
-        (let ((res (get-to-write connection)))
+        (let ((res (http2/core::get-to-write connection)))
           (fiasco:is (equalp octets res)
               "Generated octets do not match for parameters~& ~a~&Seen:   ~a~&Wanted: ~a" pars
               res
               octets)
-          (process-frames (get-connection stream) (make-initialized-octet-buffer res))
+          (process-frames (get-connection stream)
+                          (make-initialized-octet-buffer res))
           (fiasco:is (equalp (get-headers stream) (getf expected :headers)))
           stream)))))
 

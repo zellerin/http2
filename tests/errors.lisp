@@ -1,11 +1,14 @@
 (in-package #:http2/core)
 
 (fiasco:defsuite
-  (fiasco-suites::http2/core :bind-to-package #:http2/core
-                             :in http2/tests::http2/tests))
+    (fiasco-suites::http2/core :bind-to-package #:http2/core
+                               :in http2/tests::http2/tests))
+
+(defsection @test-helpers ()
+  (run-server-with-payload function))
 
 (defsection @test-errors (:title "Test response to errors")
-  "We test response of a server to intentionally incorrect requests."
+  "Intentionally incorrect requests raise correct errors."
   )
 
 (defun run-server-with-payload (dispatcher payload-fn &rest keys)

@@ -1,10 +1,10 @@
-(in-package http2/core)
+(in-package http2/tests/frames)
 
 (fiasco:deftest write-data-frame/test ()
   "Write some data frames and test the content"
   (let ((iota-5  (make-initialized-octet-buffer #(1 2 3 4 5)))
         (padding (make-initialized-octet-buffer #(10 11 12))))
-    (handler-bind ((no-payload-action 'muffle-warning))
+    (handler-bind ((http2/core::no-payload-action 'muffle-warning))
       (test-write-parse-fn #'write-data-frame
                            nil
                            #(0 0 5 0 0 0 0 0 42 1 2 3 4 5)
@@ -30,11 +30,11 @@
                            :padded padding))))
 
 
-(defclass test-buffered-stream (http2-stream http2-connection)
+(defclass test-buffered-stream (http2-stream http2-connection write-buffer-connection-mixin)
   ((snippets        :accessor get-snippets        :initarg :snippets))
-  (:default-initargs :snippets nil))
+  (:default-initargs :snippets nil :stream-id 0))
 
-(defmethod write-buffered-frame ((stream test-buffered-stream) buffer offset size end-stream)
+(defmethod http2/core::write-buffered-frame ((stream test-buffered-stream) buffer offset size end-stream)
   (push (make-array size :initial-contents (subseq buffer offset (+ offset size)))
         (get-snippets stream))
   (when end-stream (push :end-stream (get-snippets stream))))
@@ -43,7 +43,7 @@
   (push :end-stream (get-snippets stream)))
 
 (defun test-buffered-frame-output (window frame-size process-fn)
-  (let ((*default-stream-buffer-size* 20)
+  (let ((http2/core::*default-stream-buffer-size* 20)
         (test-stream (make-instance 'test-buffered-stream :peer-window-size window :max-peer-frame-size frame-size)))
     (declare (dynamic-extent test-stream))
     (setf (get-connection test-stream) test-stream)

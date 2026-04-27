@@ -1,4 +1,4 @@
-(in-package :http2/core)
+(in-package :http2/tests/frames)
 
 (mgl-pax:defsection @test-samples
     (:title "Define test samples")
@@ -49,7 +49,7 @@ If CONNECTION-NAME is NIL, payload is value of the last form in BODY."
   `(setf (gethash ',name *payloads* )
          (make-payload
           :documentation ,(if (stringp (car body)) (pop body) "N/A")
-          :test (lambda () (test-for-error ',name ',error-name))
+          :test (lambda () (http2/core::test-for-error ',name ',error-name))
           :code
           (lambda (conn)
             (declare (ignore conn))
@@ -74,7 +74,7 @@ If CONNECTION-NAME is NIL, payload is value of the last form in BODY."
 
 (define-static-test-payload end-of-file (conn frame-type-needs-stream)
   "Frame should have 10 octets, but has just 9"
-  (write-frame conn -1 +data-frame+ (list :padded (make-octet-buffer 10))
+  (http2/core::write-frame conn -1 http2/core::+data-frame+ (list :padded (make-octet-buffer 10))
                (constantly nil) #()))
 
 (define-static-test-payload null-connection-window-update (conn)
@@ -88,7 +88,7 @@ If CONNECTION-NAME is NIL, payload is value of the last form in BODY."
                   :stream-id 2
                   :connection conn
                   :state 'open)
-   (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
+   (http2/hpack:compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
    :end-headers t))
 
 
@@ -108,12 +108,12 @@ If CONNECTION-NAME is NIL, payload is value of the last form in BODY."
 
 (define-test-payload id-one-after-id-3 (conn)
   (concatenate 'octet-vector
-               (progn (incf (get-id-to-use conn) 2)
+               (progn (incf (http2/core::get-id-to-use conn) 2)
                       (write-headers-frame (create-new-local-stream conn)
                                            (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
                                            :end-headers t))
                (progn
-                 (decf (get-id-to-use conn) 2)
+                 (decf (http2/core::get-id-to-use conn) 2)
                  (write-headers-frame
                   (create-new-local-stream conn)
                   (compile-headers (http2/client::request-headers "GET" "/" "localhost") nil)
