@@ -1,14 +1,17 @@
-(ql:quickload 'clip-1994/doc)
-(ql:quickload 'http2/client)
-(ql:quickload 'http2/server)
-(ql:quickload 'cl-who)
+(eval-when (:compile-toplevel :load-toplevel)
+  (ql:quickload 'clip-1994/doc)
+  (ql:quickload 'http2/client)
+  (ql:quickload 'http2/server)
+  (ql:quickload 'cl-who)
+  (ql:quickload 'sb-sprof))
 
-(mgl-pax:define-package http-experiments
-    (:use #:cl #:clip #:http2/client #:http2/core
-          #:mgl-pax #:clip/doc
-          #:http2/server))
+(mgl-pax:define-package http2/experiments
+  (:use #:cl #:clip #:http2/client #:http2/core
+        #:mgl-pax #:clip/doc
+        #:http2/server))
 
-(in-package http-experiments)
+(in-package http2/experiments)
+
 
 (defsection @index
     (:title "Experiments with HTTP2")
@@ -61,7 +64,7 @@ extent. This uses CLIP package that is not in Quicklisp."
                    (muffle-warning w))))
     ,@code))
 
-(clip:defclip warnings ()
+(defclip warnings ()
   "List of collected warnings and errors raised by the client."
   (:reset-function (setf *warnings* nil))
   (mapcar 'prin1-to-string (remove-duplicates *warnings* :test 'equal)))
@@ -96,6 +99,7 @@ On error, returns empty string and xs -1 as the result code."
 (defvar *default-url-list* '("https://www.example.com" "https://www.idnes.cz"
                              "https://www.root.cz" "https://www.google.com"))
 
+#+nil
 (define-experiment client-on-many-targets (&optional (url-list *default-url-list*) version)
   "RETRIEVE-URL from defined list of URLs.
 
@@ -177,7 +181,7 @@ Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
     (unless val (error "Not proper result: ~a" (car *result*)))
     (apply 'values (map 'list 'read-from-string val))))
 
-(define-experiment h2load-on-url (url-list iterations)
+#+nil(define-experiment h2load-on-url (url-list iterations)
   :simulator h2load-test
 ;  :system-version (identity version)
   :variables ((url in url-list)
@@ -188,7 +192,7 @@ Expects parameters URL, ITERATIONS, THREADS and CLIENTS."
   :after-trial (write-current-experiment-data))
 
 ;;; e.g., (run-experiment 'h2load-on-url :args '(("https://www.example.com") ((5 1 1)) 'dummy) :output-file "/tmp/ex.clasp")
-(run-experiment 'h2load-on-url :args '(("https://localhost:9999/") 10000) :output-file "/tmp/loc.clasp")
+#+nil(run-experiment 'h2load-on-url :args '(("https://localhost:9999/") 10000) :output-file "/tmp/loc.clasp")
 
 (defun test-servers (port)
   "For each of tested server classes, open server on a random PORT (could be 0 for
@@ -224,8 +228,8 @@ Endpoints are defined to cover some situations:
 
 (ignore-errors(delete-file "/tmp/real-life-targets.clasp"))
 
-(run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
-(test-servers 0)
+;(run-experiment 'client-on-many-targets :output-file "/tmp/real-life-targets.clasp")
+;(test-servers 0)
 
 (defclass measured-dispatcher ()
   ((profile-mode :accessor get-profile-mode :initarg :profile-mode))
@@ -242,13 +246,6 @@ Endpoints are defined to cover some situations:
 (defclass measured-detached-poll-dispatcher (detached-server-mixin measured-dispatcher poll-dispatcher)
   ())
 
-(defun run-h2load (url iterations clients threads)
-  (uiop:run-program `("h2load" ,(princ-to-string url) "-n" ,(princ-to-string iterations)
-                               "-m"
-                               ,(princ-to-string threads)
-                               "-c"
-                               ,(princ-to-string clients))))
-
 (defun run-server-with-payload (dispatcher payload-fn &key (mode :alloc))
   (multiple-value-bind (server url)
       (http2/server:start 0 :dispatcher dispatcher :profile-mode mode)
@@ -261,7 +258,7 @@ Endpoints are defined to cover some situations:
   :system-name "HTTP/2 server"
   :start-system (run-server-with-payload 'measured-detached-poll-dispatcher payload-fn))
 
-(clip:define-experiment vary-buffer-size ()
+(define-experiment vary-buffer-size ()
   "RETRIEVE-URL from defined list of URLs.
 
 This can be used both to test the client (with known good servers) as well as
@@ -269,10 +266,11 @@ the server."
   :variables ((buffer-size in '(1 10 100 1000 50000))
               (path in '("/" "/demo/long")))
   :instrumentation (h2load-req/s warnings real-time)
-  :start-system (progv '(bt:*default-special-bindings*)
-                    `(((http2/core::*default-stream-buffer-size* . ,buffer-size)))
+  :start-system (let ((bt:*default-special-bindings*
+                        `((http2/core::*default-stream-buffer-size* . ,buffer-size)
+                            (http2/server:*logged-events* . 0))))
                   (time (run-server-with-payload 'measured-detached-poll-dispatcher
                                                  (lambda (url) (run-client-test (puri:merge-uris url path) 10000 100 1)))))
   :after-trial (clip:write-current-experiment-data))
 
-(clip:run-experiment 'vary-buffer-size :output-file "/tmp/buffer-sizes.clasp")
+#+nil(run-experiment 'vary-buffer-size :output-file "/tmp/buffer-sizes.clasp")
