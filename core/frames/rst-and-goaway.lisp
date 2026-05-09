@@ -59,10 +59,9 @@ error was reported.")
     (lambda (connection data http-stream flags)
       "Invoke PEER-RESETS-STREAM callback."
       (assert (zerop flags))
-      (assert (zerop start))
-      (unless (= length 4)
+      (unless (= (- length start) 4)
         (connection-error 'incorrect-rst-frame-size connection))
-      (peer-resets-stream http-stream (aref/wide data 0 4))
+      (peer-resets-stream http-stream (aref/wide data start 4))
       (values #'parse-frame-header 9)))
 
 (defun http-stream-error (error-class stream &rest args)
@@ -113,12 +112,10 @@ continue."
     ;; reader
     (lambda (connection data http-stream flags)
       "Invoke DO-GOAWAY callback."
-      (declare (ignore length))
       (unless (zerop flags) (warn "Flags set for goaway frame: ~d" flags))
-      (assert (zerop start))
-      (let ((last-id (aref/wide data 0 4))
-            (error-code (aref/wide data 4 4))
-            (data (subseq data 8)))
+      (let ((last-id (aref/wide data start 4))
+            (error-code (aref/wide data (+ 4 start) 4))
+            (data (subseq data (+ 8 start) length)))
         (do-goaway connection (get-error-name error-code) last-id data)
         (error (if (zerop error-code) 'go-away-no-error 'go-away)
                :last-stream-id last-id
