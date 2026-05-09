@@ -46,6 +46,12 @@
       (aref *error-codes* code)
       (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" code) 'http2/core))))
 
+(defun get-error-description (error-code)
+  (if (<= 0 error-code #xd)
+      (or (documentation (aref  *error-codes* error-code) 'variable) error-code)
+      (values (intern (format nil "UNDEFINED-ERROR-CODE-~x" error-code) 'http2/core)))
+  )
+
 (defsection @errors
     (:title "Errors handlers")
   (http2-simple-error condition)
@@ -61,7 +67,10 @@
   (do-goaway generic-function)
   (h2-not-supported-by-server condition))
 
-(define-condition go-away (communication-error)
+(define-condition http2-condition ()
+  ())
+
+(define-condition go-away (communication-error http2-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code
                    :type symbol)
    (debug-data     :accessor get-debug-data     :initarg :debug-data
@@ -72,7 +81,7 @@
              (with-slots (error-code debug-data) err
                (format stream
                        "~@<~Peer sent us away: ~_~W.~@[~_Debug data: ~W.~]~:>"
-                       (get-medium err) (or (documentation (aref  *error-codes* error-code) 'variable) error-code)
+                       (get-medium err) (get-error-description error-code)
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
   (:documentation "Signalled by DO-GOAWAY when go-away frame arrives."))
 
@@ -84,9 +93,6 @@
                        "~@<~W closed connection normally. ~@[~_Debug data: ~W.~]~:>"
                        medium
                        (and (plusp (length debug-data)) (map 'string 'code-char debug-data)))))))
-
-(define-condition http2-condition ()
-  ())
 
 (define-condition http2-error (http2-condition error)
   ()
@@ -172,7 +178,7 @@ connection. The client sent something different.")
   ((frame-type :accessor get-frame-type :initarg :frame-type))
   (:report (lambda (err out)
              (format out "~W requires the connection, not a stream."
-                     (aref *frame-types* (get-frame-type err)))))
+                     (get-frame-type err))))
   (:documentation
    "Frame type must be applied on connection."))
 
