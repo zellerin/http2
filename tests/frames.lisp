@@ -1,7 +1,8 @@
 (in-package http2/core)
 
 (defclass dummy-connection (http2-connection write-buffer-connection-mixin) ())
-(defclass dummy-stream (http2-stream header-collecting-mixin) ()
+(defclass dummy-stream (http2-stream header-collecting-mixin body-collecting-mixin)
+  ()
   (:default-initargs
    :connection (make-instance 'dummy-connection)
    :stream-id 42))
