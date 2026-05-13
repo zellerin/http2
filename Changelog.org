@@ -2,11 +2,12 @@
 - Rewrite TLS-ENDPOINT to adjustable arrays and buffer pool, and check impact on
   speed/allocations. Possibly merge QUEUE-FRAME-REGION code for buffered connection
   and for the poll server.
-- Cope with  QUEUE-FRAME-REGION needing simple vectors as input dute to CFFI+.
+- Cope with  QUEUE-FRAME-REGION needing simple vectors as input due to CFFI.
 - Use autoload to load stuff on-demand. Both to reduce size and to be able to call non-quicklisped libraries.
 - Make condition class for [[file:core/frames/headers.lisp::;; 20240718 TODO: make class for this connection error][incomplete header]].
 - Revise experiments
 - Design interface for provisional heading and trailers. Check errors in trailers (must close stream, no pseudo headers)
+- Fix broken tests in tests.lisp
 - Make sure detached poll dispatcher wakes up from sleep when stopped (join-timeout-resignal? Communication socket?)
 ** Use shut-down flag in the threaded dispatcher as well
 - Promote interrupt-based method to all detached dispatchers,
@@ -24,6 +25,10 @@
 ** Server hooks
 - new GF SETUP-CONNECTION is called when new client connects to the server
 - Existing GF CLEANUP-CONNECTION now takes an optional second argument, the error
+
+** New interfaces
+- HTTP2-CONDITION is now exported so that callers can caught all library errors.
+- MAKE-PRIORITY, GET-TO-WRITE and PROCESS-FRAMES is now exported
 
 ** Logging to a stream
 There is now
@@ -73,6 +78,8 @@ VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these stream
 -  ::
 
 ** Other
+- Ping, reset and goaway frames can be parsed with START!=0.
+- *Stream based connection now ignores errors during flushing before write.*
 - Client http connection now uses QUEUE-DATA-FRAME to send client preface.Previously it wrote directly to a network stream that does not have to exist.
 - Slots of tls-endpoint-core are now invalidated after free.
 - Pseudo-header slots move from server stream to vanilla stream to be able to print them for debuggin purposes.
@@ -80,9 +87,12 @@ VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these stream
 - New condition INCOMPLETE-HEADER
 - COMPILE-HEADERS now returns an octet vector
 - Try to proceed with reading data when flush fails.
-- FIND-HTTP-STREAM-BY-ID reports better errors.
+- Several conditions now report in a different, hopefully better way.
+
 ** Removed internal functions
 concatenate*
+
+
 # Local Variables:
 # org-hide-emphasis-markers: nil
 # END:
