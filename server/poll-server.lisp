@@ -739,6 +739,14 @@ is not from scheduler)"
      (dolist (client (get-clients ,dispatcher))
        (close-client-connection client dispatcher "End of loop"))))
 
+(defun do-shut-down (dispatcher reason)
+  (log-dispatcher-event dispatcher reason)
+  (dolist (client (get-clients dispatcher))
+    (http2/core::send-go-away-no-error (client-application-data client) reason)
+    (do-available-actions client) ; send go-away if can without waiting
+    (cleanup-connection (client-application-data client) reason)
+    (close-client-connection client dispatcher reason)))
+
 (defun serve-tls (listening-socket dispatcher)
   "Serve TLS communication on the LISTENING-SOCKET using DISPATCHER.
 
@@ -758,10 +766,18 @@ available), and run scheduled actions."
                             (ftype (function (t t) fixnum) poll))
             (loop
               (multiple-value-bind (timeout signal) (compute-timeout dispatcher)
+                ;; Shutdown check is before poll so that
+                ;; - the time window of race is minimized if set by interrupt-thread,
+                ;; - the handler can set the flag as well
+                (when (get-shut-down dispatcher)
+                  (do-shut-down dispatcher "Shut down requested")
+                  (return))
                 (let*
-                    ((nread (poll dispatcher timeout)))
+                       ((nread (poll dispatcher timeout)))
                   (run-mature-tasks *scheduler*)
-                  (when (and (zerop nread) signal) (cerror "Ok" 'poll-timeout :medium "Server poll"))
+                  (when (and (zerop nread) signal)
+                    (do-shut-down dispatcher "Shut down due to timeout")
+                    (return))
                   (process-client-sockets nread dispatcher)
                   (maybe-process-new-client listening-socket ctx dispatcher))))))))))
 
@@ -796,6 +812,10 @@ Timeouts can be specified for polling."))
   (unless  *print-escape*
       (format out " with ~a clients" (length (get-clients dispatcher)))))
 
+(defmethod start-server-on-socket ((dispatcher poll-dispatcher-mixin) listening-socket)
+    (usocket:with-server-socket (socket listening-socket)
+     (do-new-connection listening-socket dispatcher)))
+
 (defclass poll-dispatcher (poll-dispatcher-mixin tls-dispatcher-mixin)
   ()
   (:default-initargs :connection-class 'poll-server-connection))
@@ -808,7 +828,8 @@ Timeouts can be specified for polling."))
 
 (defclass detached-poll-dispatcher (detached-server-mixin poll-dispatcher)
   ()
-  (:documentation "Detached version of the POLL-DISPATCHER."))
+  (:documentation "Detached version of the POLL-DISPATCHER.")
+  (:default-initargs :name "HTTP/2 poll server"))
 
 (defmethod do-new-connection (socket (dispatcher poll-dispatcher-mixin))
   "Handle new connections by adding pollfd to and then polling.
@@ -822,14 +843,20 @@ from C code."
 
   (let ((*nagle* (get-nagle dispatcher))
         (*scheduler* (make-instance 'scheduler)))
-
-    (serve-tls socket dispatcher))
-  ;; there is an outer loop in create-server that we want to skip
-  (invoke-restart 'kill-server))
+    (serve-tls socket dispatcher)))
 
 (defmethod get-peer-name ((connection poll-server-connection))
     (http2/tcpip:fd-to-ip (http2/server/poll::client-fd  (get-client connection))))
 
+(defmethod stop-server ((dispatcher detached-poll-dispatcher))
+  ;; Simply killing the server makes hard to correctly free the ssl.
+  ;; So we just signal and let the dispatcher clean it up.
+  "Flag the dispatcher that it should shut down. Presently does not force the
+dispatcher to wake from possible sleep, so it could not get the message
+immediately. For now, live with that, or set poll timeouts (e.g., in test suites)."
+  (bordeaux-threads:interrupt-thread  (get-thread dispatcher)
+                                      (lambda (dispatcher) (setf (get-shut-down dispatcher) t))
+                                      dispatcher))
 
 
 ;;;; HTTP2 TLS async client

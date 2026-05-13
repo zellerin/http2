@@ -123,6 +123,14 @@ continue."
                :debug-data data
                :medium connection))))
 
+(defun send-go-away-no-error (connection debug)
+  (write-goaway-frame connection
+                      0             ; fixme: last processed stream
+                      +no-error+
+                      (map 'vector 'char-code debug))
+  (handler-case (flush-http2-data connection)
+    (cannot-flush () nil)))
+
 (defun connection-error (class connection &rest args)
   "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
 NETWORK-STREAM used."

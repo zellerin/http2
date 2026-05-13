@@ -37,6 +37,7 @@ and do not rely on integer interface."
 (defconstant +log-disconnect+ 1 "A client disconnects. Hooks to CLEANUP-CONNECTION.")
 (defconstant +log-process-data+ 2 "Stream starts processing the request. Hooks to PEER-ENDS-HTTP-STREAM.")
 (defconstant +log-stream-closed+ 3 "Stream is closed. Hooks to CLOSE-HTTP2-STREAM.")
+(defconstant +log-dispatcher-events+ 4 "Dispatcher starts, stops, or changes significantly.")
 
 (defun log-event (old event set)
   "Modified log event list to add or remove EVENT."
@@ -60,6 +61,7 @@ stops logging disconnects.")
     (set-log-event val +log-disconnect+ t)
     (set-log-event val +log-stream-closed+ nil)
     (set-log-event val +log-process-data+ t)
+    (set-log-event val +log-dispatcher-events+ t)
     val)
   "Specifies what events to log. Set it to +log-all+ or +log-nothing+, and use
 SET-LOG-EVENT to fine tune what is logged.")
@@ -92,6 +94,10 @@ some reason."
 (defmethod peer-ends-http-stream :before ((stream logging-stream-mixin))
   (when-logging +log-process-data+
     (log-closed-stream stream "- processing")))
+
+(defun log-dispatcher-event (dispatcher what &rest pars)
+  (when-logging +log-dispatcher-events+
+    (format *log-stream* "~&~a: ~?~%" dispatcher what pars)))
 
 (defclass logging-connection-mixin ()
   ()
