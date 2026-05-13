@@ -43,7 +43,7 @@ May block."
                   (listen stream)
                   (not (eql #'parse-frame-header frame-action)))
         do
-           (force-output stream)
+           (ignore-errors (force-output stream))
            (let* ((buffer (cond ((= size 9) header-buf)
                                 (t (make-octet-buffer size))))
                   (read (read-sequence buffer stream :end size)))
@@ -57,22 +57,14 @@ May block."
                 (return))
                (t
                 (error 'end-of-file :stream (get-network-stream connection))))
-             #-debug (when (null size) (error "Bad handler for ~a" buffer))))
-    (cl+ssl::ssl-error ()
-      ;; peer may close connection and strange things happen
-      (error 'end-of-file :stream (get-network-stream connection)))
-    (connection-error (ce)
-      :test (lambda () (find-restart 'http2/server::close-connection))
-      (warn "Please handle the CONNECTION-ERROR condition instead of establishing restart")
-      (format t "-> We close connection due to ~a~%" ce)
-      (invoke-restart 'http2/server::close-connection))))
+             #-debug (when (null size) (error "Bad handler for ~a" buffer))))))
 
 (defun read-frame (connection &optional (network-stream (get-network-stream connection)))
   "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to
 write, read the header and process it."
   (declare (inline make-octet-buffer)
            (stream-based-connection-mixin))
-  (force-output network-stream)
+  (flush-http2-data connection)
   (let ((buffer (make-octet-buffer 9)))
     (declare (dynamic-extent buffer))
     (when (< (read-sequence buffer network-stream) 9)
