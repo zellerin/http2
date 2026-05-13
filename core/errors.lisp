@@ -54,6 +54,7 @@
 
 (defsection @errors
     (:title "Errors handlers")
+  (http2-condition condition)
   (http2-simple-error condition)
   (http2-simple-warning condition)
   (connection-error condition)
