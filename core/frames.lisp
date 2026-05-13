@@ -42,7 +42,8 @@ The backend must actually process or copy the data during the call. The caller
 is free to modify the octets vectors later. "
   (queue-frame generic-function)
   (queue-frame-region generic-function)
-  (flush-http2-data generic-function))
+  (flush-http2-data generic-function)
+  (get-to-write generic-function))
 
 (defclass write-buffer-connection-mixin ()
   ((to-write :accessor get-to-write :initarg :to-write))
@@ -510,6 +511,9 @@ PARS as its parameters."
   (setf (aref vector (incf start))  (ldb (byte 8 0) stream-id))
   vector)
 
+(defsection @frame-reading ()
+  (process-frames function ))
+
 (defun checked-length (length connection)
   (declare (ftype (function (t) frame-size) get-max-frame-size))
 
@@ -629,6 +633,8 @@ FIXME: might be also continuation-frame-header"
 
 (defun process-frames (connection data)
   "Process DATA as frames by CONNECTION."
+  (declare (type octet-vector data)
+           (type http2-connection connection))
   (loop
     with start of-type frame-size = 0 and end of-type frame-size = (length data)
     with fn of-type receiver-fn = #'parse-frame-header

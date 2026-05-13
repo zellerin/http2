@@ -73,6 +73,9 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
   (:default-initargs :compression-context (make-instance 'hpack-context)
                      :decompression-context (make-instance 'hpack-context)))
 
+(defsection @priority ()
+  (make-priority function))
+
 (defstruct priority
   "Structure capturing stream priority parameters." exclusive stream-dependency weight)
 
