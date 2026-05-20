@@ -65,6 +65,17 @@
     (setf (get-weight stream) weight
           (get-depends-on stream)
           `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+  ;; FIND-JUST-STREAM-BY-ID returns the keyword :CLOSED when the stream-id
+  ;; is no longer in the streams table (already closed and reaped).  RFC 9113
+  ;; sec 5.5 explicitly permits PRIORITY frames on closed streams, and RFC 9218
+  ;; deprecates stream priority entirely, so there is no per-stream state to
+  ;; update.  Without this no-op method, the default method's (setf get-weight)
+  ;; signals "No applicable methods for #<... (SETF GET-WEIGHT) ...> with args
+  ;; (WEIGHT :CLOSED)".  Pattern matches the existing (eql :closed) no-op
+  ;; methods on update-window-size, peer-resets-stream, and get-peer-window-size.
+  (:method ((stream (eql :closed)) exclusive weight stream-dependency)
+    (declare (ignore exclusive weight stream-dependency))
+    nil)
   (:documentation
    "Called when priority frame - or other frame with priority settings set -
 arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
