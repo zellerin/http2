@@ -2,7 +2,16 @@
 
 (in-package :http2/hpack)
 
-(declaim (optimize (speed 3) (safety 1)))
+;; File-level optimization: leave safety at the implementation default
+;; (typically 3 on LispWorks and SBCL).  The previous (speed 3) (safety 1)
+;; declamation reduced bounds checking throughout hpack.lisp, including
+;; in callers of decode-huffman-to-stream, which already lowers safety
+;; to 0 in its inner update-vars flet.  A malformed HEADERS frame
+;; combined with reduced caller-side safety could turn a recoverable
+;; type error into a SIGSEGV in production (rmcs1, 2026-05-22).  The
+;; per-function speed declarations below still apply where intended;
+;; safety stays high on the cross-function dispatch.
+(declaim (optimize (speed 3)))
 
 (defsection @hpack-api
     (:title "HPACK - RFC7541 implementation.")
@@ -550,9 +559,14 @@ Return nil if the complete headers were processed, or index to first unprocessed
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
-               (declare (optimize (safety 0)))
+               ;; safety 1 (not 0) so the aref below has bounds checking;
+               ;; rmcs1 production SIGSEGV (2026-05-22) traced to an aref
+               ;; running past the end of the header block fragment under
+               ;; safety 0.  The per-byte cost is negligible because the
+               ;; hot path is dispatch, not the byte fetch.
+               (declare (optimize (safety 1)))
                (when (> min-prefix nr-size)
-                 (when (= idx end) (return-from decode-huffman-to-stream))
+                 (when (>= idx end) (return-from decode-huffman-to-stream))
                  (let ((old nr))
                    (setf nr 0
                          (ldb (byte 8 8) nr) old
@@ -563,7 +577,10 @@ Return nil if the complete headers were processed, or index to first unprocessed
                (decf nr-size min-prefix)
                (setf nr (ldb (byte nr-size 0) nr)))
              (emit (char) (write-char char char-stream)))
-        (declare (optimize speed (safety 0) space)
+        ;; safety 1 here too -- the inner loop's dispatch shouldn't run
+        ;; with safety 0 in a network-input context.  See rmcs1 SIGSEGV
+        ;; (2026-05-22).
+        (declare (optimize speed (safety 1) space)
                  (notinline update-vars emit))
         (loop (decode))))))
 
