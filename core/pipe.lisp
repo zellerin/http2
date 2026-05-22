@@ -1,5 +1,7 @@
 (in-package #:http2/utils)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection  @buffer-stream-and-pipes
     (:title "Vector backed streams and (buffered) octet pipes")
 

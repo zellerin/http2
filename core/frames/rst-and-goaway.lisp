@@ -1,5 +1,7 @@
 (in-package http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @rst
     ()
   (peer-resets-stream generic-function))
@@ -64,16 +66,20 @@ error was reported.")
       (peer-resets-stream http-stream (aref/wide data 0 4))
       (values #'parse-frame-header 9)))
 
-(defun http-stream-error (e stream &rest args)
-  "We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise
+(defun http-stream-error (error-class stream &rest args)
+  "Handle error in the incoming stream.
+
+We detected a HTTP2-STREAM-ERROR in a peer frame. So we send a RST frame, raise
 appropriate warning in case someone is interested, close affected stream, and
 continue."
-  (let ((e (apply #'make-instance e :stream stream args)))
+  (let ((e (apply #'make-instance error-class :stream stream args)))
+    (declare (http-stream-error e))
+    ;; The error object is created in advance to be able to get its code.
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
-      (flush-http2-data (get-connection stream))
-      (warn e)
-      (close-http2-stream stream))))
+      (flush-http2-data (get-connection stream)))
+    (close-http2-stream stream)
+    (error e)))
 
 (define-frame-type 7 :goaway-frame
     "```

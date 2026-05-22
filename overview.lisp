@@ -32,7 +32,7 @@ part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded
   (@systems-and-packages section)
   (http2/client::@client-api section)
   (http2/server::@server-reference section)
-  (http2/server::@logging section))
+  (http2/stream-overlay::@payload-streams-ref section))
 
 (defsection @systems-and-packages (:title "Systems and packages")
   "The library is split to several subsystems. Most of them depend on other
@@ -54,7 +54,6 @@ priority, and definitely not a blocker."
   (http2/core::@implementation/overview section)
   (http2/hpack::@hpack-api section)
   (http2/core::@data section)
-  (http2/server::@server-reference section)
   (http2/server/poll::@async-server section))
 
 (defsection @test
@@ -81,8 +80,6 @@ priority, and definitely not a blocker."
   "Make package documentation for the release:
 
 - HTML documentation files,
-- README to be distributed with the package
-
-"
+- README to be distributed with the package"
   (mgl-pax:update-asdf-system-readmes @overview "http2")
   (mgl-pax:update-asdf-system-html-docs @index "http2" :pages (pages)))

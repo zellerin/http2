@@ -1,5 +1,7 @@
 (in-package http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defgeneric do-ping (connection data)
   (:documentation
    "Called when ping-frame without ACK is received.

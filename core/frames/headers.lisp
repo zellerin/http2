@@ -2,6 +2,8 @@
 
 (in-package http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @frame-headers
     ()
   (add-header generic-function)
@@ -63,6 +65,17 @@
     (setf (get-weight stream) weight
           (get-depends-on stream)
           `(,(if exclusive :exclusive :non-exclusive) ,stream-dependency)))
+  ;; FIND-JUST-STREAM-BY-ID returns the keyword :CLOSED when the stream-id
+  ;; is no longer in the streams table (already closed and reaped).  RFC 9113
+  ;; sec 5.5 explicitly permits PRIORITY frames on closed streams, and RFC 9218
+  ;; deprecates stream priority entirely, so there is no per-stream state to
+  ;; update.  Without this no-op method, the default method's (setf get-weight)
+  ;; signals "No applicable methods for #<... (SETF GET-WEIGHT) ...> with args
+  ;; (WEIGHT :CLOSED)".  Pattern matches the existing (eql :closed) no-op
+  ;; methods on update-window-size, peer-resets-stream, and get-peer-window-size.
+  (:method ((stream (eql :closed)) exclusive weight stream-dependency)
+    (declare (ignore exclusive weight stream-dependency))
+    nil)
   (:documentation
    "Called when priority frame - or other frame with priority settings set -
 arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
@@ -88,6 +101,19 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
     (http-stream-error (e)
       (log-closed-stream active-stream e)
       (values #'parse-frame-header 9))))
+
+(defsection @log-streams ()
+  (log-closed-stream function))
+
+(defun log-closed-stream (stream e)
+  "Log request information when peer sends all headers or when the request errs for
+some reason..
+
+This is to be bound to HTTP-STREAM-ERROR"
+  (format *log-stream* "~&~A ~@<~A [#~d] ~a ~:>~%"
+          (get-peer-name (get-connection stream)) (get-path stream)
+          (get-stream-id stream) e)
+  (force-output *log-stream*))
 
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
   (handler-case
@@ -320,7 +346,7 @@ expected, and then it is parsed by a different function."
   (values
    (lambda (connection header &optional (start 0) (end (length header)))
      (declare
-      ((simple-array (unsigned-byte 8) *) header old-data)
+      (octet-vector header old-data)
       ((integer 0 #.array-dimension-limit) start end))
      (assert (= 9 (- end start)))
      (multiple-value-bind (frame-type-object length flags http-stream R)
@@ -356,7 +382,7 @@ expected, and then it is parsed by a different function."
              (t
               (values (lambda (connection data start end)
                         (declare (ignore connection))
-                        (declare ((simple-array (unsigned-byte 8) *) data))
+                        (declare (octet-vector data))
                         (let ((full-data (make-octet-buffer (+ length
                                                                (- old-data-end old-data-start)))))
                           (unless (= old-data-start old-data-end)

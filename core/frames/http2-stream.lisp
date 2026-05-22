@@ -1,4 +1,7 @@
 (in-package http2/core)
+
+(declaim (optimize (speed 3) (safety 1)))
+
 ;;;; Interface
 
 

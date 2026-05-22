@@ -14,6 +14,7 @@
   :components ((:file "package")
                (:module "core"
                 :components ((:file "utils")
+                             (:file "buffer-pool")
                              (:file "pipe")
                              (:file "errors")
                              (:file "hpack")

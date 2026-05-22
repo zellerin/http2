@@ -12,8 +12,6 @@ What is logged:
 - Client disconnected"
   (*log-stream* variable))
 
-(defvar *log-stream* (make-synonym-stream '*standard-output*))
-
 (defgeneric log-server-connected (connection)
   (:documentation "Log connection established (with PEER).")
   (:method (connection)
@@ -27,13 +25,3 @@ What is logged:
     (format *log-stream* "~&~A Disconnected ~a~%"
             (get-peer-name connection) error)
     (force-output *log-stream*)))
-
-(defun log-closed-stream (stream e)
-  "Log request information when peer sends all headers or when the request errs for
-some reason..
-
-This is to be bound to HTTP-STREAM-ERROR"
-  (format *log-stream* "~&~A ~@<~A [#~d] ~a ~:>~%"
-          (http2/server::get-peer-name (get-connection stream)) (get-path stream)
-          (http2/core::get-stream-id stream) e)
-  (force-output *log-stream*))

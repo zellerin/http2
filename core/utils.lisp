@@ -2,6 +2,8 @@
 
 (in-package :http2/utils)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @utils (:title "Utilities")
   (find-setting-code function)
   (find-setting-by-id function)
@@ -14,6 +16,7 @@
   (aref/wide function)
   (vector-from-hex-text function)
   (frame-size type)
+  (window-size type)
   (octet-vector type)
 
   (trace-object macro)
@@ -23,15 +26,16 @@
 
 (declaim (inline make-octet-buffer))
 
-#|
-|#
-
 (deftype frame-size ()
   "The size of a frame payload is limited by the maximum size that a
 receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
 setting can have any value between 2^14 (16,384) and 2^24-1
 (16,777,215) octets, inclusive."
   '(unsigned-byte 24))
+
+(deftype window-size ()
+  "A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets."
+  '(unsigned-byte 31))
 
 (defun make-octet-buffer (size)
   "
@@ -365,3 +369,9 @@ reading)."))
       (print-unreadable-object (err out :type t)
         (format out "on ~a" (http2/utils:get-medium err)))
       (call-next-method)))
+
+(defsection @log-basics ()
+  (*log-stream* variable))
+
+(defvar *log-stream* (make-synonym-stream '*standard-output*)
+  "The stream used for generic logging. ")

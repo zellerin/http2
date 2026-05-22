@@ -4,8 +4,12 @@
     (:use :cl :mgl-pax)
   (:import-from #:anaphora #:acond #:aif #:it))
 
+(mgl-pax:define-package #:http2/buffer-pool
+  (:use #:cl)
+  (:import-from #:mgl-pax #:defsection #:section #:macro))
+
 (mgl-pax:define-package :http2/hpack
-  (:use :cl #:anaphora #:http2/utils)
+  (:use :cl #:anaphora #:http2/utils #:http2/buffer-pool)
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term))
 
@@ -16,7 +20,7 @@
     (:use #:cl #:cffi #:mgl-pax #:dref #:http2/utils))
 
 (mgl-pax:define-package :http2/core
-  (:use :cl :http2/hpack :http2/utils)
+  (:use :cl :http2/hpack :http2/utils #:http2/buffer-pool)
   (:import-from :anaphora #:awhen #:acond #:it)
   (:import-from #:mgl-pax #:defsection #:glossary-term #:section
                 #:define-glossary-term)
@@ -27,7 +31,7 @@
   (:use #:cl #:http2/core #:cl+ssl #:mgl-pax #:http2/openssl))
 
 (mgl-pax:define-package #:http2/stream-overlay
-    (:use #:cl #:http2/core #:http2/utils)
+    (:use #:cl #:http2/core #:http2/utils #:mgl-pax)
   (:import-from #:anaphora #:acond #:awhen #:aif #:it))
 
 (mgl-pax:define-package #:http2/client

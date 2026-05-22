@@ -2,6 +2,8 @@
 
 (in-package :http2/core)
 
+(declaim (optimize (speed 3) (safety 1)))
+
 (defsection @frames-for-classes
     ()
   (handle-undefined-frame generic-function)
@@ -12,9 +14,13 @@
   (frame-context class)
   (flush-http2-data generic-function))
 
+(declaim (ftype (function (t) frame-size) get-max-peer-frame-size))
+
 (defclass frame-context ()
-  ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size)
-   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size))
+  ((max-frame-size           :accessor get-max-frame-size           :initarg :max-frame-size
+                             :type frame-size)
+   (max-peer-frame-size      :accessor get-max-peer-frame-size      :initarg :max-peer-frame-size
+                             :type frame-size))
   (:default-initargs :max-frame-size 16384
                      :max-peer-frame-size 16384))
 
@@ -72,6 +78,16 @@ Existing implementations are for:
   (:method ((connection stream-based-connection-mixin) frame)
     (write-sequence frame (get-network-stream connection))
     frame))
+
+(defgeneric queue-frame-region (connection data start length)
+  (:documentation "Send or queue LENGTH octets of DATA starting at START to the connection
+
+Must use the data immediately.")
+  (:method (connection data start length)
+    "Fallback using QUEUE-FRAME."
+    (queue-frame connection (subseq data start (+ start length))))
+  (:method ((connection stream-based-connection-mixin) frame start length)
+    (write-sequence frame (get-network-stream connection) :start start :end (+ start length))))
 
 (defsection @frames-api
     (:title "API for sending and receiving frames")
@@ -392,6 +408,25 @@ Each PARAMETER is a list of name, size in bits or type specifier and documentati
                               ',(mapcar (lambda (a) (intern (symbol-name a) :keyword))
                                         flags))))))
 
+(defun write-vector-frame (http-connection-or-stream type-code keys payload start length)
+  "Optimized version to write frame when the payload is already prepared as an octet vector."
+  (let* ((padded (getf keys :padded))
+         (padded-length (padded-length length padded))
+         (buffer (make-octet-buffer (+ 9 (if padded 1 0))))
+         (connection (get-connection http-connection-or-stream)))
+    (write-frame-header-to-vector buffer 0 padded-length type-code (flags-to-code keys)
+                                  (get-stream-id http-connection-or-stream) nil)
+    (when padded (setf (aref buffer 9) (length padded)))
+    ;; This assumes:
+    ;; - only one thread talks to the connection,
+    ;; - the queue-frame and caller agree on who owns the buffer. Presently, all queue-frame I know about use the payload vector immediately.
+    (queue-frame connection buffer)
+    (queue-frame-region connection payload start length)
+    (when padded (queue-frame connection padded))
+    (when (getf keys :end-stream)
+      (change-state-on-write-end http-connection-or-stream))
+    buffer))
+
 (defun write-frame (http-connection-or-stream length type-code keys
                     writer &rest pars)
   "Universal function to write a frame to a stream and account for possible stream
@@ -402,6 +437,7 @@ frame header (9 octets) and padding octets.
 
 The payload is generated using WRITER object. The WRITER takes CONNECTION and
 PARS as its parameters."
+  (declare (dynamic-extent pars))
   (let* ((padded (getf keys :padded))
          (padded-length (padded-length length padded))
          (buffer (make-octet-buffer (+ 9 padded-length))))
@@ -443,7 +479,7 @@ PARS as its parameters."
   (declare (type (unsigned-byte 24) length)
            (type (frame-code-type) type)
            (type (unsigned-byte 8) flags)
-           (type (simple-array (unsigned-byte 8)) vector)
+           (type octet-vector vector)
            (type stream-id stream-id))
   (setf (aref vector start) (ldb (byte 8 16) length))
   (setf (aref vector (incf start)) (ldb (byte 8 8) length))
@@ -482,7 +518,7 @@ PARS as its parameters."
 
 This function is primarily factored out to be TRACEd to see arriving frames."
   (declare (optimize speed)
-           ((simple-array (unsigned-byte 8) *) header)
+           (octet-vector header)
            (fixnum start)
            ((simple-array t *) *frame-types*))
   (let* ((length (aref/wide header start 3))

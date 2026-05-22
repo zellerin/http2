@@ -1,27 +1,31 @@
 (in-package http2/tests/server)
 
 (deftest add-and-maybe-pass-data/test ()
-  "Test adding new data to the chunks."
+  "Test adding new data to the chunks.
+
+New data is appended to an existing buffer that starts with a logical size of 10
+bytes. Check both flushed segments size, new buffer size,  and return values."
   (flet ((@ (new-data-size expected-new-size chunk-sizes)
              (let* ((buffer (make-octet-buffer 100))
                     (new-data (make-octet-buffer new-data-size))
                     (outputs nil)
                     (cleaner (lambda (client buffer start to)
-                               (declare (ignore client))
-                               (push (subseq buffer start to) outputs)
+                               "Note flushed octets and return their number"
+                               (declare (ignore client buffer))
+                               (push (- to start) outputs)
                                (- to start))))
                (fill new-data 42)
                (fill buffer 10 :end 20)
                (multiple-value-bind (new-size processed)
                    (http2/server/poll::add-and-maybe-pass-data nil buffer new-data 0 (length new-data) 10 cleaner)
                  (is (= new-size expected-new-size))
-                 (is (equalp (mapcar 'length outputs) chunk-sizes))
-                 (is (= processed new-data-size))
-                 (values buffer outputs new-size processed)))))
-    (@ 10 20 nil)
-    (@ 50 60 nil)
-    (@ 95 5 '(100))
-    (@ 200 0 '(110 100))))
+                 (is (equalp outputs chunk-sizes))
+                 (is (= processed new-data-size))))))
+    (@ 10 20 nil) ; 10 existing plus 10 new → 20 total, stays under the flush threshold, nothing emitted.
+    (@ 50 60 nil) ; plus 50 new → 60 total, still under threshold, nothing emitted.
+    (@ 95 5 '(100)) ; 10 + 95 = 105 over max size, emits one full chunk of size 100 via cleaner, leaving 5 buffered.
+    (@ 200 0 '(110 100)) ; fill to full and send (100), other chunks send as-is without using the buffer
+    (values)))
 
 ;;;; Sandbox
 (defsection @poll-pair ())
@@ -53,7 +57,6 @@ MAKE-HTTP2-TLS-CONTEXT."
               (http2/server/poll::ssl-connect (http2/server/poll:client-ssl client))
               (http2/server/poll::add-state client 'http2/server/poll::can-read-bio)
               (http2/server/poll::do-available-actions client)
-              (encrypt-and-send client)
               (sleep 0.1) ; Naggle
               (http2/server/poll::add-state server 'http2/server/poll::can-read-port)
               (http2/server/poll::do-available-actions server)
@@ -145,6 +148,7 @@ AFTER-POLL-FN on them after data exchange."
              :server-context ""))))
     (is (member  #xa0000c1 (http2/openssl::get-codes err))))) ; no shared cipher
 
+#+fixme
 (defun test-send-in-advance (blob-size)
   "Send BLOB-SIZE octets from one TLS endpoint to another before the TLS connection
 is set up. This should be queued and used at the very start of the communication.
@@ -169,9 +173,8 @@ Return number of received octets (that should be same as number of octets sent)"
      :after-poll-fn (constantly nil))
     received))
 
+#+fixme
 (deftest send-in-advance ()
-
-  #+nil
   (dolist (size '(10 100 200 1000)) ;; note: fails for 2000
     (is (equal size (test-send-in-advance size)))))
 

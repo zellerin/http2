@@ -21,14 +21,26 @@ This defines a handler on \"/hello-world\" path that sends reasonable headers, w
 
 In general, the handlers are set using DEFINE-PREFIX-HANDLER or
 DEFINE-EXACT-HANDLER, and are functions typically created by HANDLER macro,
-or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions."
+or (in simple cases) by REDIRECT-HANDLER or SEND-TEXT-HANDLER functions.")
+
+(defsection @handlers (:title "Define handler")
+  "See tutorial @SERVER-CONTENT for the overview."
   (define-prefix-handler macro)
   (define-exact-handler macro)
   (handler type)
   (handler macro)
   (constant-handler macro)
   (redirect-handler function)
-  (send-text-handler function)
+  (send-text-handler function))
+
+(defsection @send-response (:title "Send response")
+  "Customized handlers need to actually prepare and send the response. Response
+usually has some body and headers, and also can end badly and close either the
+stream or even the connection.
+
+In most cases, body is sent by writing to the stream provided by the
+handler."
+  ;; FIXME: move detail to the PAYLOAD-STREAM
   (send-headers function)
   (send-goaway function))
 
@@ -56,12 +68,18 @@ variable.
 ```
 
 "
+  (@request-body section))
+
+(defsection @request-details-reference (:title "Access request parameter")
+  "Here are listed function that allow to access request parameters."
   (get-path generic-function)
   (get-headers (method (HTTP2/core::header-collecting-mixin)))
   (get-method (method (server-stream)))
   (get-scheme (method (server-stream)))
   (get-authority (method (server-stream)))
-  (@request-body section))
+  (get-body (method (body-collecting-mixin)))
+  (http-stream-to-string function)
+  (http2/client::fallback-all-is-ascii class))
 
 (defsection @request-body
     (:title "Body of the request")
@@ -86,10 +104,7 @@ want to read text, as last resort change class of your streams to include
 FALLBACK-ALL-IS-ASCII (or improve IS-UTF8-P, or add some other decoding function).
 
 If you do not want to see text at all, change class to \\NOT include
-UTF8-PARSER-MIXIN or any other conversion mixin."
-  (get-body (method (body-collecting-mixin)))
-  (http-stream-to-string function)
-  (http2/client::fallback-all-is-ascii class))
+UTF8-PARSER-MIXIN or any other conversion mixin.")
 
 (defun send-goaway (code debug-data)
   "Start closing connection, sending CODE and DEBUG-DATA in the go-away frame to
@@ -102,14 +117,11 @@ peer. Must be called from inside of HANDLER macro."
    (prefix-handlers :accessor get-prefix-handlers :initarg :prefix-handlers))
   (:default-initargs :exact-handlers nil :prefix-handlers nil)
   (:documentation
-   "Server with behaviour that is defined by two sets of handlers, exact and
-prefix. Appropriate handler is run to process the request when peer closes the
-http2 stream. The exact handler must match fully the path (so not the query),
-prefix handlers matches when the path starts with the prefix.
+   "Defined two sets of handlers, exact and prefix, for the dispatcher. Appropriate
+handler is run to process the request when peer closes the http2 stream. The exact handler must match fully the path (so not the query), prefix handlers matches when the path starts with the prefix.
 
 Protocol and domain are not checked. The behaviour is implemented in the
-appropriate PEER-ENDS-HTTP-STREAM method.
-"))
+appropriate PEER-ENDS-HTTP-STREAM method."))
 
 (eval-when (:compile-toplevel :load-toplevel)
   (defun define-some-handler (target prefix fn)
@@ -127,7 +139,10 @@ the http request described by STREAM object."
 
  This handler, when called, runs BODY in a context where
 
-- FLEXI-STREAM-NAME is bound to an open flexi stream that can be written to (to write response). On background, written text is converted from CHARSET to octets, possibly compressed by GZIP and split into frames,
+- FLEXI-STREAM-NAME is bound to an open flexi stream that can be written to (to
+  write response). On background, written text is converted from CHARSET to
+  octets, possibly compressed by GZIP and split into frames,
+
 - and two lexical functions are defined, SEND-HEADERS and SEND-GOAWAY.
 
 The SEND-HEADERS sends the provided headers to the STREAM.
@@ -243,8 +258,7 @@ optionally prints activities."))
 (defclass vanilla-server-stream (server-stream
                                  utf8-parser-mixin fallback-all-is-ascii  text-collecting-stream
                                  http2/core::header-collecting-mixin
-                                 body-collecting-mixin
-                                 multi-part-data-stream)
+                                 body-collecting-mixin)
   ()
   (:documentation
    "A server-side stream that can be used as a binary output stream, optionally
@@ -415,7 +429,11 @@ wrapper over START that cannot be customized."
 
 (defsection @server-reference
     (:title "Server API reference")
-  (@dispatchers section))
+  (@dispatchers section)
+  (@handlers section)
+  (@send-response section)
+  (@request-details-reference section)
+  (@logging section))
 
 (defsection @dispatchers
     (:title "Server classes")
@@ -444,7 +462,8 @@ Some predefined combinations are below."
   (poll-dispatcher-mixin class)
   (single-client-dispatcher class)
   (tls-dispatcher-mixin class)
-  (detached-server-mixin class))
+  (detached-server-mixin class)
+  (routing-mixin class))
 
 "-  use polling interface that uses openssl directly,
 - TLS-THREADED-DISPATCHER and DETACHED-TLS-THREADED-DISPATCHER use thread per connection and use CL+SSL,

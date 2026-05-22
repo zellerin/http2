@@ -53,6 +53,7 @@
   (connection-error condition)
   (connection-error function)
   (http-stream-error condition)
+  (http-stream-error-received condition)
   (http-stream-error function)
   (too-big-frame condition)
   (frame-too-small-for-priority condition)
@@ -108,8 +109,10 @@ subclasses. Application must handle it, including closing associated
 NETWORK-STREAM."))
 
 (defmethod print-object ((ce connection-error) out)
-  (print-unreadable-object (ce out :type t)
-    (format out "on ~a" (get-connection ce))))
+  (if *print-escape*
+      (print-unreadable-object (ce out :type t)
+        (format out "on ~a" (get-connection ce)))
+      (call-next-method)))
 
 (define-condition protocol-error (connection-error)
   ()
@@ -118,12 +121,10 @@ NETWORK-STREAM."))
 (define-condition client-preface-mismatch (protocol-error)
   ((received :accessor get-received :initarg :received))
   (:documentation "HTTPS server expects a specific sequence of octets at the start of the new
-connection. The client sent something different."))
-
-(defmethod print-object ((err client-preface-mismatch) out)
-  (with-slots (received) err
-    (print-unreadable-object (err out :type t)
-      (format out "~a ~a" received  (map 'string 'code-char received)))))
+connection. The client sent something different.")
+  (:report (lambda (err out)
+             (with-slots (received) err
+               (format out "Client did not sent the client preface, but ~a"  (map 'string 'code-char received))))))
 
 (define-condition too-big-frame (connection-error)
   ((max-frame-size :accessor get-max-frame-size :initarg :max-frame-size)
@@ -199,9 +200,12 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
   (:documentation
    "Frame cannot be applied to stream in particular state"))
 
-(define-condition http-stream-error (warning)
+(define-condition http-stream-error (error)
   ((code   :accessor get-code   :initarg :code)
-   (stream :accessor get-stream :initarg :stream)))
+   (stream :accessor get-stream :initarg :stream))
+  (:documentation "HTTP stream error was either detected, or received from the peer.
+
+Base class for more detailed errors."))
 
 (defmethod print-object ((err http-stream-error) out)
   (with-slots (stream code) err
@@ -209,39 +213,47 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
         (print-unreadable-object (err out :type t)
           (format out "~d (~a) on ~s"
                   (get-error-name code)
-                  (documentation (get-error-name code) 'variable)
+                  (or (documentation (class-of err) t)
+                      (documentation (get-error-name code) 'variable))
                   stream))
-        (format out "~a" (documentation (get-error-name code) 'variable)))))
+        (call-next-method))))
+
+(define-condition http-stream-error-received (http-stream-error)
+  ())
+
+(defmethod print-object ((err http-stream-error-received) out)
+  (with-slots (stream code) err
+    (if *print-escape*
+        (call-next-method)
+        (format out "Received error: ~a" (documentation (get-error-name code) 'variable)))))
 
 (define-condition incorrect-frame-size (http-stream-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "A PRIORITY frame with a length other than 5 octets MUST be treated as a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received a PRIORITY frame with a length other than 5 octets (Section 5.4.2)"))
 
 (define-condition incorrect-rst-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "A RST_STREAM frame with a length other than 4 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:report
+   "We received a RST_STREAM frame with a length other than 4 octets (Section 5.4.1)"))
 
 (define-condition incorrect-settings-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
   (:documentation
-   "A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+   "We received a SETTINGS frame with a length other than a multiple of 6 (Section 5.4.1)"))
 
 (define-condition incorrect-ping-frame-size (connection-error)
   ()
   (:default-initargs :code +frame-size-error+)
   (:documentation
-   "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+   "We received PING frame with a length field value other than 8 (Section 5.4.1)"))
 
 (define-condition incorrect-window-update-frame-size (connection-error)
   ()
-  (:default-initargs :code +frame-size-error+)
-  (:documentation
-   "Receipt of a PING frame with a length field value other than 8 MUST be treated as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."))
+  (:default-initargs :code +frame-size-error+))
 
 (define-condition unexpected-continuation-frame (protocol-error)
   ()
@@ -249,22 +261,25 @@ size (2^24-1 or 16,777,215 octets), inclusive."))
    "A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
    CONTINUATION frame without the END_HEADERS flag set.  A recipient that
    observes violation of this rule MUST respond with a connection error (Section
-   5.4.1) of type PROTOCOL_ERROR."))
+   5.4.1) of type PROTOCOL_ERROR.")
+  (:report "Continuation frame received when not expected."))
 
 (define-condition stream-protocol-error (http-stream-error)
   ()
-  (:default-initargs :code +protocol-error+))
+  (:default-initargs :code +protocol-error+)
+  (:report "We detected some kind of protocol error."))
 
 (define-condition header-error (stream-protocol-error)
   ((name :accessor get-name :initarg :name)
-   (value  :accessor get-value  :initarg :value)))
+   (value  :accessor get-value  :initarg :value))
+  (:documentation "Base class for various errors in headers"))
 
 (define-condition incorrect-pseudo-header (header-error)
   ())
 
 (define-condition pseudo-header-after-text-header (header-error)
   ()
-  (:documentation "Pseudo header follows text header."))
+  (:documentation "Peer sent a pseudo header after a text header."))
 
 (define-condition incorrect-response-pseudo-header (header-error)
   ())
