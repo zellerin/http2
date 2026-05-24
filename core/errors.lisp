@@ -147,6 +147,11 @@ connection. The client sent something different.")
   (:report "The last header in headers frame was not complete.")
   (:default-initargs :code +compression-error+))
 
+(define-condition decompression-failed (connection-error)
+  ((internal-error :accessor get-internal-error :initarg :internal-error))
+  (:report "Headers frame could not be decompressed.")
+  (:default-initargs :code +compression-error+))
+
 (defmethod print-object ((o too-big-frame) stream)
   (print-unreadable-object (o stream :type t)
     (format stream "Frame size 0x~x, max ~x." (get-frame-size o) (get-max-frame-size o))))
@@ -328,7 +333,7 @@ Base class for more detailed errors."))
    "A request or response containing uppercase header field names MUST be treated
    as malformed. (...) Malformed requests or responses that are detected MUST be
    treated as a stream error of type PROTOCOL_ERROR.")
-  (:report "Header name has an uppercase"))
+  (:report "Header name has an uppercase letter. This is not allowed for HTTP/2."))
 
 (define-condition missing-pseudo-header (header-error)
   ()

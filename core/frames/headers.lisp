@@ -227,13 +227,20 @@ continuation flags, if any, so must be separate."
   (let* ((connection (get-connection http-stream))
          (end-headers (get-flag flags :end-headers))
          (to-backtrace
-           (do-decoded-headers (lambda (name value)
-                                 (when (and (stringp name) (some 'upper-case-p name))
-                                   (http-stream-error 'lowercase-header-field-name
-                                                       http-stream
-                                                       :name name :value value))
-                                 (add-header connection http-stream name value))
-             (get-decompression-context connection) data start end)))
+           (handler-bind
+               ;; Turn all errors during decompression to decompression
+               ;; errors. The exception is header error, where decompression was
+               ;; fine but there was a higher level issue.
+               ((error (lambda (e)
+                         (unless (typep e 'header-error)
+                           (connection-error 'decompression-failed connection :internal-error e)))))
+             (do-decoded-headers (lambda (name value)
+                                   (when (and (stringp name) (some 'upper-case-p name))
+                                     (http-stream-error 'lowercase-header-field-name
+                                                        http-stream
+                                                        :name name :value value))
+                                   (add-header connection http-stream name value))
+               (get-decompression-context connection) data start end))))
     (cond
       ((and end-headers to-backtrace)
        (connection-error 'incomplete-header connection :octets (subseq data to-backtrace end)))

@@ -100,7 +100,7 @@ start at index 1, so leading nil.")
 
 (declaim
  (ftype (function (vector fixnum) fixnum) vector-index-to-hpack-index)
- (ftype (function (hpack-context fixnum) (or cons string)) dynamic-table-value))
+ (ftype (function (hpack-context fixnum) (or cons string keyword)) dynamic-table-value))
 
 (deftype context-table-element ()
   '(or cons string))
@@ -400,7 +400,7 @@ Return the fillable vector."
 (defun read-from-tables (index context)
   "Read item on INDEX in static table or dynamic table in CONNECTION."
   (cond ((zerop index)
-         (error "Decoding error"))
+         (error "No entry on index 0"))
         ((< index (length static-headers-table))
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
