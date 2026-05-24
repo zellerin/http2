@@ -7,6 +7,12 @@
         #:http2/tests/support)
   (:import-from #:http2/hpack #:compile-headers))
 
+(mgl-pax:define-package #:http2/tests/headers
+  (:use #:cl #:fiasco #:http2/core #:mgl-pax
+        #:http2/utils
+        #:http2/tests/support)
+  (:import-from #:http2/core #:get-id-to-use #:get-error-code #:get-debug-data))
+
 (in-package :http2/tests)
 
 (defsection @overview ()

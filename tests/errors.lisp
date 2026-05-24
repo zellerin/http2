@@ -22,6 +22,8 @@
   (http2/client:connect-to-tls-server (puri:uri-host url)
                                       :port (puri:uri-port url)))
 
+(in-package #:http2/tests/headers)
+
 (defun test-bad-headers (headers)
   "As a client, send (presumably incorrect) HEADERS to server and read the response."
   (fiasco:signals http-stream-error
@@ -33,7 +35,7 @@
                                  (loop
                                    with stream = (open-http2-stream connection headers)
                                    do
-                                      (write-goaway-frame connection 1 +no-error+ nil)
+                                      (write-goaway-frame connection 1 http2/core::+no-error+ nil)
                                       ;; if it does not signal eventually we lose.
                                       (http2/client:process-pending-frames connection)))))))
 
@@ -69,8 +71,8 @@
                                                               (:authority "localhost"))
                                                             :end-stream t)
                                          (http2/client:process-pending-frames connection)))))))
-    (fiasco:is (equal (get-error-code err) +protocol-error+))
-    (fiasco:is (equal (map 'string 'code-char (get-debug-data err)) "OUR-ID-CREATED-BY-PEER"))))
+    (fiasco:is (equal (http2/core::get-error-code err) http2/core::+protocol-error+))
+    (fiasco:is (equal (map 'string 'code-char (http2/core::get-debug-data err)) "OUR-ID-CREATED-BY-PEER"))))
 
 (fiasco:deftest send-too-low-stream-id/odd ()
   "Send request with bad stream ID. Should raise a protocol error."
@@ -89,7 +91,7 @@
                                                               (:authority "localhost"))
                                                             :end-stream t)
 
-                                         (setf (get-id-to-use connection) 1)
+                                         (setf (http2/core::get-id-to-use connection) 1)
                                          (open-http2-stream connection
                                                             '((:method "HEAD")
                                                               (:path "/")
@@ -99,7 +101,7 @@
                                          ;; prevent bad id error on our side from S7
                                          (setf (get-id-to-use connection) 9)
                                          (http2/client:process-pending-frames connection)))))))
-    (fiasco:is (equal (get-error-code err) +stream-closed+))
+    (fiasco:is (equal (get-error-code err) http2/core::+stream-closed+))
     (fiasco:is (equal (map 'string 'code-char (get-debug-data err)) "CLOSED-STREAM"))))
 
 #+nil
