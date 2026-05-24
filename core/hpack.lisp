@@ -548,9 +548,9 @@ Return nil if the complete headers were processed, or index to first unprocessed
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
-               (declare (optimize (safety 0)))
+               (declare (optimize (safety 1)))
                (when (> min-prefix nr-size)
-                 (when (= idx end) (return-from decode-huffman-to-stream))
+                 (when (>= idx end) (return-from decode-huffman-to-stream))
                  (let ((old nr))
                    (setf nr 0
                          (ldb (byte 8 8) nr) old
@@ -561,7 +561,7 @@ Return nil if the complete headers were processed, or index to first unprocessed
                (decf nr-size min-prefix)
                (setf nr (ldb (byte nr-size 0) nr)))
              (emit (char) (write-char char char-stream)))
-        (declare (optimize speed (safety 0) space)
+        (declare (optimize speed (safety 1) space)
                  (notinline update-vars emit))
         (loop (decode))))))
 
