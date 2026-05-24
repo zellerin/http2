@@ -61,8 +61,9 @@ buffer are opaque."))
 slot NETWORK-STREAM)."))
 
 (define-condition cannot-flush (communication-error end-of-file)
-  ()
-  (:report "Cannot flush data on a HTTP/2 connection."))
+  ((original-error :accessor get-original-error :initarg :original-error))
+  (:report "Cannot flush data on a HTTP/2 connection. Failed flush might be acceptable when
+we flush before reading data and the connection is not writable any more."))
 
 (defgeneric flush-http2-data (connection)
   (:documentation "Send all the pending connection data to the peer.")
@@ -72,8 +73,8 @@ slot NETWORK-STREAM)."))
   (:method ((connection stream-based-connection-mixin))
     (handler-case
         (force-output (get-network-stream connection))
-      (cl+ssl::ssl-error-syscall ()
-        (error 'cannot-flush :stream connection)))))
+      (error (e)
+        (error 'cannot-flush :stream connection :original-error e)))))
 
 (defgeneric queue-frame (connection frame)
   (:documentation "Send or queue FRAME (octet vector) to the connection.
