@@ -327,7 +327,7 @@ HTTP-STREAM-TO-VECTOR then assembles the text from individual chunks."
   (with-output-to-string (*standard-output*)
     (mapc 'princ (nreverse (get-text http-stream)))))
 
-(defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream http2/stream-overlay::binary-stream)
+(defclass constant-output-stream (trivial-gray-streams:fundamental-binary-output-stream binary-stream)
   ((output-buffer :accessor get-output-buffer))
   (:default-initargs :to-write 0 :to-store 0)
   (:documentation
@@ -410,8 +410,6 @@ frame from START to END.")
 
 (defmethod apply-text-data-frame ((stream text-collecting-stream) text)
   (push text (get-text stream)))
-
-
 
 (defsection @data-write (:title "Writing"))
 

@@ -1,7 +1,6 @@
 (in-package http2/core)
 ;;;; Interface
 
-
 (defsection @streams
     (:title "Streams and connections")
   (get-streams generic-function)

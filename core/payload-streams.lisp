@@ -62,12 +62,6 @@ stream, but not for the server."
 the output-buffer, until it is big enough to send the data as a data frame on
 the underlying stream."))
 
-#+nil
-(defmacro with-output-payload-slots (stream &body body)
-  `(with-slots (base-http2-stream) ,stream
-     (with-slots (connection peer-window-size state output-buffer) base-http2-stream
-       ,@body)))
-
 (defmethod trivial-gray-streams:stream-write-byte ((stream payload-output-stream) byte)
   "Write an octet to the output buffer.
 
@@ -78,16 +72,7 @@ Special cases:
   (write-octet-to-stream (get-base-http2-stream stream) byte))
 
 (defmethod close ((stream payload-output-stream) &key &allow-other-keys)
-  (flush-stream-buffer (get-base-http2-stream stream) t)
-#+nil  (with-output-payload-slots stream
-    ;; FIXME: here we know (aside of intervening setting changes) that the
-    ;; output buffer is smaller than max-frame-size, but it still might be
-    ;; larger than the window.
-
-    ;; Should we handle also RST on send?
-    (unless (eq 'http2/core::closed state)
-      (write-data-frame base-http2-stream output-buffer :end-stream t)
-      (flush-http2-data connection))))
+  (flush-stream-buffer (get-base-http2-stream stream) t))
 
 (defmethod trivial-gray-streams:stream-force-output ((stream payload-output-stream))
   (flush-stream-buffer (get-base-http2-stream stream) nil))
@@ -149,26 +134,8 @@ to sent. Tracks DATA to sent and number of octets actually SENT."))
 
 (defmethod trivial-gray-streams:stream-write-sequence
     ((stream payload-output-stream) sequence start end &key)
-  (http2/core::write-sequence-to-stream (get-base-http2-stream stream) sequence start end)
-#+old  (with-output-payload-slots stream
-    (let ((total-length (- (+ (or end (length sequence))
-                              (length output-buffer))
-                           start)))
-      (loop
-        for frame-size = (get-max-peer-frame-size connection)
-        while (and (>= total-length frame-size))
-        do
-           ;; FIXME: this signals too often, even when window is OK.
-           ;; maybe we should store data away so that it "works", even ineffectively,
-           ;; out of box.
-           ;; and we should not wait but schedule for future.
-           (signal 'window-is-closed :start start :data sequence)
-           (wait-for-window-is-at-least-frame-size connection base-http2-stream)
-           (setf start (send-data stream  sequence start
-                                  (- frame-size (length output-buffer))))
-           (decf total-length frame-size))
-      (loop for idx from start to (1- end)
-            do (vector-push (aref sequence idx) output-buffer)))))
+  (write-sequence-to-stream (get-base-http2-stream stream) sequence start end))
+
 
 (defclass http2-stream-with-input-stream ()
   ((payload-input-stream :accessor get-payload-input-stream :initarg :payload-input-stream)
