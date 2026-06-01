@@ -1,4 +1,4 @@
-;;;; Copyright 2022-2025 by Tomáš Zellerin
+;;;; Copyright 2022-2026 by Tomáš Zellerin
 
 (in-package :http2/client)
 
@@ -16,7 +16,7 @@
                           content-type
                           gzip-content
                           additional-headers)
-  "Encode standard request headers. The obligatory headers are passed as the
+  "Make list of request headers. The obligatory headers are passed as the
 positional arguments. ADDITIONAL-HEADERS are a list of conses, each containing
 header name and value."
   `((:method, (if (symbolp method) (symbol-name method) method))
@@ -96,6 +96,7 @@ And finally, you need to pass these as the call parameter:
     (:title "Client reference")
   "For a simple request without body, following documented methods are called in
 sequence:"
+  (retrieve-url function)
   (fetch-resource (method (t string t)))
   (fetch-resource (method (t puri:uri t)))
   (fetch-resource (method (stream generic-request t)))
@@ -154,7 +155,24 @@ for FETCH-RESOURCE must be defined to actually send the content in data frames."
 (defgeneric fetch-resource (medium url pars)
   (:documentation "Retrieve URL over some medium - HTTP/2 connection, network socket, .....
 
-The ARGS is a property list used by some methods and ignored/passed down by others.")
+The ARGS is a property list used by some methods and ignored/passed down by others.
+
+The first argument, MEDIUM, is where to fetch from. It can be
+
+- A HTTP/2 connection to use,
+- a CL stream (HTTP/2 connection would be build atop it),
+- keyword :CONNECT to open network connection base on the second argument.
+
+The second argument, URL, is what to fetch. It can be:
+
+- an URL string,
+- a PURI object,
+- a request object (instance of some subclass of 'generic-request)
+
+The final argument, PARS is used for transformations:
+
+- It is used for MAKE-INSTANCE call to create request object,
+- it determines type of the request object - either from :request-class parameter or based on :content value.")
 
   (:method (medium (url string) args)
     "Parse URL into PURI:URI object and fetch the resource using that."
@@ -207,8 +225,7 @@ falling back to *DEFAULT-CLIENT-CONNECTION-CLASS*. ARGS are passed to the MAKE-I
        (apply #'make-instance (getf args :connection-class *default-client-connection-class*)
                       :network-stream network-stream
                       args)))
-      (fetch-resource connection request args)
-      (process-pending-frames connection)))
+      (fetch-resource connection request args)))
 
   (:method ((connection client-http2-connection) (request generic-request) args)
     "Open the new stream by sending headers frame to the server.
@@ -226,6 +243,9 @@ Return the new stream."
                            (getf args :additional-headers)))
                   :end-stream (get-no-body request)
                   :end-headers t))
+
+  (:method :after ((connection client-http2-connection) request args)
+    (process-pending-frames connection))
 
   (:method ((connection client-http2-connection) (request request-with-utf8-body) args)
     "Open the HTTP/2 stream and send out the content as UTF-8."
@@ -268,7 +288,7 @@ done."))
                        method content content-fn additional-headers
                        content-type charset gzip-content
                      &allow-other-keys)
-  "Retrieve URL (a string) through HTTP/2 over TLS.
+  "Retrieve resource on URL (a string) through HTTP/2 over TLS.
 
 See FETCH-RESOURCE for documentation of the keyword parameters.
 
@@ -310,8 +330,7 @@ The individual values are:
   ;; parameters are just for documentation purposes
   (declare (ignore method content content-fn
                    content-type charset gzip-content additional-headers))
-  (unwind-protect
-       (handler-case
-           (fetch-resource :connect url pars)
-         (client-done (c)
-           (present-result (get-result c))))))
+  (handler-case
+      (fetch-resource :connect url pars)
+    (client-done (c)
+      (present-result (get-result c)))))
