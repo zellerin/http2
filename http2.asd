@@ -130,8 +130,6 @@ Run these patterns against servers."
   :defsystem-depends-on ("cffi-grovel")
   :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip" "http2/core")
   :pathname "tls"
-  :perform (test-op (o s)
-                    (symbol-call :fiasco '#:run-package-tests :package '#:http2/tests))
   :components ((:cffi-grovel-file "openssl-grovel")
                (:file "openssl")))
 
