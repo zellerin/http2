@@ -1,26 +1,36 @@
-;;;; Copyright 2022 by Tomáš Zellerin
+;;;; Copyright 2022,2026 by Tomáš Zellerin
 
 (in-package :http2/hpack)
 
-(defsection @hpack-api
-    (:title "HPACK - RFC7541 implementation.")
-  "HTTP2 headers can be compressed - and implementation needs to be able to decompress - by two (or maybe three) ways:
+(defsection @hpack-api (:title "HPACK - RFC7541 implementation.")
+  "We implement HPACK as described in the RFC7541.
+Use DO-DECODED-HEADERS to decode data, and COMPILE-HEADERS to encode data."
+  (@hpack-decode section)
+  (@hpack-encode section)
+  (@hpack-context section))
 
-- Headers (with or without value) in static headers table (defined in RFC) can be replaced by appropriate a code,
-
-- Headers being sent out may be cached and after first use in dynamic headers table and later replaced by a code,
-
-- Headers as string can be Huffman compressed."
-  (do-decoded-headers function)
-  (compile-headers function)
-  (*use-huffman-coding-by-default* variable)
-  "Dynamic headers table is implemented by HPACK-CONTEXT class that should be
-  from API point considered opaque. Context is needed twice for each connection,
-  once for each direction of communication."
+(defsection @hpack-context (:title "HPACK Context")
   (hpack-context class)
   (update-dynamic-table-size function)
   (get-dynamic-table-size generic-function)
   (get-updates-needed generic-function))
+
+(defsection @hpack-decode (:title "Decoding received headers")
+  "To prevent resource exhaustion attacks, size of any decoded integer is hard
+limited to ARRAY-DIMENSION-LIMIT, and limit any created string to
+*MAX-STRING-SIZE*. All errors detected related to decoding should be of
+DECODE-ERROR class.
+
+You can find COMPUTE-HEADER-SIZE useful in the callback if you want to enforce
+maximum header size limit."
+  (do-decoded-headers function)
+  (*max-string-size* variable)
+  (decode-error condition)
+  (compute-header-size function))
+
+(defsection @hpack-encode (:title "Encoding headers to send")
+  (compile-headers function)
+  (*use-huffman-coding-by-default* variable))
 
 (defvar static-headers-table
   (vector
@@ -65,23 +75,26 @@ start at index 1, so leading nil.")
    :updates-needed nil)
 
   (:documentation
-   "Dynamic tables implementation: they are stored in an adjustable array, with
-   [0] element storing first element initially (indexed by s+1), and (s+k)th element after k
-   insertions.
+   "Dynamic headers table and other HPACK context relevant data. Context is needed
+twice for each connection, once for each direction of communication."))
 
-   After deletion of D elements, element s+k is stored on index D, element s+1
-   on index
-
-     <----------  Index Address Space ---------->
-     <-- Static  Table -->  <--   Dynamic Table -->
-     +---+-----------+---+  +-----+-----------+-----+
-     | 1 |    ...    | s |  |s+1+D|    ...    |s+k+D| ...deleted...
-     +---+-----------+---+  +-----+-----------+-----+
-                               k                D                 0
-                            <----- table aref index -------------->
-                            ^                   |
-                            |                   V
-                     Insertion Point      Dropping Point"))
+;;;;"Dynamic tables implementation: they are stored in an adjustable array, with
+;;;;   [0] element storing first element initially (indexed by s+1), and (s+k)th element after k
+;;;;   insertions.
+;;;;
+;;;;   After deletion of D elements, element s+k is stored on index D, element s+1
+;;;;   on index
+;;;;
+;;;;     <----------  Index Address Space ---------->
+;;;;     <-- Static  Table -->  <--   Dynamic Table -->
+;;;;     +---+-----------+---+  +-----+-----------+-----+
+;;;;     | 1 |    ...    | s |  |s+1+D|    ...    |s+k+D| ...deleted...
+;;;;     +---+-----------+---+  +-----+-----------+-----+
+;;;;                               k                D                 0
+;;;;                            <----- table aref index -------------->
+;;;;                            ^                   |
+;;;;                            |                   V
+;;;;                     Insertion Point      Dropping Point"
 
 (defmethod print-object ((context hpack-context) stream)
   (print-unreadable-object (context stream :type t)
@@ -105,9 +118,24 @@ start at index 1, so leading nil.")
 (deftype context-table-element ()
   '(or cons string))
 
+
+(define-condition decode-error (error)
+  ()
+  (:report "Error decoding packed headers.")
+  (:documentation "Base class for various errors raised during decoding headers. It should be
+handled to close the connection - decoding context can no longer be synced."))
+
+(define-condition index-too-big (decode-error)
+  ((index :accessor get-index :initarg :index)
+   (table :accessor get-table :initarg :table))
+  (:report "Index to dynamic table is too big."))
+
 (defun vector-index-to-hpack-index (table idx)
   "Convert between hpack index and index in the vector. This works both ways."
-  (- (+ +last-static-header-index+ (length table)) idx))
+  (let ((res (- (+ +last-static-header-index+ (length table)) idx)))
+    (when (minusp res)
+      (error 'index-too-big :table table :index idx))
+    res))
 
 (defun dynamic-table-value (context idx)
   "Header on position IDX in the dynamic table in CONTEXT.
@@ -144,7 +172,9 @@ table. Return the index, or NIL if not found."
 
 (defun compute-header-size (header)
   "Size of the header for dynamic cache purposes: 32 octets plus header and name
-sizes, including leading : at special header names."
+sizes, including leading : at special header names.
+
+Same value is used to compute headers size for purpose of header size limiting."
   (let* ((name (first header))
          (keyword (keywordp name)))
     (+ (if keyword 33 32)
@@ -323,11 +353,18 @@ Each header is a list of form (NAME VALUE &KEY HUFFMAN INDEX):
 
 (defmacro incf* (value-var max)
   `(when (> (incf ,value-var) ,max)
-     (signal 'incomplete-header)))
+     (error 'incomplete-header)))
+
+(define-condition too-big-integer (decode-error)
+  ()
+  (:report "We got to too big integer (above array-dimension-limit) while decoding a header."))
 
 (defun get-integer-from-octet (initial-octet bit-size data start end)
   "Decode an integer from starting OCTET and additional octets in STREAM
-as defined in RFC7541 sect. 5.1."
+as defined in RFC7541 sect. 5.1.
+
+Throws a DECODE-ERROR when the integer starts to get too big to prevent some attacks."
+
   (declare (type (integer 1 8) bit-size)
            (type (unsigned-byte 8) initial-octet))
   (let ((small-res (ldb (byte bit-size 0) initial-octet)))
@@ -343,7 +380,9 @@ as defined in RFC7541 sect. 5.1."
               (setf (ldb (byte 7 shift) res) octet-value)
               (incf* start end)
            when last-octet
-             do (return (+ res small-res)))
+             do (return (+ res small-res))
+           when (> res array-dimension-limit)
+             do (error 'too-big-integer))
          small-res)
      start)))
 
@@ -376,14 +415,24 @@ Return the fillable vector."
   ;; FIXME: split out http2 utils so that we can have package hierarchy
   (values (decode-huffman data start (+ start len)) (+ start len)))
 
+(defvar *max-string-size* 4096
+  "Maximum size a header string can have. This is to limit possible exhaustion attacks. See [RFC](https://datatracker.ietf.org/doc/html/rfc7541#section-7.4).")
+
+(define-condition header-string-too-long (decode-error)
+  ((size :accessor get-size :initarg :size)
+   (data :accessor get-data :initarg :data))
+  (:report "Header bigger than *max-string-size* was received for decoding."))
+
 (defun read-string-from-stream (data start end)
   "Read string literal from a STREAM as defined in RFC7541 sect 5.2. "
   (let* ((octet0 (aref data start)))
     (incf* start end)
     (multiple-value-bind (size start)
         (get-integer-from-octet octet0 7 data start end)
-      (if (> (+ start size) end)
-          (signal 'incomplete-header))
+      (when (> size *max-string-size*)
+        (error 'header-string-too-long :size size :data data))
+      (when (> (+ start size) end)
+        (error 'incomplete-header))
       (if (plusp (ldb (byte 1 7) octet0))
           (values (read-huffman size data start) (+ size start))
           (loop with res = (make-array size
@@ -397,10 +446,14 @@ Return the fillable vector."
                 finally (return (values res string-end)))))))
 
 
+(define-condition no-zero-index-entry (decode-error)
+  ()
+  (:report "There is no static entry with index 0."))
+
 (defun read-from-tables (index context)
   "Read item on INDEX in static table or dynamic table in CONNECTION."
   (cond ((zerop index)
-         (error "No entry on index 0"))
+         (error 'no-zero-index-entry))
         ((< index (length static-headers-table))
          (aref static-headers-table index))
         (t (dynamic-table-value context index))))
@@ -457,7 +510,14 @@ Can also return NIL if no header is available if it is not detected earlier; thi
 (defun do-decoded-headers (fn context data &optional (start 0) (end (length data)))
   "Call FN on each header decoded from DATA between START and END.
 
-Return nil if the complete headers were processed, or index to first unprocessed octet."
+Return nil if the complete headers were processed, or index to first unprocessed
+octet. Can raise DECODE-ERROR (and possibly some other generic errors as
+well). In such case, connection should be aborted, as the context is no longer
+in sync.
+
+Callback can also detect stream-level errors. If they are handled by stream
+reset - as opposed to connection close - these should not stop processing of
+following headers, as this would desync the context."
   (loop
     with to-backtrace = start           ; when to restart if needed
     while (< start end)
