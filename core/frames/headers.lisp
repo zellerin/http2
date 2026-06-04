@@ -9,22 +9,40 @@
   (header-collecting-mixin class)
   (get-headers (method nil header-collecting-mixin)))
 
+(defvar *max-headers-size* 8192
+  "Maximum allowed size for received headers per stream. Calculated as per RFC. NIL
+is unlimited and not recommended in live environments.")
+(defvar *max-headers-count* nil
+  "Maximum number of headers per stream. NIL is unlimited.")
+
 (defclass header-collecting-mixin ()
-  ((headers :accessor get-headers :initarg :headers
-            :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc."))
-  (:default-initargs :headers nil)
+  ((headers              :accessor get-headers              :initarg :headers
+                         :documentation "List of collected (header . value) pairs. Does not include `:method`, `:path`, etc.")
+   (current-header-size  :accessor get-current-header-size  :initarg :current-header-size)
+   (current-header-count :accessor get-current-header-count :initarg :current-header-count))
+  (:default-initargs :headers nil :current-header-size 0)
   (:documentation
    "Collects all observed headers (except pseudo-headers)."))
 
+(define-condition header-resources-error (header-error)
+  ())
+
+(define-condition too-large-headers (header-resources-error)
+  ()
+  (:report "Headers are larger than internal limit."))
+
+(define-condition too-many-headers (header-resources-error)
+  ()
+  (:report "Number of headers reaches internal limit."))
 
 (defgeneric add-header (connection stream name value)
   (:method (connection stream name value)
     #+nil    (warn 'no-new-header-action :header name :stream stream))
-    (:method :before (connection stream (name symbol) value)
-      (when (get-seen-text-header stream)
-        (http-stream-error 'pseudo-header-after-text-header stream
-                           :name name
-                           :value value)))
+  (:method :before (connection stream (name symbol) value)
+    (when (get-seen-text-header stream)
+      (http-stream-error 'pseudo-header-after-text-header stream
+                         :name name
+                         :value value)))
 
   (:method  (connection (stream server-stream) (name symbol) value)
     (case name
@@ -41,7 +59,18 @@
                           :name name :value value))))
 
   (:method (connection (stream header-collecting-mixin) name value)
-    (push (cons name value) (get-headers stream))))
+    (with-slots (headers current-header-count current-header-size) stream
+      (push (cons name value) headers)
+      (when *max-headers-size*
+        (incf current-header-size (compute-header-size (list name value)))
+        (when (> current-header-size *max-headers-size*)
+          ;; This can be later invoked stream error, but for now play safe and disconnect the offender
+          (connection-error 'too-large-headers connection)))
+      (when *max-headers-count*
+        (incf current-header-count)
+        (when (> current-header-count *max-headers-count*)
+          ;; This can be later invoked stream error, but for now play safe and disconnect the offender
+          (connection-error 'too-many-headers connection))))))
 
 (defgeneric process-end-headers (connection stream)
 
@@ -107,11 +136,12 @@ arrives. Does nothing, as priorities are deprecated in RFC9113 anyway."))
   (log-closed-stream function))
 
 (defun parse-simple-frames-header-end-all (connection data &optional (start 0) (end (length data)))
-  (handler-case
-      (read-and-add-headers data (car (get-streams connection)) start end 5 5)
-    (http-stream-error (e)
-      (log-closed-stream (car (get-streams connection)) e)
-      (values #'parse-frame-header 9))))
+  (let ((stream (car (get-streams connection))))
+    (handler-case
+        (read-and-add-headers data stream start end 5 5)
+      (http-stream-error (e)
+        (log-closed-stream stream e)
+        (values #'parse-frame-header 9)))))
 
 (defun parse-headers-frame  (active-stream flags)
   "Read incoming headers and call ADD-HEADER callback for each header.
