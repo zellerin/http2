@@ -251,22 +251,20 @@ C.2.  Header Field Representation Examples ; ;
                          '("200" "private" "Mon, 21 Oct 2013 20:13:22 GMT" "https://www.example.com" "gzip" "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"))))
 
 ;; Test limits
+(defun verify-decoder-error (text)
+  (fiasco:signals decode-error
+    (do-decoded-headers (constantly nil) (make-instance 'hpack-context) (vector-from-hex-text text))))
+
 (fiasco:deftest test-header-too-big-string ()
   "If the signalled size of a encoded string exceeds limit, do not make that
 string."
-  (fiasco:signals decode-error ; header-string-too-long
-    (test-header-decoder nil "00FFD4D18C6318C6318C6318"
-                         nil nil)))
+  (verify-decoder-error "00FFD4D18C6318C6318C6318"))
 
 (fiasco:deftest test-header-neg-index ()
   "Would build a too big string"
-  (fiasco:signals decode-error          ; index-too-big
-    (test-header-decoder (make-instance 'hpack-context)
-                         "0FFD4D18C6318C6318C63180"
-                         nil nil)))
+  (verify-decoder-error "0FFD4D18C6318C6318C63180"))
 
 (fiasco:deftest test-header-zero-index ()
-  (fiasco:signals decode-error ; no-zero-index-entry
-    (test-header-decoder nil "80" nil nil)))
+  "Try to get index zero of static page")
 
 ;;;; Can we test a long huffman padding?
