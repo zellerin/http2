@@ -29,6 +29,8 @@ part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded
   (http2/server::@request-details section))
 
 (defsection @reference (:title "API documentation")
+  "This is part of the HTTP/2 documentation that provides reference
+documentation. See also @OVERVIEW and @TUTORIALS."
   (@systems-and-packages section)
   (http2/client::@client-api section)
   (http2/server::@server-reference section)
@@ -61,10 +63,7 @@ priority, and definitely not a blocker."
   (foobar foobar))
 
 (defun pages ()
-  `(#+nil (:objects ()
-     :uri-fragment "overview.html"
-     :source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2" :git-version "master"))
-    (:source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
+  `((:source-uri-fn ,(make-git-source-uri-fn "http2" "https://github.com/zellerin/http2"
                                              :git-version "master")
      :uri-fragment "index.html")
 
@@ -81,5 +80,8 @@ priority, and definitely not a blocker."
 
 - HTML documentation files,
 - README to be distributed with the package"
-  (mgl-pax:update-asdf-system-readmes @overview "http2")
-  (mgl-pax:update-asdf-system-html-docs @index "http2" :pages (pages)))
+  (let ((*default-pathname-defaults* (asdf:system-relative-pathname "http2" "doc/")))
+    (mgl-pax:update-asdf-system-readmes @overview "http2")
+    (mgl-pax:update-asdf-system-html-docs @index "http2" :pages (pages))))
+;
+; emacs-lisp: (bind-key

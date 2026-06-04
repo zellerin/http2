@@ -278,9 +278,6 @@ continuation flags, if any, so must be separate."
        (process-end-headers connection http-stream)
        (maybe-end-stream header-flags http-stream)
        (values #'parse-frame-header 9))
-#+sameasbelow      (to-backtrace
-       (values (read-continuation-frame-on-demand http-stream data to-backtrace end header-flags)
-               9))
       (t
        ;; We read full headers, but we need to read more (continuation frame)
        ;; FIXME: simplify it for this case and write tests for this

@@ -132,8 +132,7 @@ continue."
     (cannot-flush () nil)))
 
 (defun connection-error (class connection &rest args)
-  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition].
-NETWORK-STREAM used."
+  "Send \\GOAWAY frame to the PEER and raise the CONNECTION-ERROR[condition]."
   (let ((err (apply #'make-condition class :connection connection args)))
     (with-slots (code) err
       (write-goaway-frame connection

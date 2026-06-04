@@ -265,12 +265,9 @@ the first parameter."
   "Open HTTP/2 stream (typically, from client side) by sending headers.
 
 - STREAM-PARS are used as parameters for creating new stream instance.
-
-- HEADERS are headers to be send for the client. You can use REQUEST-HEADERS to
-  get necessary headers.
-
+- HEADERS is an ordered list of headers to be send for the client. You can use
+  HTTP2/CLIENT::REQUEST-HEADERS to get necessary headers.
 - END-HEADERS is aflag to the server that no more headers would be sent; true by default.
-
 - END-STREAM is a flag to the server that there would be no payload."
   (send-headers (create-new-local-stream connection stream-pars)
                 headers
