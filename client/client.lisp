@@ -210,9 +210,11 @@ Note that some of the methods actually wait to get the responses."
                                      :port (or (puri:uri-port parsed-url) 443))))
         (unwind-protect
              (fetch-resource network-stream request args)
-          (handler-case
-              (close network-stream)
-            (cl+ssl::ssl-error-zero-return ()))))))
+          (if (getf args :close)
+              (handler-case
+                  (close network-stream)
+                (cl+ssl::ssl-error-zero-return ()))
+              (force-output network-stream))))))
 
   (:method ((network-stream stream) (request generic-request) args)
     "Open HTTP/2 connection over the STREAM and fetch the resource using this connection.
@@ -261,7 +263,14 @@ Return the new stream."
 
 (defun drakma-style-stream-values (raw-stream &key close-stream)
   "Return values as from DRAKMA:HTTP-REQUEST. Some of the values are meaningless,
-but kept for compatibility purposes."
+but kept for compatibility purposes:
+
+- Result content (text or octet string, depending on content type),
+- return code,
+- headers alist,
+- simulated target URL (always \"/\"),
+- used connection (can be reused),
+- simulated reason phrase (constant string)"
   (values
    (or (get-body raw-stream) (http-stream-to-string raw-stream))
    (parse-integer (get-status raw-stream))
@@ -274,6 +283,7 @@ but kept for compatibility purposes."
 (define-condition client-done (condition)
   ((result :accessor get-result :initarg :result
            :initform nil))
+  (:report "Client received complete answer that should be handled.")
   (:documentation
    "Handled by RETRIEVE-URL. The client should signal it when the processing is
 done."))
@@ -334,3 +344,11 @@ The individual values are:
       (fetch-resource :connect url pars)
     (client-done (c)
       (present-result (get-result c)))))
+
+#+docme
+(multiple-value-bind (body code headers path conn)
+    (http2/client:retrieve-url "https://localhost:8080/" :close nil)
+  (unwind-protect
+       (handler-case (http2/client::fetch-resource conn "https://localhost:8080/foo" nil)
+         (http2/client::client-done (c) (http2/client::present-result (http2/client::get-result c))))
+    (http2/core::send-go-away-no-error conn "Ok")))
