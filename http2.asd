@@ -46,7 +46,6 @@
   :description "An example of http/2 client"
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
   :license  "MIT"
-  :version "2.0.4"
   :serial t
   :pathname "client"
   :depends-on ("cl+ssl" "puri" "http2/stream-based")
@@ -79,7 +78,7 @@
 
 
 (defsystem "http2"
-  :version "2.0.3"
+  :version "2.1"
   :depends-on ("http2/client" "http2/server" "http2/server/poll")
   :components ((:file "overview"))
   :description "HTTP/2 library, including a sample client and server.
@@ -96,7 +95,6 @@ Run these patterns against servers."
   ((:file "client/payload-tests")))
 
 (defsystem "http2/test"
-  :version "0.1"
   :depends-on ("http2" "fiasco")
   :pathname "tests"
   :perform (test-op (o s)
@@ -126,7 +124,6 @@ Run these patterns against servers."
                (:file "server/tcpip")))
 
 (defsystem "http2/openssl"
-  :version "0.1"
   :defsystem-depends-on ("cffi-grovel")
   :depends-on ("cffi" "mgl-pax" "anaphora" "http2/tcpip" "http2/core")
   :pathname "tls"
@@ -146,7 +143,6 @@ Run these patterns against servers."
   :description "HTTP/2 server interface. Provides access to an implementation of a HTTP/2 server
 - both for running the server and for defining content."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.3"
   :serial t
   :depends-on ("http2/server/threaded" "http2/server/poll")
   :pathname "server")
@@ -154,7 +150,6 @@ Run these patterns against servers."
 (asdf:defsystem "http2/server/demo"
   :description "Demo content for the HTTP/2 server."
   :author "Tomáš Zellerin <tomas@zellerin.cz>"
-  :version "2.0.3"
   :serial t
   :depends-on ("http2/server" "cl-who" "parenscript" "let-over-lambda")
   :pathname "server"
