@@ -322,7 +322,8 @@ signalled."
               (setup-connection connection)
               (process-pending-frames connection nil #'parse-client-preface (length +client-preface-start+))
               (cleanup-connection connection))
-          (end-of-file (e) (invoke-restart 'close-connection e)))
+          (end-of-file (e) (invoke-restart 'close-connection e))
+          (communication-error (e) (invoke-restart 'close-connection e)))
       (close-connection (error)
         :report "Cleanly close current connection"
         :interactive (lambda () (list "Interactive restart"))
