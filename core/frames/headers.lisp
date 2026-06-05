@@ -11,7 +11,8 @@
 
 (defvar *max-headers-size* 8192
   "Maximum allowed size for received headers per stream. Calculated as per RFC. NIL
-is unlimited and not recommended in live environments.")
+is unlimited and not recommended in live environments. It is announced in
+SETTINGS frame.")
 (defvar *max-headers-count* nil
   "Maximum number of headers per stream. NIL is unlimited.")
 
@@ -60,17 +61,19 @@ is unlimited and not recommended in live environments.")
 
   (:method (connection (stream header-collecting-mixin) name value)
     (with-slots (headers current-header-count current-header-size) stream
-      (push (cons name value) headers)
       (when *max-headers-size*
         (incf current-header-size (compute-header-size (list name value)))
         (when (> current-header-size *max-headers-size*)
           ;; This can be later invoked stream error, but for now play safe and disconnect the offender
+          (setf headers nil)
           (connection-error 'too-large-headers connection)))
       (when *max-headers-count*
         (incf current-header-count)
         (when (> current-header-count *max-headers-count*)
+          (setf headers nil)
           ;; This can be later invoked stream error, but for now play safe and disconnect the offender
-          (connection-error 'too-many-headers connection))))))
+          (connection-error 'too-many-headers connection)))
+      (push (cons name value) headers))))
 
 (defgeneric process-end-headers (connection stream)
 

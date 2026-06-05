@@ -346,6 +346,7 @@ multiple threads.")
   (:method-combination append)
   (:method append (connection)
     `((:max-frame-size . ,(get-max-peer-frame-size connection))
+      ,@(when *max-headers-size* `((:max-header-list-size . ,*max-headers-size*)))
       (:header-table-size .
                           ,(get-dynamic-table-size (get-decompression-context connection)))))
   (:method append ((connection client-http2-connection))
