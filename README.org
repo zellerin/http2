@@ -2,10 +2,10 @@
 
 [[https://github.com/zellerin/http2/actions/workflows/test.yml/badge.svg]]
 
-This is an implementation of HTTP/2 protocol as described in RFC9113 (and
-RFC7540 before) and RFC7541 (HPACK). It provides both high-level interface as
-well as ways to fine tune its behaviour for better performance or specific use
-cases.
+This is version 2.1 of an implementation of HTTP/2 protocol as described in
+RFC9113 (and RFC7540 before) and RFC7541 (HPACK). It provides both high-level
+interfaces (client, threaded server and polling server) as well as ways to fine
+tune its behaviour for better performance or specific use cases.
 
 For quick start, quickload "http2" and run
 #+begin_src lisp
@@ -21,14 +21,18 @@ to start an empty TLS server and serve a "Hello world" page.
 
 Check [[https://doc.zellerin.cz/http2/#HTTP2:@TUTORIALS%20MGL-PAX:SECTION][tutorials]] that show in more detail how to use the client or the server.
 
+See [[./Changelog.org][Changelog]] for changes in this version; some might be incompatible. There are
+quite a few fixes there as well. Thanks to John Mallery for discussion, bug
+reports, ideas, and fixes in this version.
+
 ** Demo pages
 
 Simple demo can be started by running
 : sbcl --script scaffolding/run-server.lisp
 
-It opens two web server, multi-threaded one https://localhost:8080 and a polling
-one on https://localhost:8081. Both should be functionally equivalent with a
-different backend. Both provide a ~/test~ page that tests some more tricky parts
+It opens two web servers, multi-threaded one https://localhost:8080/demo/ and a polling
+one on https://localhost:8081/demo. Both should be functionally equivalent with a
+different backend. Both provide a ~/demo/test~ page that tests some more tricky parts
 of the backend in the browser.
 
 ** Status
@@ -41,32 +45,19 @@ Tested primarily on sbcl, occasionally on ecl.
 Almost all parts of the listed standards implemented, not necessary documented or declared stable
 
 ** Missing pieces
+See [[./Changelog.org]] for planned changes.
+
 - No handling of priorities is implemented. This is more or less OK, as these are
   only suggestions, and they are more or less dropped in RFC9113 anyway. But
   nothing from RFC9218 is implemented neither (except for the setting).
 - Push promises are not implemented in the client. This is OK, they are disabled
   by default (settings)
-- The MAX-HEADER-LIST-SIZE limit is not enforced, but it is declared as an
-  advisory setting anyway.
 - Some checks on behaviour of the peer are not enforced
-- The ping and setting frames are not automatically prioritized (they are
-  replied as soon as processed, but nothing prevent finishing long response
-  before that)
+- Quite a few things are out of scope and left to application to handle. Cookie handling, GET parameters extraction, ...
 
 ** Dependencies
 
-The core library used trivial-gray-streams to implement streams over data frames.
-
-Client and server - or at least some server versions - require usocket and
-cl+ssl to talk over TLS, and bordeaux-threads for concurrency.
-
-Client and server use puri to manipulate URLs.
-
-Server also uses cffi directly to check and confirm alpn
-
-Documentation is done with mgl-pax.
-
-Additionally, fiasco is used for testing (and Javascript for browser-side testing).
+The core library used trivial-gray-streams to implement streams over data frames. Server and client libraries have [[https://doc.zellerin.cz/http2/reference.html#HTTP2:@SYSTEMS-AND-PACKAGES%20MGL-PAX:SECTION][other dependencies]], but not extensive
 
 ** Speed & scaling
 The code was not written with speed as primary concern. Measurements depend on

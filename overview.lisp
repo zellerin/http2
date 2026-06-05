@@ -28,24 +28,27 @@ part of the HTTP2/SERVER system. This system is also loaded when HTTP2 is loaded
   (http2/server::@server-content section)
   (http2/server::@request-details section))
 
-(defsection @reference (:title "API documentation")
+(defsection @reference (:title "Reference documentation")
   "This is part of the HTTP/2 documentation that provides reference
 documentation. See also @OVERVIEW and @TUTORIALS."
   (@systems-and-packages section)
   (http2/client::@client-api section)
   (http2/server::@server-reference section)
+  (http2/core::@errors section)
   (http2/stream-overlay::@payload-streams-ref section))
 
 (defsection @systems-and-packages (:title "Systems and packages")
   "The library is split to several subsystems. Most of them depend on other
 quicklisp-loadable components, see the graph.
 
-![systems](./systems.svg)
-"
+![systems](./systems.svg)"
   (http2 asdf:system)
   (http2/server asdf:system)
+  (http2/client asdf:system)
+  (http2/server/demo asdf:system)
   (http2/server package)
-  (http2/client package))
+  (http2/client package)
+  (http2/core package))
 
 (defsection @implementation
     (:title "Implementation details (not part of API)")

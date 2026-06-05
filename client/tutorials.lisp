@@ -44,8 +44,8 @@ same. Some notable differences are:
 - The redirects are not handled transparently. What is returned is returned.
 - It is your responsibility to make sure that the HTTP/2 headers are
   correct (lowercase, order).
-- You cannot get stream on output to work with. However, you get the connection, and you
-  can use it for further requests.
+- You cannot get stream on output to work with. However, you get the connection,
+  and if you prevent closing it (:close nil) you can use it for further requests.
 
 Basically, the differences fall into two areas, that it does not (yet) provide
 all the features of Drakma, and HTTP/2 is different.")

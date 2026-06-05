@@ -30,34 +30,33 @@ to serve requests.
 
 May block."
   (declare (stream-based-connection-mixin connection))
-  (handler-case
-      (loop
-        with frame-action = initial-action
-        and size = initial-size
-        and stream = (get-network-stream connection)
-        ;; Reusable buffer for 9-byte frame headers (the common case).
-        ;; Payload buffers vary in size and are allocated per frame.
-        and header-buf = (make-octet-buffer 9)
-                  ;; Prevent ending when waiting for payload
-        while (or (null just-pending)
-                  (listen stream)
-                  (not (eql #'parse-frame-header frame-action)))
-        do
-           (ignore-errors (force-output stream))
-           (let* ((buffer (cond ((= size 9) header-buf)
-                                (t (make-octet-buffer size))))
-                  (read (read-sequence buffer stream :end size)))
-             (cond
-               ((= size read)
-                (multiple-value-setq
-                    (frame-action size)
-                  (funcall frame-action connection buffer)))
-               ;; The connection just closes without goaway
-               ((and (zerop read) (equal frame-action #'parse-frame-header))
-                (return))
-               (t
-                (error 'end-of-file :stream (get-network-stream connection))))
-             #-debug (when (null size) (error "Bad handler for ~a" buffer))))))
+  (loop
+    with frame-action = initial-action
+    and size = initial-size
+    and stream = (get-network-stream connection)
+    ;; Reusable buffer for 9-byte frame headers (the common case).
+    ;; Payload buffers vary in size and are allocated per frame.
+    and header-buf = (make-octet-buffer 9)
+    ;; Prevent ending when waiting for payload
+    while (or (null just-pending)
+              (listen stream)
+              (not (eql #'parse-frame-header frame-action)))
+    do
+       (ignore-errors (force-output stream))
+       (let* ((buffer (cond ((= size 9) header-buf)
+                            (t (make-octet-buffer size))))
+              (read (read-sequence buffer stream :end size)))
+         (cond
+           ((= size read)
+            (multiple-value-setq
+                (frame-action size)
+              (funcall frame-action connection buffer)))
+           ;; The connection just closes without goaway
+           ((and (zerop read) (equal frame-action #'parse-frame-header))
+            (return))
+           (t
+            (error 'end-of-file :stream (get-network-stream connection))))
+         #-debug (when (null size) (error "Bad handler for ~a" buffer)))))
 
 (defun read-frame (connection &optional (network-stream (get-network-stream connection)))
   "Read one frame related to the CONNECTION from STREAM. Flush outstanding data to

@@ -8,6 +8,7 @@
 (defsection @client-api (:title "HTTP/2 client API")
   "There is a simple client in the package http2/client."
   (retrieve-url function)
+  (fetch-resource generic-function)
   (request-headers function)
   (drakma-style-stream-values function))
 
@@ -172,7 +173,8 @@ The second argument, URL, is what to fetch. It can be:
 The final argument, PARS is used for transformations:
 
 - It is used for MAKE-INSTANCE call to create request object,
-- it determines type of the request object - either from :request-class parameter or based on :content value.")
+- it determines type of the request object - either from :REQUEST-CLASS parameter or based on :CONTENT value,
+- when new connection is created on a stream, :CLOSE parameter determines if it would be closed. Set it to NIL to keep it")
 
   (:method (medium (url string) args)
     "Parse URL into PURI:URI object and fetch the resource using that."
@@ -210,7 +212,7 @@ Note that some of the methods actually wait to get the responses."
                                      :port (or (puri:uri-port parsed-url) 443))))
         (unwind-protect
              (fetch-resource network-stream request args)
-          (if (getf args :close)
+          (if (getf args :close t)
               (handler-case
                   (close network-stream)
                 (cl+ssl::ssl-error-zero-return ()))

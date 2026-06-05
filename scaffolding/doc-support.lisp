@@ -11,8 +11,13 @@
   (uiop:run-program (list "dot" "-Tsvg" "-o" svg gv2)))
 
 (defun update-graphs ()
-  (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/stream-errors.gv") '(http2/core:http-stream-error)))
-  (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/connection-errors.gv") '(http2/utils:communication-error)))
+  (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/stream-errors.gv") '(http2/core:http-stream-error)
+                                        '(error serious-condition http2-condition)))
+  (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/communication-errors.gv")
+                                        '(http2/utils:communication-error)
+                                        '(http2/core:connection-error error simple-warning warning standard-object serious-condition condition
+                                          simple-error simple-condition http2-condition HTTP2/OPENSSL:OTHER-SSL-ERROR end-of-file)))
+  (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/connection-errors.gv") '(http2/core:connection-error)))
   (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/connection-classes.gv") '(http2/core:http2-connection)
                                         '(http2/core:flow-control-mixin standard-object http2/core::test-buffered-stream)))
   (draw-from-gv (dot-stuff:draw-classes (asdf:system-relative-pathname "http2" "doc/stream-classes.gv") '(http2/core:http2-stream)

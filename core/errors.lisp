@@ -54,22 +54,29 @@
 
 (defsection @errors
     (:title "Errors handlers")
+  "The library raises errors and conditions. The ones to handle are documented here."
   (http2-condition condition)
-  (http2-simple-error condition)
-  (http2-simple-warning condition)
-  (connection-error condition)
+  (communication-error condition)
+  "Use CONNECTION-ERROR function to signal a CONNECTION-ERROR condition and inform
+peer. It has many subclasses that may change in time.
+ ![Connection errors](./connection-errors.svg)"
   (connection-error function)
+  (connection-error condition)
+
+  "Use HTTP-STREAM-ERROR function to signal a HTTP-STREAM-ERROR condition and
+inform peer. Again, the subclasses may change with time.
+![Stream errors](./stream-errors.svg)"
   (http-stream-error condition)
   (http-stream-error-received condition)
   (http-stream-error function)
-  (too-big-frame condition)
-  (frame-too-small-for-priority condition)
   (go-away condition)
+  (go-away-no-error condition)
   (do-goaway generic-function)
   (h2-not-supported-by-server condition))
 
 (define-condition http2-condition ()
-  ())
+  ()
+  (:documentation "Base class for all HTTP/2 stream and connection related sitations."))
 
 (define-condition go-away (communication-error http2-condition)
   ((error-code     :accessor get-error-code     :initarg :error-code
@@ -93,7 +100,8 @@
                (format stream
                        "~@<~W closed connection normally. ~@[~_Debug data: ~W.~]~:>"
                        medium
-                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data)))))))
+                       (and (plusp (length debug-data)) (map 'string 'code-char debug-data))))))
+  (:documentation "Signalled when peer closes connection normally."))
 
 (define-condition http2-error (http2-condition error)
   ()
@@ -110,10 +118,10 @@
   ((medium :accessor get-connection :initarg :connection)
    (code       :accessor get-code       :initarg :code))
   (:documentation
-   "A connection error is signalled when we detect an illegal frame content.
+   "A connection error is signalled when we detect an illegal content from the peer.
 
 Use [CONNECTION-ERROR][function] function to signal it or its
-subclasses. Application must handle it, including closing associated
+subclasses. A server should handle it, including closing the associated
 NETWORK-STREAM."))
 
 (defmethod print-object ((ce connection-error) out)

@@ -41,7 +41,9 @@ There is now
 - *LOG-EVENT-TYPES* that defines what should be logged,    and
 - LOGGING-STREAM-MIXIN and LOGGING-CONNECTION-MIXIN that log specific events
 
-VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these streams.
+VANILLA-HTTP2-STREAM and VANILLA-SERVER-CONNECTION now inherit from these
+streams. Make your own class, or set *LOG-EVENT-TYPES* to +LOG-NOTHING+, if you
+do not want to see logging.
 
 ** Introspection
 - GET-CONNECTIONS :: new generic functions on dispatchers. Intended for monitoring and tracking.
@@ -85,7 +87,6 @@ You get connection error if the limit is reached.
 ** Tests
 - BUFFERED-OUTPUT/TEST :: Test that buffered streams split the payload as expected
 - Test for SSL were modified to handle changes
--  ::
 
 ** Other
 -- Failure to decompress a header frame now causes specific CONNECTION-ERROR.

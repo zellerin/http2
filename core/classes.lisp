@@ -345,6 +345,7 @@ multiple threads.")
 (defgeneric get-settings (connection)
   (:method-combination append)
   (:method append (connection)
+    (declare (special *max-headers-size*))
     `((:max-frame-size . ,(get-max-peer-frame-size connection))
       ,@(when *max-headers-size* `((:max-header-list-size . ,*max-headers-size*)))
       (:header-table-size .
