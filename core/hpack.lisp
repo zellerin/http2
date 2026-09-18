@@ -2,6 +2,17 @@
 
 (in-package :http2/hpack)
 
+;; Speed only: safety is deliberately left at the implementation default
+;; (typically 3 on SBCL and LispWorks) rather than declaimed down.  This
+;; file decodes attacker-controlled input, and a file-level (safety 1)
+;; would lower bounds checking in the callers of
+;; decode-huffman-to-stream as well as in the decoder itself.  That is
+;; how the segfault fixed in 3cc0dd7 became reachable: with safety
+;; reduced on both sides, a malformed HEADERS frame turned a recoverable
+;; condition into a SIGSEGV on a production LispWorks 8.1 server.  The
+;; per-function declarations below still apply where they are intended.
+(declaim (optimize (speed 3)))
+
 (defsection @hpack-api (:title "HPACK - RFC7541 implementation.")
   "We implement HPACK as described in the RFC7541.
 Use DO-DECODED-HEADERS to decode data, and COMPILE-HEADERS to encode data."
@@ -608,6 +619,11 @@ following headers, as this would desync the context."
     (macrolet ((decode ()
                  (decode-octet-fn)))
       (flet ((update-vars (min-prefix)
+               ;; safety 1, not 0, so the aref below keeps its bounds
+               ;; check: this is where the segfault fixed in 3cc0dd7 read
+               ;; past the end of the header block fragment.  The per-byte
+               ;; cost is negligible -- the hot path here is dispatch, not
+               ;; the byte fetch.
                (declare (optimize (safety 1)))
                (when (> min-prefix nr-size)
                  (when (>= idx end) (return-from decode-huffman-to-stream))
@@ -621,6 +637,8 @@ following headers, as this would desync the context."
                (decf nr-size min-prefix)
                (setf nr (ldb (byte nr-size 0) nr)))
              (emit (char) (write-char char char-stream)))
+        ;; safety 1 here too: the inner loop's dispatch should not run at
+        ;; safety 0 on attacker-controlled input either.  See 3cc0dd7.
         (declare (optimize speed (safety 1) space)
                  (notinline update-vars emit))
         (loop (decode))))))
