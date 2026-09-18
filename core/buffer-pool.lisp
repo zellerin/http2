@@ -1,4 +1,4 @@
-;;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Package: http2/resources; Base: 10 -*-
+;;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Package: http2/buffer-pool; Base: 10 -*-
 
 (in-package :http2/buffer-pool)
 
