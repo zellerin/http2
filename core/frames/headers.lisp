@@ -409,7 +409,12 @@ expected, and then it is parsed by a different function."
               ;; empty continuation header, expect another one
               (read-continuation-frame-on-demand expected-stream old-data old-data-start old-data-end header-flags))
              (t
-              (values (lambda (connection data start end)
+              ;; START and END are optional, as they are in the function this one is returned from: the
+              ;; stream-based reader calls a frame action with the connection and a buffer holding exactly the
+              ;; frame (PROCESS-PENDING-FRAMES), and so called this with two arguments.  Any header block that
+              ;; needed a CONTINUATION frame, one over the 16384 octets of a default frame, ended the connection
+              ;; with "invalid number of arguments: 2".
+              (values (lambda (connection data &optional (start 0) (end (length data)))
                         (declare (ignore connection))
                         (declare (octet-vector data))
                         (let ((full-data (make-octet-buffer (+ length
