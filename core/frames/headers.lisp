@@ -398,10 +398,9 @@ expected, and then it is parsed by a different function."
                              :max-frame-size (get-max-frame-size connection)))
          (if (plusp R) (warn 'reserved-bit-set))
          (unless (eq (frame-type-name frame-type-object) :continuation-frame)
-           ; FIXME: make it an object
-           (error "Expected continuation frame and got ~a, should handle this"
-                  (frame-type-name frame-type-object)))
+           (connection-error 'protocol-error connection))
          (unless (= http-stream expected-stream-id)
+           (connection-error 'protocol-error connection)
            (error "Expected continuation for ~d, got ~d" http-stream
                   expected-stream-id))
          ;; Note: we use headers-frame for this...
