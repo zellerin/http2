@@ -76,7 +76,7 @@ continue."
     (unless (eql stream :closed)
       (write-rst-stream-frame stream (get-code e))
       (flush-http2-data (get-connection stream)))
-    (close-http2-stream stream 'e)
+    (close-http2-stream stream e)
     (error e)))
 
 (define-frame-type 7 :goaway-frame
