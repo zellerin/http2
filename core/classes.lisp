@@ -324,7 +324,8 @@ multiple threads.")
     (with-slots (connection) stream
       (with-slots (streams) connection
         (setf streams (remove stream streams :test 'eq)
-              (get-state stream) 'closed)))))
+              (get-state stream) 'closed))))
+  (:method ((stream (eql :closed)) reason)))
 
 ;;;; Other callbacks
 (defgeneric maybe-lock-for-write (connection)
