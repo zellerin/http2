@@ -150,6 +150,13 @@ connection. The client sent something different.")
   (:documentation
    "Frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE."))
 
+(define-condition frame-size-error (connection-error)
+  ((expected   :accessor get-expected   :initarg :expected)
+   (frame-size :accessor get-frame-size :initarg :frame-size))
+  (:default-initargs :code +frame-size-error+)
+  (:documentation
+   "Frame size does not match."))
+
 (define-condition incomplete-header (connection-error)
   ((octets :accessor get-octets :initarg :octets))
   (:report "The last header in headers frame was not complete.")
@@ -183,7 +190,7 @@ connection. The client sent something different.")
   (:report (lambda (err out)
              (declare (special *frame-types*))
              (format out "~W requires a stream, not the connection."
-                     (aref *frame-types* (get-frame-type err)))))
+                     (aref *frame-types* (get-code err)))))
   (:documentation
    "Frame MUST be associated with a stream. If a frame is received whose
     stream identifier field is 0x0, the recipient MUST respond with a

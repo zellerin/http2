@@ -24,7 +24,7 @@
 
 (defgeneric handle-undefined-frame (connection type flags data)
   (:method (connection type flags data)
-    (warn 'unimplemented-feature :format-control "Frame type ~a is not supported" type))
+    (warn 'unimplemented-feature :format-control "Frame type ~a is not supported" :format-arguments (list type)))
   (:documentation
    "Callback that is called when a frame of unknown type is received."))
 
