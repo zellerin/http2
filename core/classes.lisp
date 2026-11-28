@@ -402,12 +402,14 @@ PAYLOAD). Does nothing by default; client and server would want to specialize it
   "The client connection preface starts with a sequence of 24 octets, which in hex notation is this. That is, the connection preface starts with the string
  \"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\").")
 
-(defun parse-client-preface (connection buffer)
+(defun parse-client-preface (connection buffer start length)
   "Parse client preface.
 
 Check that buffer contains a client preface, or raise an error.
 
 Then write the initial settings frame, and expect normal frame. Actually, this should be a settings frame, but this is not enforced now."
+  (assert (zerop start))
+  (assert (= length (length +client-preface-start+)))
   (unless (equalp buffer +client-preface-start+)
     (error 'client-preface-mismatch :received buffer))
   (write-settings-frame connection (get-settings connection))

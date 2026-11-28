@@ -50,7 +50,7 @@ May block."
            ((= size read)
             (multiple-value-setq
                 (frame-action size)
-              (funcall frame-action connection buffer)))
+              (funcall frame-action connection buffer 0 size)))
            ;; The connection just closes without goaway
            ((and (zerop read) (equal frame-action #'parse-frame-header))
             (return))
